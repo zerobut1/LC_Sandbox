@@ -39,9 +39,16 @@ package("luisa-compute")
         add_defines("LUISA_PLATFORM_UNIX=1")
     end
 
+    if is_plat("linux") then
+        add_links("luisa-xir", "luisa-dsl", "luisa-runtime", "luisa-ast", "luisa-osl", "luisa-core", "luisa-ext-volk")
+    end
+
     add_deps("cmake", "pkgconf")
     add_deps("spdlog", {configs = {header_only = false, fmt_external = true}})
     add_deps("lmdb", "reproc", "xxhash", "yyjson", "magic_enum", "marl", "stb") -- TODO: half
+    if is_plat("linux") then
+        add_deps("libuuid")
+    end
 
     on_check(function (package)
         assert(package:is_arch64(), "package(luisa-compute) only support 64 bit")
@@ -56,12 +63,12 @@ package("luisa-compute")
             package:add("deps", "cuda")
         end
         if package:config("vulkan") then
-            package:add("deps", "vulkansdk", "volk")
+            package:add("deps", "vulkansdk")
             package:add("defines", "LUISA_USE_SYSTEM_VULKAN=1")
         end
     end)
 
-    on_install("windows|x64", "macosx", function (package)
+    on_install("windows|x64", "linux", "macosx", function (package)
         if package:has_tool("cxx", "cl") then
             package:add("cxflags", "/Zc:preprocessor", "/Zc:__cplusplus")
         end
@@ -69,7 +76,6 @@ package("luisa-compute")
         local configs = {
             "-DLUISA_COMPUTE_ENABLE_SCCACHE=OFF",
             "-DLUISA_COMPUTE_BUILD_TESTS=OFF",
-            "-DLUISA_COMPUTE_ENABLE_UNITY_BUILD=ON",
 
             "-DLUISA_COMPUTE_USE_SYSTEM_LIBS=ON",
 
@@ -78,6 +84,7 @@ package("luisa-compute")
         }
         table.insert(configs, "-DCMAKE_BUILD_TYPE=" .. (package:is_debug() and "Debug" or "Release"))
         table.insert(configs, "-DBUILD_SHARED_LIBS=" .. (package:config("shared") and "ON" or "OFF"))
+        table.insert(configs, "-DLUISA_COMPUTE_ENABLE_UNITY_BUILD=" .. (not package:is_plat("linux") and "ON" or "OFF"))
         table.insert(configs, "-DLUISA_COMPUTE_ENABLE_LTO=" .. (package:config("lto") and "ON" or "OFF"))
         table.insert(configs, "-DLUISA_COMPUTE_ENABLE_SANITIZERS=" .. (package:config("asan") and "ON" or "OFF"))
         if package:is_plat("windows") and package:is_debug() then

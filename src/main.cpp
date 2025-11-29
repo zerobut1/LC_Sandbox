@@ -18,7 +18,8 @@ int main(int argc, char* argv[])
 
     Callable plot = [](Float2 uv, Float y) noexcept
     {
-        return smoothstep(y - 0.02f, y, uv.y) - smoothstep(y, y + 0.02f, uv.y);
+        uv.y = 1.0f - uv.y;
+        return saturate(smoothstep(y - 0.01f, y, uv.y) - smoothstep(y, y + 0.01f, uv.y));
     };
 
     Kernel2D main_kernel = [&plot](ImageVar<float> image, Float time, Float2 mouse) noexcept
@@ -28,13 +29,19 @@ int main(int argc, char* argv[])
         Var uv         = make_float2(coord) / resolution;
         Var mouse_uv   = mouse / resolution;
 
-        Float x = uv.x;
-        Float y = sin((x + time) * constants::pi);
+        Float x  = uv.x;
+        Float3 y = make_float3(x);
+        y.x      = sin((x + time) * constants::pi);
+        y.y      = smoothstep(0.0f, 1.0f, x);
+        y.z      = 1.0f - mouse_uv.y;
 
-        y            = y * 0.5f + 0.5f;
-        Float3 color = make_float3(y);
-        Float pct    = plot(make_float2(uv.x, 1.0f - uv.y), y);
-        color        = (1.0f - pct) * color + pct * make_float3(0.0f, 1.0f, 0.0f);
+        Var colorA = make_float3(0.149f, 0.141f, 0.912f);
+        Var colorB = make_float3(1.000f, 0.833f, 0.224f);
+
+        Float3 color = lerp(colorA, colorB, y);
+        color        = lerp(color, make_float3(1.0f, 0.0f, 0.0f), plot(uv, y.x));
+        color        = lerp(color, make_float3(0.0f, 1.0f, 0.0f), plot(uv, y.y));
+        color        = lerp(color, make_float3(0.0f, 0.0f, 1.0f), plot(uv, y.z));
 
         image.write(coord, make_float4(color, 1.0f));
     };

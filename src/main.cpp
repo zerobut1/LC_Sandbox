@@ -16,9 +16,9 @@ int main(int argc, char* argv[])
         image.write(coord, make_float4(0.4f, 0.8f, 1.0f, 1.0f));
     };
 
-    Callable plot = [](Float2 st) noexcept
+    Callable plot = [](Float2 uv, Float y) noexcept
     {
-        return smoothstep(0.02, 0.0, abs(st.y - st.x));
+        return smoothstep(y - 0.02f, y, uv.y) - smoothstep(y, y + 0.02f, uv.y);
     };
 
     Kernel2D main_kernel = [&plot](ImageVar<float> image, Float time, Float2 mouse) noexcept
@@ -28,11 +28,13 @@ int main(int argc, char* argv[])
         Var uv         = make_float2(coord) / resolution;
         Var mouse_uv   = mouse / resolution;
 
-        Float2 st    = make_float2(1.0f - uv.x, uv.y);
-        Float3 color = make_float3(uv.x);
+        Float x = uv.x;
+        Float y = sin((x + time) * constants::pi);
 
-        Float pct = plot(st);
-        color     = (1.0f - pct) * color + pct * make_float3(0.0f, 1.0f, 0.0f);
+        y            = y * 0.5f + 0.5f;
+        Float3 color = make_float3(y);
+        Float pct    = plot(make_float2(uv.x, 1.0f - uv.y), y);
+        color        = (1.0f - pct) * color + pct * make_float3(0.0f, 1.0f, 0.0f);
 
         image.write(coord, make_float4(color, 1.0f));
     };

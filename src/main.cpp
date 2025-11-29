@@ -2,8 +2,11 @@
 #include <luisa/gui/window.h>
 #include <luisa/luisa-compute.h>
 
+#include "utils.h"
+
 using namespace luisa;
 using namespace luisa::compute;
+using namespace Utils;
 
 int main(int argc, char* argv[])
 {
@@ -16,11 +19,7 @@ int main(int argc, char* argv[])
         image.write(coord, make_float4(0.4f, 0.8f, 1.0f, 1.0f));
     };
 
-    Callable plot = [](Float2 uv, Float y) noexcept
-    {
-        uv.y = 1.0f - uv.y;
-        return saturate(smoothstep(y - 0.01f, y, uv.y) - smoothstep(y, y + 0.01f, uv.y));
-    };
+    auto plot = plot_callable();
 
     Kernel2D main_kernel = [&plot](ImageVar<float> image, Float time, Float2 mouse) noexcept
     {

@@ -1,7 +1,4 @@
-﻿#include "luisa/dsl/var.h"
-#include <cmath>
-#include <cstdlib>
-#include <luisa/dsl/sugar.h>
+﻿#include <luisa/dsl/sugar.h>
 #include <luisa/gui/window.h>
 #include <luisa/luisa-compute.h>
 
@@ -19,22 +16,31 @@ int main(int argc, char* argv[])
         image.write(coord, make_float4(0.4f, 0.8f, 1.0f, 1.0f));
     };
 
-    Kernel2D main_kernel = [](ImageVar<float> image, Float time, Float2 mouse) noexcept
+    Callable plot = [](Float2 st) noexcept
+    {
+        return smoothstep(0.02, 0.0, abs(st.y - st.x));
+    };
+
+    Kernel2D main_kernel = [&plot](ImageVar<float> image, Float time, Float2 mouse) noexcept
     {
         Var coord      = dispatch_id().xy();
         Var resolution = make_float2(dispatch_size().xy());
         Var uv         = make_float2(coord) / resolution;
         Var mouse_uv   = mouse / resolution;
 
-        Var color = make_float4(mouse_uv, 0.0f, 1.0f);
+        Float2 st    = make_float2(1.0f - uv.x, uv.y);
+        Float3 color = make_float3(uv.x);
 
-        image.write(coord, color);
+        Float pct = plot(st);
+        color     = (1.0f - pct) * color + pct * make_float3(0.0f, 1.0f, 0.0f);
+
+        image.write(coord, make_float4(color, 1.0f));
     };
 
     auto clear  = device.compile(clear_kernel);
     auto shader = device.compile(main_kernel);
 
-    static constexpr uint2 resolution{1920u, 1080u};
+    static constexpr uint2 resolution{1024u, 1024u};
     Stream stream = device.create_stream(StreamTag::GRAPHICS);
     Window window{"ShaderToy", resolution};
     Swapchain swap_chain = device.create_swapchain(

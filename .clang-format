@@ -72,4 +72,5 @@ PointerAlignment: Left
 AllowShortLambdasOnASingleLine: Empty
 
 # Lambda表达式主体缩进
-LambdaBodyIndentation: Signature
+# Lambda表达式主体缩进
+LambdaBodyIndentation: OuterScope

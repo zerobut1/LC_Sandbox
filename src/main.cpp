@@ -19,9 +19,7 @@ int main(int argc, char* argv[])
         image.write(coord, make_float4(0.4f, 0.8f, 1.0f, 1.0f));
     };
 
-    auto plot = plot_callable();
-
-    Kernel2D main_kernel = [&plot](ImageVar<float> image, Float time, Float2 mouse) noexcept
+    Kernel2D main_kernel = [](ImageVar<float> image, Float time, Float2 mouse) noexcept
     {
         Var coord      = dispatch_id().xy();
         Var resolution = make_float2(dispatch_size().xy());

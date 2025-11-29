@@ -6,7 +6,7 @@ set_languages("c++20")
 
 includes("ext")
 
-add_requires("luisa-compute", { configs = {cuda = true, gui = true}})
+add_requires("luisa-compute", { configs = {cuda = true, vulkan = true, gui = true}})
 
 target("Luisa_PBR4")
     set_kind("binary")
@@ -17,6 +17,6 @@ target("Luisa_PBR4")
     add_packages("luisa-compute")
 
     on_config(function (target)
-        target:add("runargs", path.join(target:pkg("luisa-compute"):installdir(), "bin"), "cuda")
+        target:add("runargs", path.join(target:pkg("luisa-compute"):installdir(), "bin"), "vk")
     end)
 target_end()

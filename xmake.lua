@@ -1,22 +1,21 @@
-add_rules("mode.debug", "mode.release")
+add_rules("mode.debug", "mode.release", "mode.releasedbg")
 
 set_defaultarchs("x64")
-set_runtimes("MD")
 set_languages("c++20")
 
-includes("ext")
+includes("ext/LuisaCompute")
+includes("config.lua")
 
-add_requires("luisa-compute", { configs = {cuda = true, vulkan = true, gui = true}})
-
-target("Luisa_Sandbox")
+target("LC_Sandbox")
     set_kind("binary")
-    add_files("src/**.cpp")
-    add_headerfiles("src/**.h")
     set_rundir("$(projectdir)")
 
-    add_packages("luisa-compute")
+    add_files("src/**.cpp")
+    add_headerfiles("src/**.h")
 
-    on_config(function (target)
-        target:add("runargs", path.join(target:pkg("luisa-compute"):installdir(), "bin"), "vk")
-    end)
+    set_default(true)
+    set_runargs("cuda")
+
+    add_deps("lc-dsl","lc-gui")
+
 target_end()

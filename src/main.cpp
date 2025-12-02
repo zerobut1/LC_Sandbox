@@ -1,4 +1,5 @@
 ﻿#include <luisa/dsl/sugar.h>
+#include <luisa/gui/framerate.h>
 #include <luisa/gui/window.h>
 #include <luisa/luisa-compute.h>
 
@@ -10,8 +11,8 @@ using namespace Utils;
 
 int main(int argc, char* argv[])
 {
-    Context context{argv[1]};
-    Device device = context.create_device(argv[2]);
+    Context context{argv[0]};
+    Device device = context.create_device(argv[1]);
 
     Kernel2D clear_kernel = [](ImageVar<float> image) noexcept
     {
@@ -42,7 +43,9 @@ int main(int argc, char* argv[])
 
     static constexpr uint2 resolution{1024u, 1024u};
     Stream stream = device.create_stream(StreamTag::GRAPHICS);
+
     Window window{"ShaderToy", resolution};
+
     Swapchain swap_chain = device.create_swapchain(
         stream,
         SwapchainOption{
@@ -64,6 +67,8 @@ int main(int argc, char* argv[])
     stream << clear(ldr_image).dispatch(resolution.x, resolution.y);
 
     Clock clock;
+    Framerate framerate;
+    size_t frame_count = 0;
     while (!window.should_close())
     {
         window.poll_events();
@@ -73,6 +78,15 @@ int main(int argc, char* argv[])
         stream
             << shader(ldr_image, time, mouse_pos).dispatch(resolution.x, resolution.y)
             << swap_chain.present(ldr_image);
+
+        frame_count++;
+        if (framerate.duration() > 0.5)
+        {
+            framerate.record(frame_count);
+            frame_count = 0;
+            auto title  = luisa::format("ShaderToy - {} - {:.2f} fps", argv[1], framerate.report());
+            window.set_window_name(title);
+        }
     }
     stream << synchronize();
 }

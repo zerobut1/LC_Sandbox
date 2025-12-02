@@ -8,7 +8,7 @@ includes("ext")
 
 add_requires("luisa-compute", { configs = {cuda = true, vulkan = true, gui = true}})
 
-target("Luisa_PBR4")
+target("Luisa_Sandbox")
     set_kind("binary")
     add_files("src/**.cpp")
     add_headerfiles("src/**.h")

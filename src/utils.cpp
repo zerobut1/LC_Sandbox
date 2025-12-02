@@ -39,9 +39,10 @@ namespace Utils
     {
         static Callable impl = [](Float3 c) noexcept -> Float3
         {
-            Float3 p   = abs(mod(c.x * 6.0f + make_float3(0.0f, 4.0f, 2.0f), 6.0f) - 3.0f);
-            Float3 rgb = c.z * lerp(make_float3(1.0f), saturate(p - 1.0f), c.y);
-            rgb        = rgb * rgb * (3.0f - 2.0f * rgb);
+            Float3 rgb = saturate(abs(mod(c.x * 6.0f + make_float3(0.0f, 4.0f, 2.0f), 6.0f) - 3.0f) - 1.0f);
+            rgb = rgb * rgb * (3.0f - 2.0f * rgb);
+            rgb = c.z * lerp(make_float3(1.0f), rgb, c.y);
+
             return rgb;
         };
 

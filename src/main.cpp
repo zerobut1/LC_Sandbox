@@ -26,19 +26,13 @@ int main(int argc, char* argv[])
         Var uv         = make_float2(coord) / resolution;
         Var mouse_uv   = mouse / resolution;
 
-        Float x  = uv.x;
-        Float3 y = make_float3(x);
-        y.x      = sin((x + time) * constants::pi);
-        y.y      = smoothstep(0.0f, 1.0f, x);
-        y.z      = 1.0f - mouse_uv.y;
+        Float3 color{};
 
-        Var colorA = make_float3(0.149f, 0.141f, 0.912f);
-        Var colorB = make_float3(1.000f, 0.833f, 0.224f);
+        Float2 to_center = make_float2(0.5f, 0.5f) - make_float2(uv.x, 1.0f - uv.y);
+        Float angle      = atan2(to_center.y, to_center.x);
+        Float radius     = length(to_center) * 2.0f;
 
-        Float3 color = lerp(colorA, colorB, y);
-        color        = lerp(color, make_float3(1.0f, 0.0f, 0.0f), plot(uv, y.x));
-        color        = lerp(color, make_float3(0.0f, 1.0f, 0.0f), plot(uv, y.y));
-        color        = lerp(color, make_float3(0.0f, 0.0f, 1.0f), plot(uv, y.z));
+        color = hsb2rgb(make_float3(angle / (pi * 2) + 0.5f, radius, 1.0f));
 
         image.write(coord, make_float4(color, 1.0f));
     };

@@ -62,6 +62,17 @@ namespace Utils
         return impl(st, size);
     }
 
+    Float circle(Float2 st, Float radius) noexcept
+    {
+        static Callable impl = [](Float2 st, Float radius) noexcept -> Float
+        {
+            Float2 l = st - 0.5f;
+
+            return smoothstep(radius + radius * 0.01f, radius - radius * 0.01f, dot(l, l) * 4.0f);
+        };
+        return impl(st, radius);
+    }
+
     Float2x2 rotate2d(Float angle) noexcept
     {
         static Callable impl = [](Float angle) noexcept -> Float2x2

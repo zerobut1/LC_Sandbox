@@ -30,19 +30,11 @@ int main(int argc, char* argv[])
         st.x           = st.x * resolution.x / resolution.y;
         Float3 color   = make_float3(0.0f);
 
-        Float2 translate = make_float2(sin(time), cos(time));
-        st -= 0.5f;
-        // st += translate * 0.5f;
-        st = rotate2d(sin(time * 0.5f) * pi) * st;
-        st = scale2d(make_float2(sin(time * 2.0f) + 1.0f)) * st;
-        st += 0.5f;
+        st *= 3.0f;
+        st = fract(st);
 
-        color = make_float3(saturate(st), 0.0f);
-
-        Float cross = box(st, make_float2(0.25f, 1.0f)) +
-                      box(st, make_float2(1.0f, 0.25f));
-
-        color += make_float3(saturate(cross));
+        color = make_float3(st, 0.0f);
+        color += make_float3(circle(st, 0.5f));
 
         image.write(coord, make_float4(color, 1.0f));
     };

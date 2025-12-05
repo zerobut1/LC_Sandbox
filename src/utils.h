@@ -13,6 +13,7 @@ namespace Utils
     [[nodiscard]] Float3 hsb2rgb(Float3 c) noexcept;
 
     [[nodiscard]] Float box(Float2 st, Float2 size) noexcept;
+    [[nodiscard]] Float circle(Float2 st, Float radius) noexcept;
 
     [[nodiscard]] Float2x2 rotate2d(Float angle) noexcept;
     [[nodiscard]] Float2x2 scale2d(Float2 scale) noexcept;

@@ -12,6 +12,12 @@ using namespace Utils;
 int main(int argc, char* argv[])
 {
     Context context{argv[0]};
+
+    if (argc <= 1)
+    {
+        LUISA_INFO("Usage: {} <backend>. <backend>: cuda, dx, vk", argv[0]);
+        exit(1);
+    }
     Device device = context.create_device(argv[1]);
 
     Kernel2D clear_kernel = [](ImageVar<float> image) noexcept
@@ -30,11 +36,28 @@ int main(int argc, char* argv[])
         st.x           = st.x * resolution.x / resolution.y;
         Float3 color   = make_float3(0.0f);
 
-        st = tile(st, 4.0f);
+        st = tile(st, 3.0f);
 
-        st = rotate2d(st, pi * 0.25);
+        st *= 2.0f;
+        Float index = 0.0f;
+        index += step(1.0f, mod(st.x, 2.0f));
+        index += step(1.0f, mod(st.y, 2.0f)) * 2.0f;
+        st = fract(st);
 
-        color = make_float3(box(st, make_float2(0.7f)));
+        $if(index == 1.0f)
+        {
+            st = rotate2d(st, pi_over_two);
+        }
+        $elif(index == 2.0f)
+        {
+            st = rotate2d(st, -pi_over_two);
+        }
+        $elif(index == 3.0f)
+        {
+            st = rotate2d(st, pi);
+        };
+
+        color = make_float3(step(st.x, st.y));
 
         image.write(coord, make_float4(color, 1.0f));
     };

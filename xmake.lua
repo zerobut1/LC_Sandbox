@@ -13,9 +13,6 @@ target("LC_Sandbox")
     add_files("src/**.cpp")
     add_headerfiles("src/**.h")
 
-    set_default(true)
-    set_runargs("vk")
-
     add_deps("lc-dsl","lc-gui")
 
 target_end()

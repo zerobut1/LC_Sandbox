@@ -18,4 +18,7 @@ namespace Utils
     [[nodiscard]] Float2x2 rotate2d(Float angle) noexcept;
     [[nodiscard]] Float2x2 scale2d(Float2 scale) noexcept;
 
+    [[nodiscard]] Float2 tile(Float2 st, Float zoom) noexcept;
+    [[nodiscard]] Float2 rotate2d(Float2 st, Float angle) noexcept;
+
 } // namespace Utils

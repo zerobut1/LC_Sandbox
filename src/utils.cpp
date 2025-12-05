@@ -93,4 +93,28 @@ namespace Utils
         };
         return impl(scale);
     }
+
+    Float2 tile(Float2 st, Float zoom) noexcept
+    {
+        static Callable impl = [](Float2 st, Float zoom) noexcept -> Float2
+        {
+            st *= zoom;
+            return fract(st);
+        };
+        return impl(st, zoom);
+    }
+
+    Float2 rotate2d(Float2 st, Float angle) noexcept
+    {
+        static Callable impl = [](Float2 st, Float angle) noexcept -> Float2
+        {
+            st -= 0.5f;
+            st = rotate2d(angle) * st;
+            st += 0.5f;
+
+            return st;
+        };
+        return impl(st, angle);
+    }
+
 } // namespace Utils

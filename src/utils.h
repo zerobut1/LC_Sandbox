@@ -14,4 +14,7 @@ namespace Utils
 
     [[nodiscard]] Float box(Float2 st, Float2 size) noexcept;
 
+    [[nodiscard]] Float2x2 rotate2d(Float angle) noexcept;
+    [[nodiscard]] Float2x2 scale2d(Float2 scale) noexcept;
+
 } // namespace Utils

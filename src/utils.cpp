@@ -61,4 +61,25 @@ namespace Utils
         };
         return impl(st, size);
     }
+
+    Float2x2 rotate2d(Float angle) noexcept
+    {
+        static Callable impl = [](Float angle) noexcept -> Float2x2
+        {
+            Float s = sin(angle);
+            Float c = cos(angle);
+
+            return make_float2x2(c, -s, s, c);
+        };
+        return impl(angle);
+    }
+
+    Float2x2 scale2d(Float2 scale) noexcept
+    {
+        static Callable impl = [](Float2 scale) noexcept -> Float2x2
+        {
+            return make_float2x2(scale.x, 0.0f, 0.0f, scale.y);
+        };
+        return impl(scale);
+    }
 } // namespace Utils

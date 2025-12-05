@@ -26,14 +26,16 @@ int main(int argc, char* argv[])
         Var resolution = make_float2(dispatch_size().xy());
         Var uv         = make_float2(coord) / resolution;
         Var mouse_uv   = mouse / resolution;
-        Var st         = uv * 2.0f - 1.0f;
+        Var st         = uv;
         st.x           = st.x * resolution.x / resolution.y;
         Float3 color   = make_float3(0.0f);
 
         Float2 translate = make_float2(sin(time), cos(time));
-        st += translate * 0.5f;
+        st -= 0.5f;
+        // st += translate * 0.5f;
         st = rotate2d(sin(time * 0.5f) * pi) * st;
         st = scale2d(make_float2(sin(time * 2.0f) + 1.0f)) * st;
+        st += 0.5f;
 
         color = make_float3(saturate(st), 0.0f);
 

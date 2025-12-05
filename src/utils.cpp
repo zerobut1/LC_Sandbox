@@ -53,10 +53,10 @@ namespace Utils
     {
         static Callable impl = [](Float2 st, Float2 size) noexcept -> Float
         {
-            size = size * 0.5f;
+            size = 0.5f - size * 0.5f;
 
-            Float2 uv = smoothstep(size + 0.001f, size, st);
-            uv *= smoothstep(-size, -size + 0.001f, st);
+            Float2 uv = smoothstep(size, size + 0.001f, st);
+            uv *= smoothstep(size, size + 0.001f, 1.0f - st);
             return uv.x * uv.y;
         };
         return impl(st, size);

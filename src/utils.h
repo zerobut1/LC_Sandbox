@@ -12,4 +12,6 @@ namespace Utils
     [[nodiscard]] Float3 rgb2hsb(Float3 c) noexcept;
     [[nodiscard]] Float3 hsb2rgb(Float3 c) noexcept;
 
+    [[nodiscard]] Float box(Float2 st, Float2 size) noexcept;
+
 } // namespace Utils

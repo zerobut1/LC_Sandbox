@@ -40,8 +40,8 @@ namespace Utils
         static Callable impl = [](Float3 c) noexcept -> Float3
         {
             Float3 rgb = saturate(abs(mod(c.x * 6.0f + make_float3(0.0f, 4.0f, 2.0f), 6.0f) - 3.0f) - 1.0f);
-            rgb = rgb * rgb * (3.0f - 2.0f * rgb);
-            rgb = c.z * lerp(make_float3(1.0f), rgb, c.y);
+            rgb        = rgb * rgb * (3.0f - 2.0f * rgb);
+            rgb        = c.z * lerp(make_float3(1.0f), rgb, c.y);
 
             return rgb;
         };
@@ -49,4 +49,16 @@ namespace Utils
         return impl(c);
     }
 
+    Float box(Float2 st, Float2 size) noexcept
+    {
+        static Callable impl = [](Float2 st, Float2 size) noexcept -> Float
+        {
+            size = size * 0.5f;
+
+            Float2 uv = smoothstep(size + 0.001f, size, st);
+            uv *= smoothstep(-size, -size + 0.001f, st);
+            return uv.x * uv.y;
+        };
+        return impl(st, size);
+    }
 } // namespace Utils

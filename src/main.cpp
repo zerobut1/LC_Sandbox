@@ -30,15 +30,15 @@ int main(int argc, char* argv[])
         st.x           = st.x * resolution.x / resolution.y;
         Float3 color   = make_float3(0.0f);
 
-        Int N = 3;
+        Float2 translate = make_float2(sin(time), cos(time));
+        st += translate * 0.50f;
 
-        Float r = pi * 2 / Float(N);
-        Float a = atan2(st.x, -st.y) + pi;
+        color = make_float3(saturate(st), 0.0f);
 
-        Float d = 0.0f;
-        d       = cos(floor(0.5f + a / r) * r - a) * length(st);
+        Float cross = box(st, make_float2(0.25f, 1.0f)) +
+                      box(st, make_float2(1.0f, 0.25f));
 
-        color = make_float3(smoothstep(0.41f, 0.4f, d));
+        color += make_float3(saturate(cross));
 
         image.write(coord, make_float4(color, 1.0f));
     };

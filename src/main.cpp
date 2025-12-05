@@ -26,14 +26,16 @@ int main(int argc, char* argv[])
         Var resolution = make_float2(dispatch_size().xy());
         Var uv         = make_float2(coord) / resolution;
         Var mouse_uv   = mouse / resolution;
+        Var st         = uv * 2.0f - 1.0f;
+        st.x           = st.x * resolution.x / resolution.y;
+        Float3 color   = make_float3(0.0f);
 
-        Float3 color{};
+        Float d = 0.0f;
+        // d       = length(abs(st) - 0.3f);
+        // d       = length(min(abs(st) - 0.3f, 0.0f));
+        d       = length(max(abs(st) - 0.3f, 0.0f));
 
-        Float2 to_center = make_float2(0.5f, 0.5f) - make_float2(uv.x, 1.0f - uv.y);
-        Float angle      = atan2(to_center.y, to_center.x);
-        Float radius     = length(to_center) * 2.0f;
-
-        color = hsb2rgb(make_float3(angle / (pi * 2) + 0.5f, radius, 1.0f));
+        color = make_float3(smoothstep(0.3f, 0.4f, d) * smoothstep(0.6f, 0.5f, d));
 
         image.write(coord, make_float4(color, 1.0f));
     };

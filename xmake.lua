@@ -14,7 +14,7 @@ target("LC_Sandbox")
     add_headerfiles("src/**.h")
 
     set_default(true)
-    set_runargs("cuda")
+    set_runargs("vk")
 
     add_deps("lc-dsl","lc-gui")
 

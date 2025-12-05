@@ -30,17 +30,15 @@ int main(int argc, char* argv[])
         st.x           = st.x * resolution.x / resolution.y;
         Float3 color   = make_float3(0.0f);
 
-        Float r = length(st);
-        Float a = atan2(st.y, st.x);
+        Int N = 3;
 
-        Float f = 0.0f;
-        // f = cos(a * 3.0f);
-        // f = abs(cos(a * 2.5f)) * 0.5f + 0.3f;
-        // f = abs(cos(a * 12.0f) * sin(a * 3.0f)) * 0.8f + 0.1f;
-        f = smoothstep(-0.5f, 1.0f, cos(a * 10.0f)) * 0.2f + 0.1f;
+        Float r = pi * 2 / Float(N);
+        Float a = atan2(st.x, -st.y) + pi;
 
-        color = make_float3(smoothstep(f + 0.02f, f, r));
-        // color = make_float3(f);
+        Float d = 0.0f;
+        d       = cos(floor(0.5f + a / r) * r - a) * length(st);
+
+        color = make_float3(smoothstep(0.41f, 0.4f, d));
 
         image.write(coord, make_float4(color, 1.0f));
     };

@@ -36,28 +36,9 @@ int main(int argc, char* argv[])
         st.x           = st.x * resolution.x / resolution.y;
         Float3 color   = make_float3(0.0f);
 
-        st = tile(st, 3.0f);
+        Float n = noise(st * 5.0f);
 
-        st *= 2.0f;
-        Float index = 0.0f;
-        index += step(1.0f, mod(st.x, 2.0f));
-        index += step(1.0f, mod(st.y, 2.0f)) * 2.0f;
-        st = fract(st);
-
-        $if(index == 1.0f)
-        {
-            st = rotate2d(st, pi_over_two);
-        }
-        $elif(index == 2.0f)
-        {
-            st = rotate2d(st, -pi_over_two);
-        }
-        $elif(index == 3.0f)
-        {
-            st = rotate2d(st, pi);
-        };
-
-        color = make_float3(step(st.x, st.y));
+        color = make_float3(n);
 
         image.write(coord, make_float4(color, 1.0f));
     };

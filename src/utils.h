@@ -21,4 +21,7 @@ namespace Utils
     [[nodiscard]] Float2 tile(Float2 st, Float zoom) noexcept;
     [[nodiscard]] Float2 rotate2d(Float2 st, Float angle) noexcept;
 
+    [[nodiscard]] Float random(Float2 st) noexcept;
+    [[nodiscard]] Float noise(Float2 st) noexcept;
+
 } // namespace Utils

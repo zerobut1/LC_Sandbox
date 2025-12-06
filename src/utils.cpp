@@ -117,4 +117,32 @@ namespace Utils
         return impl(st, angle);
     }
 
+    Float random(Float2 st) noexcept
+    {
+        static Callable impl = [](Float2 st) noexcept -> Float
+        {
+            return fract(sin(dot(st, make_float2(12.9898f, 78.233f))) * 43758.5453123f);
+        };
+        return impl(st);
+    }
+
+    Float noise(Float2 st) noexcept
+    {
+        static Callable impl = [](Float2 st) noexcept -> Float
+        {
+            Float2 i = floor(st);
+            Float2 f = fract(st);
+
+            Float a = random(i);
+            Float b = random(i + make_float2(1.0f, 0.0f));
+            Float c = random(i + make_float2(0.0f, 1.0f));
+            Float d = random(i + make_float2(1.0f, 1.0f));
+
+            Float2 u = smoothstep(0.0f, 1.0f, f);
+
+            return lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y);
+        };
+        return impl(st);
+    }
+
 } // namespace Utils

@@ -36,13 +36,18 @@ int main(int argc, char* argv[])
         st.x           = st.x * resolution.x / resolution.y;
         Float3 color   = make_float3(0.0f);
 
-        st *= make_float2(3.0f, 10.0f);
+        st = st * 2.0f - 1.0f;
 
-        st = rotate2d(st, noise(st));
+        Float r = length(st);
+        Float a = atan2(st.y, st.x);
+        Float f = 0.5f;
 
-        Float pattern = smoothstep(0.0f, 0.5f, abs(sin(st.y * 10.0f * pi) + 1.0f) * 0.5f);
+        Float m = abs(mod(a + time, pi * 2.0f) - pi) / pi;
+        f += sin(a * 20.0f) * pow(m, 2.0f) * 0.1f;
 
-        color = make_float3(pattern);
+        Float width = 0.02f;
+        color       = make_float3(smoothstep(f, f + 0.001f, r));
+        color       = color + 1.0f - make_float3(smoothstep(f - width, f - width + 0.001f, r));
 
         image.write(coord, make_float4(color, 1.0f));
     };

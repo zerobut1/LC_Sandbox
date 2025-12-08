@@ -36,9 +36,13 @@ int main(int argc, char* argv[])
         st.x           = st.x * resolution.x / resolution.y;
         Float3 color   = make_float3(0.0f);
 
-        Float n = noise(st * 5.0f);
+        st *= make_float2(3.0f, 10.0f);
 
-        color = make_float3(n);
+        st = rotate2d(st, noise(st));
+
+        Float pattern = smoothstep(0.0f, 0.5f, abs(sin(st.y * 10.0f * pi) + 1.0f) * 0.5f);
+
+        color = make_float3(pattern);
 
         image.write(coord, make_float4(color, 1.0f));
     };

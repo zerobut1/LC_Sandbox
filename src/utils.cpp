@@ -126,6 +126,18 @@ namespace Utils
         return impl(st);
     }
 
+    Float2 random2(Float2 st) noexcept
+    {
+        static Callable impl = [](Float2 st) noexcept -> Float2
+        {
+            st = make_float2(dot(st, make_float2(127.1f, 311.7f)),
+                             dot(st, make_float2(269.5f, 183.3f)));
+
+            return fract(sin(st) * 43758.5453123f);
+        };
+        return impl(st);
+    }
+
     Float noise(Float2 st) noexcept
     {
         static Callable impl = [](Float2 st) noexcept -> Float
@@ -133,14 +145,14 @@ namespace Utils
             Float2 i = floor(st);
             Float2 f = fract(st);
 
-            Float a = random(i);
-            Float b = random(i + make_float2(1.0f, 0.0f));
-            Float c = random(i + make_float2(0.0f, 1.0f));
-            Float d = random(i + make_float2(1.0f, 1.0f));
-
             Float2 u = smoothstep(0.0f, 1.0f, f);
 
-            return lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y);
+            Float p00 = dot(random2(i + make_float2(0.0f, 0.0f)), f - make_float2(0.0f, 0.0f));
+            Float p10 = dot(random2(i + make_float2(1.0f, 0.0f)), f - make_float2(1.0f, 0.0f));
+            Float p01 = dot(random2(i + make_float2(0.0f, 1.0f)), f - make_float2(0.0f, 1.0f));
+            Float p11 = dot(random2(i + make_float2(1.0f, 1.0f)), f - make_float2(1.0f, 1.0f));
+
+            return lerp(lerp(p00, p10, u.x), lerp(p01, p11, u.x), u.y);
         };
         return impl(st);
     }

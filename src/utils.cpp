@@ -145,14 +145,14 @@ namespace Utils
             Float2 i = floor(st);
             Float2 f = fract(st);
 
+            Float a = random(i);
+            Float b = random(i + make_float2(1.0f, 0.0f));
+            Float c = random(i + make_float2(0.0f, 1.0f));
+            Float d = random(i + make_float2(1.0f, 1.0f));
+
             Float2 u = smoothstep(0.0f, 1.0f, f);
 
-            Float p00 = dot(random2(i + make_float2(0.0f, 0.0f)), f - make_float2(0.0f, 0.0f));
-            Float p10 = dot(random2(i + make_float2(1.0f, 0.0f)), f - make_float2(1.0f, 0.0f));
-            Float p01 = dot(random2(i + make_float2(0.0f, 1.0f)), f - make_float2(0.0f, 1.0f));
-            Float p11 = dot(random2(i + make_float2(1.0f, 1.0f)), f - make_float2(1.0f, 1.0f));
-
-            return lerp(lerp(p00, p10, u.x), lerp(p01, p11, u.x), u.y);
+            return lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y);
         };
         return impl(st);
     }

@@ -36,33 +36,22 @@ int main(int argc, char* argv[])
         st.x           = st.x * resolution.x / resolution.y;
         Float3 color   = make_float3(0.0f);
 
-        st          = st * 4.0f;
-        Float2 i_st = floor(st);
-        Float2 j_st = fract(st);
+        st *= 3.0f;
 
-        Float out_dist = 1.0f;
+        Float v         = 0.0f;
+        Float amplitude = 0.5f;
+        Float frequency = 0.0f;
 
-        $for(_i, 3)
+        const UInt OCTAVES = 8u;
+
+        $for(i, OCTAVES)
         {
-            Float i = cast<Float>(_i) - 1.0f;
-            $for(_j, 3)
-            {
-                Float j         = cast<Float>(_j) - 1.0f;
-                Float2 neighbor = make_float2(i, j);
-
-                Float2 point = random2(i_st + neighbor);
-                point        = 0.5f + 0.5f * sin(time + 6.2831f * point);
-
-                Float dist = distance(neighbor + point, j_st);
-
-                out_dist = min(out_dist, dist);
-            };
+            v += amplitude * noise(st);
+            st *= 3.0f;
+            amplitude *= 0.5f;
         };
 
-        color = make_float3(out_dist);
-
-        color += step(out_dist, 0.02f);
-        color.x += step(0.98f, j_st.x) + step(0.98f, j_st.y);
+        color = make_float3(v);
 
         image.write(coord, make_float4(color, 1.0f));
     };

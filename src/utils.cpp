@@ -117,25 +117,33 @@ namespace Utils
         return impl(st, angle);
     }
 
-    Float random(Float2 st) noexcept
+    UInt pcg(UInt v) noexcept
     {
-        static Callable impl = [](Float2 st) noexcept -> Float
+        static Callable impl = [](UInt v) noexcept -> UInt
         {
-            return fract(sin(dot(st, make_float2(12.9898f, 78.233f))) * 43758.5453123f);
+            UInt state = v * 747796405u + 2891336453u;
+            UInt word  = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+            return (word >> 22u) ^ word;
         };
-        return impl(st);
+        return impl(v);
     }
 
-    Float2 random2(Float2 st) noexcept
+    Float random(Float p) noexcept
     {
-        static Callable impl = [](Float2 st) noexcept -> Float2
+        static Callable impl = [](Float p) noexcept -> Float
         {
-            st = make_float2(dot(st, make_float2(127.1f, 311.7f)),
-                             dot(st, make_float2(269.5f, 183.3f)));
-
-            return fract(sin(st) * 43758.5453123f);
+            return cast<Float>(pcg(cast<UInt>(p))) / cast<Float>(0xFFFFFFFFu);
         };
-        return impl(st);
+        return impl(p);
+    }
+
+    Float random(Float2 p) noexcept
+    {
+        static Callable impl = [](Float2 p) noexcept -> Float
+        {
+            return cast<Float>(pcg(pcg(cast<UInt>(p.x)) + cast<UInt>(p.y))) / cast<Float>(0xFFFFFFFFu);
+        };
+        return impl(p);
     }
 
     Float noise(Float2 st) noexcept

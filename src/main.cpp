@@ -36,7 +36,7 @@ int main(int argc, char* argv[])
         st.x           = st.x * resolution.x / resolution.y;
         Float3 color   = make_float3(0.0f);
 
-        st *= 3.0f;
+        st *= 10.0f;
 
         Float v         = 0.0f;
         Float amplitude = 0.5f;
@@ -47,7 +47,7 @@ int main(int argc, char* argv[])
         $for(i, OCTAVES)
         {
             v += amplitude * noise(st);
-            st *= 3.0f;
+            st *= 2.0f;
             amplitude *= 0.5f;
         };
 

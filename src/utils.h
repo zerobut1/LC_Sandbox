@@ -21,8 +21,10 @@ namespace Utils
     [[nodiscard]] Float2 tile(Float2 st, Float zoom) noexcept;
     [[nodiscard]] Float2 rotate2d(Float2 st, Float angle) noexcept;
 
-    [[nodiscard]] Float random(Float2 st) noexcept;
-    [[nodiscard]] Float2 random2(Float2 st) noexcept;
+    [[nodiscard]] UInt pcg(UInt v) noexcept;
+    [[nodiscard]] Float random(Float p) noexcept;
+    [[nodiscard]] Float random(Float2 p) noexcept;
+
     [[nodiscard]] Float noise(Float2 st) noexcept;
 
 } // namespace Utils

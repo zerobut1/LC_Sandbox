@@ -7,6 +7,8 @@ target("Yutrel")
     add_files("**.cpp")
     add_headerfiles("**.h")
 
+    add_includedirs(os.scriptdir())
+
     add_deps("lc-dsl","lc-gui")
 
 target_end()

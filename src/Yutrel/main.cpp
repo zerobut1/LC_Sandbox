@@ -1,4 +1,4 @@
-#include "core/application.h"
+#include "base/application.h"
 
 #include <luisa/core/logging.h>
 
@@ -12,7 +12,7 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
-    ApplicationCreateInfo app_info{
+    Application::CreateInfo app_info{
         .bin         = argv[0],
         .backend     = argv[1],
         .window_name = "Yutrel",

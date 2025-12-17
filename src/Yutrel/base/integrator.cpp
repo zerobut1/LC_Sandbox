@@ -5,11 +5,14 @@
 #include "base/camera.h"
 #include "base/film.h"
 #include "base/renderer.h"
-#include "rtweekend/rtweekend.h"
 #include "utils/command_buffer.h"
+
+#include <rtweekend/rtweekend.h>
 
 namespace Yutrel
 {
+    using namespace RTWeekend;
+
     Integrator::Integrator(Renderer& renderer) noexcept
         : m_renderer{&renderer}
     {
@@ -63,15 +66,14 @@ namespace Yutrel
 
         Float3 color = make_float3(0.0f);
 
-        auto t = hit_sphere(make_float3(0.0f, 0.0f, -2.0f), 0.5f, sample.ray);
+        Sphere sphere{make_float3(0.0f, 0.0f, -2.0f), 0.5f};
 
-        $if(t >= 0.0f)
+        HitRecord rec;
+        Bool hitted = sphere.hit(sample.ray, 0.0f, 1e30f, rec);
+
+        $if(hitted)
         {
-            auto ray_direction = normalize(sample.ray->direction());
-            auto hit_point     = sample.ray->origin() + ray_direction * t;
-            auto N             = normalize(hit_point - make_float3(0.0f, 0.0f, -2.0f));
-            device_log("ray direction: {}, {}, {}", ray_direction.x, ray_direction.y, ray_direction.z);
-            color = N * 0.5f + 0.5f;
+            color = rec.normal * 0.5f + 0.5f;
         }
         $else
         {

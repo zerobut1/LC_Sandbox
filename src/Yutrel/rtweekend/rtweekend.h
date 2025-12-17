@@ -7,6 +7,6 @@ namespace Yutrel
     using namespace luisa;
     using namespace luisa::compute;
 
-    [[nodiscard]] Bool hit_sphere(Float3 center, Float radius, Var<Ray> ray) noexcept;
+    [[nodiscard]] Float hit_sphere(Float3 center, Float radius, Var<Ray> ray) noexcept;
 
 } // namespace Yutrel

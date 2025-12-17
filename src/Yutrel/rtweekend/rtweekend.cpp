@@ -1,18 +1,26 @@
 #include "rtweekend.h"
 
+#include <luisa/luisa-compute.h>
+
 namespace Yutrel
 {
-    Bool hit_sphere(Float3 center, Float radius, Var<Ray> ray) noexcept
+    Float hit_sphere(Float3 center, Float radius, Var<Ray> ray) noexcept
     {
-        static Callable impl = [](Float3 center, Float radius, Var<Ray> ray) noexcept -> Bool
+        static Callable impl = [](Float3 center, Float radius, Var<Ray> ray) noexcept -> Float
         {
-            auto direction    = normalize(ray->direction());
-            auto oc           = ray->origin() - center;
+            auto direction    = ray->direction();
+            auto oc           = center - ray->origin();
             auto a            = dot(direction, direction);
-            auto b            = 2.0f * dot(oc, direction);
+            auto b            = -2.0f * dot(direction, oc);
             auto c            = dot(oc, oc) - radius * radius;
             auto discriminant = b * b - 4.0f * a * c;
-            return discriminant >= 0.0f;
+
+            $if(discriminant >= 0.0f)
+            {
+                $return((-b - sqrt(discriminant)) / (2.0f * a));
+            };
+
+            return -1.0f;
         };
         return impl(center, radius, ray);
     }

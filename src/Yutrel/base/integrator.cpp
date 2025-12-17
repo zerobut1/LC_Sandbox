@@ -63,9 +63,15 @@ namespace Yutrel
 
         Float3 color = make_float3(0.0f);
 
-        $if(hit_sphere(make_float3(0.0f, 0.0f, -2.0f), 0.5f, sample.ray))
+        auto t = hit_sphere(make_float3(0.0f, 0.0f, -2.0f), 0.5f, sample.ray);
+
+        $if(t >= 0.0f)
         {
-            color = make_float3(1.0f, 0.0f, 0.0f);
+            auto ray_direction = normalize(sample.ray->direction());
+            auto hit_point     = sample.ray->origin() + ray_direction * t;
+            auto N             = normalize(hit_point - make_float3(0.0f, 0.0f, -2.0f));
+            device_log("ray direction: {}, {}, {}", ray_direction.x, ray_direction.y, ray_direction.z);
+            color = N * 0.5f + 0.5f;
         }
         $else
         {

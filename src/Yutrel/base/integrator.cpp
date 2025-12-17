@@ -7,12 +7,8 @@
 #include "base/renderer.h"
 #include "utils/command_buffer.h"
 
-#include <rtweekend/rtweekend.h>
-
 namespace Yutrel
 {
-    using namespace RTWeekend;
-
     Integrator::Integrator(Renderer& renderer) noexcept
         : m_renderer{&renderer}
     {
@@ -33,18 +29,25 @@ namespace Yutrel
 
         camera->film()->prepare(command_buffer);
         {
-            render_one_frame(command_buffer, camera);
+            render_one_camera(command_buffer, camera);
         }
         camera->film()->release();
     }
 
-    void Integrator::render_one_frame(CommandBuffer& command_buffer, Camera* camera)
+    void Integrator::render_one_camera(CommandBuffer& command_buffer, Camera* camera)
     {
+        // temp
+        //-------------------------
+        HittableList world;
+        world.add(luisa::make_shared<Sphere>(make_float3(0.0f, 0.0f, -2.0f), 0.5f));
+        world.add(luisa::make_shared<Sphere>(make_float3(0.0f, -100.5f, -2.0f), 100.0f));
+
+        //-------------------------
         Kernel2D render_kernel = [&](UInt frame_index, Float time) noexcept
         {
             set_block_size(16u, 16u, 1u);
             Var pixel_id = dispatch_id().xy();
-            Var L        = Li(camera, frame_index, pixel_id, time);
+            Var L        = Li(camera, frame_index, pixel_id, time, world);
             camera->film()->accumulate(pixel_id, L);
         };
 
@@ -60,18 +63,13 @@ namespace Yutrel
         camera->film()->show(command_buffer);
     }
 
-    Float3 Integrator::Li(const Camera* camera, UInt frame_index, UInt2 pixel_id, Float time) const noexcept
+    Float3 Integrator::Li(const Camera* camera, UInt frame_index, UInt2 pixel_id, Float time, HittableList& world) const noexcept
     {
-        auto sample = camera->generate_ray(pixel_id);
-
+        auto sample  = camera->generate_ray(pixel_id);
         Float3 color = make_float3(0.0f);
 
-        Sphere sphere{make_float3(0.0f, 0.0f, -2.0f), 0.5f};
-
         HitRecord rec;
-        Bool hitted = sphere.hit(sample.ray, 0.0f, 1e30f, rec);
-
-        $if(hitted)
+        $if(world.hit(sample.ray, 0, 1e10f, rec))
         {
             color = rec.normal * 0.5f + 0.5f;
         }

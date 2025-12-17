@@ -10,11 +10,11 @@ namespace Yutrel::RTWeekend
     class Sphere : public Hittable
     {
     private:
-        Float3 m_center;
-        Float m_radius;
+        float3 m_center;
+        float m_radius;
 
     public:
-        Sphere(Float3 center, Float radius) noexcept
+        Sphere(float3 center, float radius) noexcept
             : m_center{center},
               m_radius{radius} {}
 

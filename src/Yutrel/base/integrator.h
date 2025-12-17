@@ -6,10 +6,13 @@
 
 #include "utils/command_buffer.h"
 
+#include "rtweekend/rtweekend.h"
+
 namespace Yutrel
 {
     using namespace luisa;
     using namespace luisa::compute;
+    using namespace RTWeekend;
 
     class Renderer;
     class Camera;
@@ -36,7 +39,7 @@ namespace Yutrel
         void render(Stream& stream);
 
     private:
-        void render_one_frame(CommandBuffer& command_buffer, Camera* camera);
-        Float3 Li(const Camera* camera, UInt frame_index, UInt2 pixel_id, Float time) const noexcept;
+        void render_one_camera(CommandBuffer& command_buffer, Camera* camera);
+        Float3 Li(const Camera* camera, UInt frame_index, UInt2 pixel_id, Float time, HittableList& world) const noexcept;
     };
 } // namespace Yutrel

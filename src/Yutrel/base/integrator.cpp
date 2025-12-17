@@ -5,6 +5,7 @@
 #include "base/camera.h"
 #include "base/film.h"
 #include "base/renderer.h"
+#include "rtweekend/rtweekend.h"
 #include "utils/command_buffer.h"
 
 namespace Yutrel
@@ -60,10 +61,20 @@ namespace Yutrel
     {
         auto sample = camera->generate_ray(pixel_id);
 
-        auto direction = normalize(sample.ray->direction());
+        Float3 color = make_float3(0.0f);
 
-        auto a = 0.5f * (direction.y + 1.0f);
-        return lerp(make_float3(1.0f, 1.0f, 1.0f), make_float3(0.4f, 0.8f, 1.0f), a);
-    }
+        $if(hit_sphere(make_float3(0.0f, 0.0f, -2.0f), 0.5f, sample.ray))
+        {
+            color = make_float3(1.0f, 0.0f, 0.0f);
+        }
+        $else
+        {
+            auto direction = normalize(sample.ray->direction());
+            auto a         = 0.5f * (direction.y + 1.0f);
+            color          = lerp(make_float3(1.0f, 1.0f, 1.0f), make_float3(0.4f, 0.8f, 1.0f), a);
+        };
+
+        return color;
+    };
 
 } // namespace Yutrel

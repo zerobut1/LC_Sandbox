@@ -72,7 +72,9 @@ namespace Yutrel
     {
         LUISA_ASSERT(command_buffer.stream() == m_stream, "Command buffer stream mismatch.");
 
-        static const auto target_fps = 60.0;
+        static const auto target_fps = 120.0;
+
+        command_buffer << commit();
 
         if (m_framerate.duration() < 1.0 / target_fps)
         {
@@ -84,13 +86,12 @@ namespace Yutrel
             command_buffer << synchronize();
             exit(0);
         }
-        command_buffer << commit();
 
         m_framerate.record();
 
         m_window->poll_events();
 
-        command_buffer << m_swapchain.present(m_framebuffer);
+        *m_stream << m_swapchain.present(m_framebuffer);
 
         // show fps
         auto name = luisa::format("Yutrel - {:.2f} fps", m_framerate.report());

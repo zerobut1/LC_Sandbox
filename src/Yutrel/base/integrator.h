@@ -16,11 +16,14 @@ namespace Yutrel
 
     class Renderer;
     class Camera;
+    class Sampler;
 
     class Integrator
     {
     private:
         const Renderer* m_renderer;
+
+        luisa::unique_ptr<Sampler> m_sampler;
 
     public:
         explicit Integrator(Renderer& renderer) noexcept;
@@ -34,7 +37,8 @@ namespace Yutrel
 
     public:
         [[nodiscard]] static luisa::unique_ptr<Integrator> create(Renderer& renderer) noexcept;
-        [[nodiscard]] auto& renderer() const noexcept { return m_renderer; }
+        [[nodiscard]] auto renderer() const noexcept { return m_renderer; }
+        [[nodiscard]] auto sampler() const noexcept { return m_sampler.get(); }
 
         void render(Stream& stream);
 

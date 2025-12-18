@@ -5,12 +5,14 @@
 #include "base/camera.h"
 #include "base/film.h"
 #include "base/renderer.h"
+#include "base/sampler.h"
 #include "utils/command_buffer.h"
 
 namespace Yutrel
 {
     Integrator::Integrator(Renderer& renderer) noexcept
-        : m_renderer{&renderer}
+        : m_renderer{&renderer},
+          m_sampler(Sampler::create(m_renderer))
     {
     }
 
@@ -43,6 +45,12 @@ namespace Yutrel
         world.add(luisa::make_shared<Sphere>(make_float3(0.0f, -100.5f, -2.0f), 100.0f));
 
         //-------------------------
+
+        auto resolution = camera->film()->resolution();
+
+        sampler()->reset(command_buffer, resolution.x * resolution.y);
+        command_buffer << synchronize();
+
         Kernel2D render_kernel = [&](UInt frame_index, Float time) noexcept
         {
             set_block_size(16u, 16u, 1u);
@@ -55,8 +63,6 @@ namespace Yutrel
         auto render = renderer()->device().compile(render_kernel);
         LUISA_INFO("Integrator shader compile in {} ms.", clock_compile.toc());
         command_buffer << synchronize();
-
-        auto resolution = camera->film()->resolution();
 
         command_buffer << render(0u, 0.0f).dispatch(resolution);
 

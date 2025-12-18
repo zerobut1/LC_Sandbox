@@ -1,7 +1,7 @@
 lc_options = {
     lc_cuda_backend = true,
     lc_dx_backend = true,
-    lc_vk_backend = true,
+    lc_vk_backend = false,
     lc_metal_backend = false,
     lc_enable_gui = true,
     lc_enable_osl = false,

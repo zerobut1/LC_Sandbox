@@ -7,6 +7,7 @@
 #include "base/renderer.h"
 #include "base/sampler.h"
 #include "utils/command_buffer.h"
+#include "utils/sampling.h"
 
 namespace Yutrel
 {
@@ -74,28 +75,45 @@ namespace Yutrel
         command_buffer << synchronize();
     }
 
-    Float3 Integrator::Li(const Camera* camera, UInt frame_index, UInt2 pixel_id, Float time, HittableList& world) const noexcept
+    Float3 Integrator::Li(const Camera* camera, Expr<uint> frame_index, Expr<uint2> pixel_id, Expr<float> time, HittableList& world) const noexcept
     {
         sampler()->start(pixel_id, frame_index);
 
-        auto u_filter = sampler()->generate_2d();
-
+        auto u_filter        = sampler()->generate_2d();
         auto [camera_ray, _] = camera->generate_ray(pixel_id, u_filter);
-        Float3 color         = make_float3(0.0f);
 
-        HitRecord rec;
-        $if(world.hit(camera_ray, 0, 1e10f, rec))
-        {
-            color = rec.normal * 0.5f + 0.5f;
-        }
-        $else
-        {
-            auto direction = normalize(camera_ray->direction());
-            auto a         = 0.5f * (direction.y + 1.0f);
-            color          = lerp(make_float3(1.0f, 1.0f, 1.0f), make_float3(0.4f, 0.8f, 1.0f), a);
-        };
+        Float3 color = ray_color(camera_ray, world);
 
         return color;
     };
+
+    Float3 Integrator::ray_color(Var<Ray> ray, const Hittable& world) const noexcept
+    {
+        Float3 color = make_float3(1.0f);
+
+        HitRecord rec;
+        auto t_min = 0.001f;
+        auto t_max = 1e10f;
+
+        $for(depth, 50)
+        {
+            $if(world.hit(ray, t_min, t_max, rec))
+            {
+                auto u_direction = sampler()->generate_2d();
+                auto direction   = rec.normal + sample_cosine_hemisphere(u_direction);
+                ray              = make_ray(rec.point, direction);
+                color *= 0.5f;
+            }
+            $else
+            {
+                auto direction = normalize(ray->direction());
+                auto a         = 0.5f * (direction.y + 1.0f);
+                color *= lerp(make_float3(1.0f, 1.0f, 1.0f), make_float3(0.4f, 0.8f, 1.0f), a);
+                $break;
+            };
+        };
+
+        return color;
+    }
 
 } // namespace Yutrel

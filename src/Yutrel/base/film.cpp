@@ -83,10 +83,14 @@ namespace Yutrel
             {
                 auto pixel_coord = dispatch_id().xy();
                 auto pixel_id    = pixel_coord.y * resolution().x + pixel_coord.x;
-                auto color       = m_image->read(pixel_id);
-                auto inv_n       = (1.0f / max(color.w, 1e-6f));
+                auto image_data  = m_image->read(pixel_id);
+                auto inv_n       = (1.0f / max(image_data.w, 1e-6f));
+                auto color       = image_data.xyz() * inv_n;
 
-                m_framebuffer->write(pixel_coord, make_float4(color.xyz() * inv_n, 1.0f));
+                // linear to sRGB
+                color = ite(color <= .0031308f, color * 12.92f, 1.055f * pow(color, 1.f / 2.4f) - .055f);
+
+                m_framebuffer->write(pixel_coord, make_float4(color, 1.0f));
             };
             m_blit = device.compile(blit_kernel);
 

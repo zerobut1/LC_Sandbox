@@ -9,6 +9,7 @@ namespace Yutrel
         : m_renderer{&renderer},
           m_film{Film::create(renderer)},
           m_device_data{renderer.arena_buffer<CameraData>(1u)},
+          m_spp{1024u},
           m_fov{radians(45.0f)}
     {
         CameraData host_data{make_float2(film()->resolution()), tan(m_fov * 0.5f)};

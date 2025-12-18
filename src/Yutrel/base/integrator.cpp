@@ -46,6 +46,7 @@ namespace Yutrel
 
         //-------------------------
 
+        auto spp        = camera->spp();
         auto resolution = camera->film()->resolution();
 
         sampler()->reset(command_buffer, resolution.x * resolution.y);
@@ -56,7 +57,7 @@ namespace Yutrel
             set_block_size(16u, 16u, 1u);
             Var pixel_id = dispatch_id().xy();
             Var L        = Li(camera, frame_index, pixel_id, time, world);
-            camera->film()->accumulate(pixel_id, L);
+            camera->film()->accumulate(pixel_id, L, 1.0f);
         };
 
         Clock clock_compile;
@@ -64,9 +65,13 @@ namespace Yutrel
         LUISA_INFO("Integrator shader compile in {} ms.", clock_compile.toc());
         command_buffer << synchronize();
 
-        command_buffer << render(0u, 0.0f).dispatch(resolution);
+        for (auto i = 0u; i < spp; i++)
+        {
+            command_buffer << render(i, 0.0f).dispatch(resolution);
+            camera->film()->show(command_buffer);
+        }
 
-        camera->film()->show(command_buffer);
+        command_buffer << synchronize();
     }
 
     Float3 Integrator::Li(const Camera* camera, UInt frame_index, UInt2 pixel_id, Float time, HittableList& world) const noexcept

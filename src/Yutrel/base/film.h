@@ -28,6 +28,11 @@ namespace Yutrel
         Image<float> m_framebuffer;
         mutable Framerate m_framerate{};
 
+        mutable Buffer<float4> m_image;
+        Shader1D<Buffer<float4>> m_clear_image;
+        Shader2D<> m_blit;
+        Shader2D<Image<float>> m_clear;
+
         bool m_rendering_finished{false};
         uint2 m_resolution{1920u, 1080u};
 
@@ -43,10 +48,11 @@ namespace Yutrel
 
     public:
         [[nodiscard]] static luisa::unique_ptr<Film> create(Renderer& renderer) noexcept;
+        [[nodiscard]] auto renderer() const noexcept { return m_renderer; }
 
         [[nodiscard]] uint2 resolution() const noexcept { return m_resolution; }
 
-        void accumulate(UInt2 pixel_id, Float3 rgb) const noexcept;
+        void accumulate(Expr<uint2> pixel, Expr<float3> rgb, Expr<float> effective_spp) const noexcept;
 
         void prepare(CommandBuffer& command_buffer) noexcept;
         void release() noexcept;

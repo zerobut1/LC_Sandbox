@@ -38,6 +38,7 @@ namespace Yutrel
 
         BufferView<CameraData> m_device_data;
 
+        uint m_spp;
         float m_fov;
 
     public:
@@ -54,6 +55,7 @@ namespace Yutrel
         [[nodiscard]] static luisa::unique_ptr<Camera> create(Renderer& renderer, CommandBuffer& command_buffer) noexcept;
 
         [[nodiscard]] auto film() const noexcept { return m_film.get(); }
+        [[nodiscard]] auto spp() const noexcept { return m_spp; }
         [[nodiscard]] Sample generate_ray(UInt2 pixel_coord) const noexcept;
     };
 

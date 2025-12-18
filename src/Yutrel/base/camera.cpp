@@ -27,10 +27,12 @@ namespace Yutrel
         return camera;
     }
 
-    Sample Camera::generate_ray(UInt2 pixel_coord) const noexcept
+    Sample Camera::generate_ray(Expr<uint2> pixel_coord, Expr<float2> u_filter) const noexcept
     {
+        auto filter_offset = lerp(-0.5f, 0.5f, u_filter);
+        auto pixel         = make_float2(pixel_coord) + 0.5f + filter_offset;
+
         auto data      = m_device_data->read(0u);
-        auto pixel     = make_float2(pixel_coord) + 0.5f;
         auto p         = (pixel * 2.0f - data.resolution) * (data.tan_half_fov / data.resolution.y);
         auto direction = normalize(make_float3(p.x, -p.y, -1.0f));
         auto ray       = make_ray(make_float3(), direction);

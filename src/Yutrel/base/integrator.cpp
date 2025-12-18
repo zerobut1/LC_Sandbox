@@ -76,17 +76,21 @@ namespace Yutrel
 
     Float3 Integrator::Li(const Camera* camera, UInt frame_index, UInt2 pixel_id, Float time, HittableList& world) const noexcept
     {
-        auto sample  = camera->generate_ray(pixel_id);
-        Float3 color = make_float3(0.0f);
+        sampler()->start(pixel_id, frame_index);
+
+        auto u_filter = sampler()->generate_2d();
+
+        auto [camera_ray, _] = camera->generate_ray(pixel_id, u_filter);
+        Float3 color         = make_float3(0.0f);
 
         HitRecord rec;
-        $if(world.hit(sample.ray, 0, 1e10f, rec))
+        $if(world.hit(camera_ray, 0, 1e10f, rec))
         {
             color = rec.normal * 0.5f + 0.5f;
         }
         $else
         {
-            auto direction = normalize(sample.ray->direction());
+            auto direction = normalize(camera_ray->direction());
             auto a         = 0.5f * (direction.y + 1.0f);
             color          = lerp(make_float3(1.0f, 1.0f, 1.0f), make_float3(0.4f, 0.8f, 1.0f), a);
         };

@@ -56,7 +56,7 @@ namespace Yutrel
 
         [[nodiscard]] auto film() const noexcept { return m_film.get(); }
         [[nodiscard]] auto spp() const noexcept { return m_spp; }
-        [[nodiscard]] Sample generate_ray(UInt2 pixel_coord) const noexcept;
+        [[nodiscard]] Sample generate_ray(Expr<uint2> pixel_coord, Expr<float2> u_filter) const noexcept;
     };
 
 } // namespace Yutrel

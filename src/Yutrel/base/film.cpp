@@ -125,8 +125,6 @@ namespace Yutrel
 
         static const auto target_fps = 60.0;
 
-        command_buffer << commit();
-
         if (m_framerate.duration() < 1.0 / target_fps)
         {
             return false;
@@ -142,10 +140,11 @@ namespace Yutrel
         {
             m_window->poll_events();
 
-            *m_stream
+            command_buffer
                 << m_clear(m_framebuffer).dispatch(resolution())
                 << m_blit().dispatch(resolution())
-                << m_swapchain.present(m_framebuffer);
+                << m_swapchain.present(m_framebuffer)
+                << commit();
         }
         auto name = luisa::format("Yutrel - {:.2f} fps", m_framerate.report());
         m_window->set_window_name(name);

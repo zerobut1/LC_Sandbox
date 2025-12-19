@@ -7,7 +7,6 @@
 #include "base/renderer.h"
 #include "base/sampler.h"
 #include "utils/command_buffer.h"
-#include "utils/sampling.h"
 
 namespace Yutrel
 {
@@ -58,6 +57,12 @@ namespace Yutrel
         sampler()->reset(command_buffer, resolution.x * resolution.y);
         command_buffer << synchronize();
 
+        LUISA_INFO(
+            "Rendering of resolution {}x{} at {}spp.",
+            resolution.x,
+            resolution.y,
+            spp);
+
         Kernel2D render_kernel = [&](UInt frame_index, Float time) noexcept
         {
             set_block_size(16u, 16u, 1u);
@@ -71,13 +76,26 @@ namespace Yutrel
         LUISA_INFO("Integrator shader compile in {} ms.", clock_compile.toc());
         command_buffer << synchronize();
 
+        LUISA_INFO("Rendering started.");
+        Clock clock_render;
+        auto dispatch_count = 0u;
         for (auto i = 0u; i < spp; i++)
         {
+            dispatch_count++;
             command_buffer << render(i, 0.0f).dispatch(resolution);
-            camera->film()->show(command_buffer);
+            if (camera->film()->show(command_buffer))
+            {
+                dispatch_count = 0u;
+            }
+            const auto dispatches_per_commit = 4u;
+            if (dispatch_count >= dispatches_per_commit)
+            {
+                dispatch_count = 0u;
+                command_buffer << commit();
+            }
         }
-
         command_buffer << synchronize();
+        LUISA_INFO("Rendering finished in {} ms.", clock_render.toc());
     }
 
     Float3 Integrator::Li(const Camera* camera, Expr<uint> frame_index, Expr<uint2> pixel_id, Expr<float> time, HittableList& world) const noexcept

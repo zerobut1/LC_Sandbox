@@ -46,19 +46,22 @@ namespace Yutrel
     {
     private:
         float3 albedo;
+        float fuzz;
 
     public:
-        Metal(const float3& a) noexcept
-            : albedo{a} {}
+        Metal(const float3& a, float f) noexcept
+            : albedo{a},
+              fuzz{f} {}
 
         Bool scatter(Var<Ray>& ray, const HitRecord& rec, Var<float3>& attenuation, Expr<float2> u) const noexcept override
         {
             auto reflected = reflect(ray->direction(), rec.normal);
+            reflected      = normalize(reflected) + (fuzz * sample_uniform_sphere(u));
 
             ray         = make_ray(rec.position, reflected);
             attenuation = albedo;
 
-            return true;
+            return (dot(ray->direction(), rec.normal) > 0.0f);
         }
     };
 

@@ -46,8 +46,17 @@ namespace Yutrel
         materials.emplace_back(luisa::make_unique<Lambertian>(make_float3(0.8, 0.8, 0.0f)));
         world.add(luisa::make_shared<Sphere>(make_float3(0.0f, -100.5f, -2.0f), 100.0f, materials.size() - 1));
 
-        materials.emplace_back(luisa::make_unique<Metal>(make_float3(1.0f, 1.0f, 1.0f)));
-        world.add(luisa::make_shared<Sphere>(make_float3(0.0f, 0.0f, -2.0f), 0.5f, materials.size() - 1));
+        // center
+        materials.emplace_back(luisa::make_unique<Lambertian>(make_float3(0.1f, 0.2f, 0.5f)));
+        world.add(luisa::make_shared<Sphere>(make_float3(0.0f, 0.0f, -2.2f), 0.5f, materials.size() - 1));
+
+        // left
+        materials.emplace_back(luisa::make_unique<Metal>(make_float3(0.8f, 0.8f, 0.8f), 0.3f));
+        world.add(luisa::make_shared<Sphere>(make_float3(-1.0f, 0.0f, -2.0f), 0.5f, materials.size() - 1));
+        
+        // right
+        materials.emplace_back(luisa::make_unique<Metal>(make_float3(0.8f, 0.6f, 0.2f), 1.0f));
+        world.add(luisa::make_shared<Sphere>(make_float3(1.0f, 0.0f, -2.0f), 0.5f, materials.size() - 1));
 
         //-------------------------
 

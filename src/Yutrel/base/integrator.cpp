@@ -116,7 +116,8 @@ namespace Yutrel
         sampler()->start(pixel_id, frame_index);
 
         auto u_filter        = sampler()->generate_2d();
-        auto [camera_ray, _] = camera->generate_ray(pixel_id, u_filter);
+        auto u_lens          = camera->requires_lens_sampling() ? sampler()->generate_2d() : make_float2(0.5f);
+        auto [camera_ray, _] = camera->generate_ray(pixel_id, u_filter, u_lens);
 
         Float3 color = ray_color(camera_ray, world);
 

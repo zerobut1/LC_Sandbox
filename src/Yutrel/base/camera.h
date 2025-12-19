@@ -19,15 +19,22 @@ namespace Yutrel
         enum class Type
         {
             pinhole,
+            thin_lens,
         };
 
         struct CreateInfo
         {
             Type type{Type::pinhole};
             float3 position{};
-            float3 front{};
+            float3 lookat{};
             float3 up{0.0f, 1.0f, 0.0f};
+
+            // pinhole
             float fov{45.0f};
+
+            // thin lens
+            float aperture{2.0f};
+            float focal_length{35.0f};
         };
 
         [[nodiscard]] static luisa::unique_ptr<Camera> create(const CreateInfo& info, Renderer& renderer, CommandBuffer& command_buffer) noexcept;
@@ -60,7 +67,9 @@ namespace Yutrel
         [[nodiscard]] auto spp() const noexcept { return m_spp; }
         [[nodiscard]] auto transform() const noexcept { return m_transform; }
 
-        [[nodiscard]] virtual Sample generate_ray(Expr<uint2> pixel_coord, Expr<float2> u_filter) const noexcept = 0;
+        [[nodiscard]] Sample generate_ray(Expr<uint2> pixel_coord, Expr<float2> u_filter, Expr<float2> u_lens) const noexcept;
+        [[nodiscard]] virtual Var<Ray> generate_ray_in_camera_space(Expr<float2> pixel, Expr<float2> u_lens) const noexcept = 0;
+        [[nodiscard]] virtual bool requires_lens_sampling() const noexcept { return false; }
     };
 
 } // namespace Yutrel

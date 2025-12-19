@@ -32,7 +32,7 @@ namespace Yutrel
         PinholeCamera& operator=(PinholeCamera&&)      = delete;
 
     private:
-        [[nodiscard]] Sample generate_ray(Expr<uint2> pixel_coord, Expr<float2> u_filter) const noexcept override;
+        [[nodiscard]] Var<Ray> generate_ray_in_camera_space(Expr<float2> pixel, Expr<float2> u_lens) const noexcept override;
     };
 
 } // namespace Yutrel

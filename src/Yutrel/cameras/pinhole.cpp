@@ -17,25 +17,12 @@ namespace Yutrel
             << commit();
     }
 
-    Camera::Sample PinholeCamera::generate_ray(Expr<uint2> pixel_coord, Expr<float2> u_filter) const noexcept
+    Var<Ray> PinholeCamera::generate_ray_in_camera_space(Expr<float2> pixel, Expr<float2> u_lens) const noexcept
     {
-        auto filter_offset = lerp(-0.5f, 0.5f, u_filter);
-        auto pixel         = make_float2(pixel_coord) + 0.5f + filter_offset;
-
         auto data         = m_device_data->read(0u);
         auto p            = (pixel * 2.0f - data.resolution) * (data.tan_half_fov / data.resolution.y);
         auto direction_cs = normalize(make_float3(p.x, -p.y, -1.0f));
-        auto origin_cs    = make_float3(0.0f);
 
-        auto c2w = transform();
-        auto origin = make_float3(c2w * make_float4(origin_cs, 1.0f));
-
-        auto d_camera  = make_float3x3(c2w) * direction_cs;
-        auto len       = length(d_camera);
-        auto direction = ite(len < 1e-7f, make_float3(0.0f, 0.0f, -1.0f), d_camera / len);
-
-        auto ray = make_ray(origin, direction);
-
-        return {std::move(ray), pixel};
+        return make_ray(make_float3(0.0f), direction_cs);
     }
 } // namespace Yutrel

@@ -8,6 +8,8 @@
 #include "base/sampler.h"
 #include "utils/command_buffer.h"
 
+#include <random>
+
 namespace Yutrel
 {
     Integrator::Integrator(Renderer& renderer) noexcept
@@ -36,6 +38,13 @@ namespace Yutrel
         camera->film()->release();
     }
 
+    double random_double()
+    {
+        static std::uniform_real_distribution<double> distribution(0.0, 1.0);
+        static std::mt19937 generator(std::random_device{}());
+        return distribution(generator);
+    }
+
     void Integrator::render_one_camera(CommandBuffer& command_buffer, Camera* camera)
     {
         // temp
@@ -43,25 +52,46 @@ namespace Yutrel
         HittableList world;
 
         // ground
-        materials.emplace_back(luisa::make_unique<Lambertian>(make_float3(0.8, 0.8, 0.0f)));
-        world.add(luisa::make_shared<Sphere>(make_float3(0.0f, -100.5f, -1.0f), 100.0f, materials.size() - 1));
+        materials.emplace_back(luisa::make_unique<Lambertian>(make_float3(137.0f / 255.0f, 227.0f / 255.0f, 78.0f / 255.0f)));
+        world.add(luisa::make_shared<Sphere>(make_float3(0.0f, -1000.0f, 0.0f), 1000.0f, materials.size() - 1));
 
-        // center
-        materials.emplace_back(luisa::make_unique<Lambertian>(make_float3(0.1f, 0.2f, 0.5f)));
-        world.add(luisa::make_shared<Sphere>(make_float3(0.0f, 0.0f, -1.2f), 0.5f, materials.size() - 1));
+        // small spheres
+        for (int a = -5; a < 5; a++)
+        {
+            for (int b = -5; b < 5; b++)
+            {
+                auto choose_mat = random_double();
+                float3 center(static_cast<float>(a) + 0.9f * static_cast<float>(random_double()), 0.2f, static_cast<float>(b) + 0.9f * static_cast<float>(random_double()));
 
-        // left
-        materials.emplace_back(luisa::make_unique<Dielectric>(1.5f));
-        world.add(luisa::make_shared<Sphere>(make_float3(-1.0f, 0.0f, -1.0f), 0.5f, materials.size() - 1));
-
-        // bubble
-        materials.emplace_back(luisa::make_unique<Dielectric>(1.0f / 1.5f));
-        world.add(luisa::make_shared<Sphere>(make_float3(-1.0f, 0.0f, -1.0f), 0.4f, materials.size() - 1));
-
-        // right
-        materials.emplace_back(luisa::make_unique<Metal>(make_float3(0.8f, 0.6f, 0.2f), 1.0f));
-        world.add(luisa::make_shared<Sphere>(make_float3(1.0f, 0.0f, -1.0f), 0.5f, materials.size() - 1));
-
+                if (length(center - float3(4.0f, 0.2f, 0.0f)) > 0.9f)
+                {
+                    if (choose_mat < 0.8) // diffuse
+                    {
+                        float3 albedo = make_float3(static_cast<float>(random_double()) * static_cast<float>(random_double()),
+                                                    static_cast<float>(random_double()) * static_cast<float>(random_double()),
+                                                    static_cast<float>(random_double()) * static_cast<float>(random_double()));
+                        materials.emplace_back(make_unique<Lambertian>(albedo));
+                        world.add(luisa::make_shared<Sphere>(center, 0.2f, materials.size() - 1));
+                    }
+                    else if (choose_mat < 0.95) // metal
+                    {
+                        float3 albedo = make_float3(0.5f * (1.0f + static_cast<float>(random_double())),
+                                                    0.5f * (1.0f + static_cast<float>(random_double())),
+                                                    0.5f * (1.0f + static_cast<float>(random_double())));
+                        float fuzz    = 0.5f * static_cast<float>(random_double());
+                        materials.emplace_back(make_unique<Metal>(albedo, fuzz));
+                        world.add(luisa::make_shared<Sphere>(center, 0.2f, materials.size() - 1));
+                    }
+                    else // glass
+                    {
+                        materials.emplace_back(make_unique<Dielectric>(1.5f));
+                        float radius = static_cast<float>(random_double());
+                        center.y     = radius;
+                        world.add(luisa::make_shared<Sphere>(center, radius, materials.size() - 1));
+                    }
+                }
+            }
+        }
         //-------------------------
 
         auto spp        = camera->spp();
@@ -128,7 +158,7 @@ namespace Yutrel
     {
         Float3 color = make_float3(1.0f);
 
-        const auto MAX_DEPTH = 50u;
+        const auto MAX_DEPTH = 10u;
         const auto T_MIN     = 0.0001f;
         const auto T_MAX     = 1e10f;
 

@@ -25,6 +25,8 @@ namespace Yutrel
         struct CreateInfo
         {
             Type type{Type::pinhole};
+            uint spp{1024u};
+
             float3 position{};
             float3 lookat{};
             float3 up{0.0f, 1.0f, 0.0f};
@@ -35,6 +37,7 @@ namespace Yutrel
             // thin lens
             float aperture{2.0f};
             float focal_length{35.0f};
+            float focus_distance{10.0f};
         };
 
         [[nodiscard]] static luisa::unique_ptr<Camera> create(const CreateInfo& info, Renderer& renderer, CommandBuffer& command_buffer) noexcept;

@@ -23,7 +23,7 @@ namespace Yutrel
     Camera::Camera(const CreateInfo& info, Renderer& renderer, CommandBuffer& command_buffer) noexcept
         : m_renderer{&renderer},
           m_film{Film::create(renderer)},
-          m_spp{1024u}
+          m_spp{info.spp}
     {
         auto w = normalize(info.position - info.lookat);
         auto u = normalize(cross(info.up, w));

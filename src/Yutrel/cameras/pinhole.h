@@ -17,18 +17,12 @@ namespace Yutrel
 {
     class PinholeCamera : public Camera
     {
-    public:
-        struct CreateInfo
-        {
-            float fov{45.0f};
-        };
-
     private:
         float m_fov;
         BufferView<PinholeCameraData> m_device_data;
 
     public:
-        explicit PinholeCamera(const CreateInfo& info, Renderer& renderer, CommandBuffer& command_buffer) noexcept;
+        explicit PinholeCamera(const Camera::CreateInfo& info, Renderer& renderer, CommandBuffer& command_buffer) noexcept;
         ~PinholeCamera() noexcept override = default;
 
         PinholeCamera() noexcept                       = delete;

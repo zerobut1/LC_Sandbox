@@ -25,7 +25,7 @@ namespace Yutrel
         {
             Type type{Type::pinhole};
             float3 position{};
-            float3 look_at{};
+            float3 front{};
             float3 up{0.0f, 1.0f, 0.0f};
             float fov{45.0f};
         };
@@ -42,10 +42,11 @@ namespace Yutrel
         const Renderer* m_renderer;
         luisa::unique_ptr<Film> m_film;
 
+        float4x4 m_transform;
         uint m_spp;
 
     public:
-        explicit Camera(Renderer& renderer, CommandBuffer& command_buffer) noexcept;
+        explicit Camera(const CreateInfo& info, Renderer& renderer, CommandBuffer& command_buffer) noexcept;
         virtual ~Camera() noexcept;
 
         Camera() noexcept                = delete;
@@ -57,6 +58,8 @@ namespace Yutrel
     public:
         [[nodiscard]] auto film() const noexcept { return m_film.get(); }
         [[nodiscard]] auto spp() const noexcept { return m_spp; }
+        [[nodiscard]] auto transform() const noexcept { return m_transform; }
+
         [[nodiscard]] virtual Sample generate_ray(Expr<uint2> pixel_coord, Expr<float2> u_filter) const noexcept = 0;
     };
 

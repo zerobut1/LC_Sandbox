@@ -21,11 +21,14 @@ namespace Yutrel
 
         CommandBuffer command_buffer{&stream};
 
+        // TODO: from scene description
         Camera::CreateInfo camera_info{
             .type     = Camera::Type::pinhole,
-            .position = make_float3(0.0f, 0.0f, 0.0f),
-            .look_at  = make_float3(0.0f, 0.0f, -1.0f),
-            .up       = make_float3(0.0f, 1.0f, 0.0f)};
+            .position = make_float3(-2.0f, 2.0f, 1.0f),
+            .front    = make_float3(0.0f, 0.0f, -1.0f) - camera_info.position,
+            .up       = make_float3(0.0f, 1.0f, 0.0f),
+            .fov      = 20.0f,
+        };
 
         renderer->m_camera     = Camera::create(camera_info, *renderer, command_buffer);
         renderer->m_integrator = Integrator::create(*renderer);

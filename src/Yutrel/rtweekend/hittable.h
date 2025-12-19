@@ -10,7 +10,8 @@ namespace Yutrel::RTWeekend
     class HitRecord
     {
     public:
-        Float3 point;
+        Float3 position;
+        UInt mat_id;
         Float3 normal;
         Float t;
         Bool front_face;
@@ -18,7 +19,7 @@ namespace Yutrel::RTWeekend
         void set_face_normal(Var<Ray> ray, Float3 outward_normal) noexcept
         {
             front_face = dot(ray->direction(), outward_normal) < 0.0f;
-            normal     = select(-outward_normal, outward_normal, front_face);
+            normal     = normalize(ite(front_face, outward_normal, -outward_normal));
         }
     };
 

@@ -12,11 +12,13 @@ namespace Yutrel::RTWeekend
     private:
         float3 m_center;
         float m_radius;
+        uint m_mat_id;
 
     public:
-        Sphere(float3 center, float radius) noexcept
+        Sphere(float3 center, float radius, uint mat_id) noexcept
             : m_center{center},
-              m_radius{radius} {}
+              m_radius{radius},
+              m_mat_id{mat_id} {}
 
         [[nodiscard]] Bool hit(Var<Ray> ray, Float t_min, Float t_max, HitRecord& rec) const noexcept override
         {
@@ -48,9 +50,10 @@ namespace Yutrel::RTWeekend
                 $if(hit)
                 {
                     rec.t               = root;
-                    rec.point           = ray->origin() + ray->direction() * rec.t;
-                    auto outward_normal = (rec.point - m_center) / m_radius;
+                    rec.position        = ray->origin() + ray->direction() * rec.t;
+                    auto outward_normal = (rec.position - m_center) / m_radius;
                     rec.set_face_normal(ray, outward_normal);
+                    rec.mat_id = m_mat_id;
                 };
             };
 

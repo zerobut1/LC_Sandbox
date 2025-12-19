@@ -42,8 +42,13 @@ namespace Yutrel
         // temp
         //-------------------------
         HittableList world;
-        world.add(luisa::make_shared<Sphere>(make_float3(0.0f, 0.0f, -2.0f), 0.5f));
-        world.add(luisa::make_shared<Sphere>(make_float3(0.0f, -100.5f, -2.0f), 100.0f));
+
+        // ground
+        materials.emplace_back(luisa::make_unique<Lambertian>(make_float3(0.8, 0.8, 0.0f)));
+        world.add(luisa::make_shared<Sphere>(make_float3(0.0f, -100.5f, -2.0f), 100.0f, materials.size() - 1));
+
+        materials.emplace_back(luisa::make_unique<Metal>(make_float3(1.0f, 1.0f, 1.0f)));
+        world.add(luisa::make_shared<Sphere>(make_float3(0.0f, 0.0f, -2.0f), 0.5f, materials.size() - 1));
 
         //-------------------------
 
@@ -91,26 +96,40 @@ namespace Yutrel
     {
         Float3 color = make_float3(1.0f);
 
-        HitRecord rec;
-        auto t_min = 0.001f;
-        auto t_max = 1e10f;
+        const auto MAX_DEPTH = 50u;
+        const auto T_MIN     = 0.0001f;
+        const auto T_MAX     = 1e10f;
 
-        $for(depth, 50)
+        $for(depth, MAX_DEPTH)
         {
-            $if(world.hit(ray, t_min, t_max, rec))
+            HitRecord rec;
+            $if(!world.hit(ray, T_MIN, T_MAX, rec))
             {
-                auto u_direction = sampler()->generate_2d();
-                auto direction   = rec.normal + sample_cosine_hemisphere(u_direction);
-                ray              = make_ray(rec.point, direction);
-                color *= 0.5f;
-            }
-            $else
-            {
+                // background color
                 auto direction = normalize(ray->direction());
                 auto a         = 0.5f * (direction.y + 1.0f);
                 color *= lerp(make_float3(1.0f, 1.0f, 1.0f), make_float3(0.4f, 0.8f, 1.0f), a);
                 $break;
             };
+
+            Bool is_scattered = false;
+            Float3 attenuation;
+            for (uint mat_id = 0; mat_id < materials.size(); mat_id++)
+            {
+                $if(rec.mat_id == mat_id)
+                {
+                    auto u       = sampler()->generate_2d();
+                    is_scattered = materials[mat_id]->scatter(ray, rec, attenuation, u);
+                };
+            };
+
+            $if(!is_scattered)
+            {
+                color = make_float3(0.0f);
+                $break;
+            };
+
+            color *= attenuation;
         };
 
         return color;

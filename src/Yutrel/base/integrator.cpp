@@ -51,9 +51,13 @@ namespace Yutrel
         world.add(luisa::make_shared<Sphere>(make_float3(0.0f, 0.0f, -2.2f), 0.5f, materials.size() - 1));
 
         // left
-        materials.emplace_back(luisa::make_unique<Metal>(make_float3(0.8f, 0.8f, 0.8f), 0.3f));
+        materials.emplace_back(luisa::make_unique<Dielectric>(1.5f));
         world.add(luisa::make_shared<Sphere>(make_float3(-1.0f, 0.0f, -2.0f), 0.5f, materials.size() - 1));
-        
+
+        // bubble
+        materials.emplace_back(luisa::make_unique<Dielectric>(1.0f / 1.5f));
+        world.add(luisa::make_shared<Sphere>(make_float3(-1.0f, 0.0f, -2.0f), 0.4f, materials.size() - 1));
+
         // right
         materials.emplace_back(luisa::make_unique<Metal>(make_float3(0.8f, 0.6f, 0.2f), 1.0f));
         world.add(luisa::make_shared<Sphere>(make_float3(1.0f, 0.0f, -2.0f), 0.5f, materials.size() - 1));
@@ -145,8 +149,9 @@ namespace Yutrel
             {
                 $if(rec.mat_id == mat_id)
                 {
+                    auto u_lobe  = sampler()->generate_1d();
                     auto u       = sampler()->generate_2d();
-                    is_scattered = materials[mat_id]->scatter(ray, rec, attenuation, u);
+                    is_scattered = materials[mat_id]->scatter(ray, rec, attenuation, u, u_lobe);
                 };
             };
 

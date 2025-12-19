@@ -21,8 +21,16 @@ namespace Yutrel
 
         CommandBuffer command_buffer{&stream};
 
-        renderer->m_camera     = Camera::create(*renderer, command_buffer);
+        Camera::CreateInfo camera_info{
+            .type     = Camera::Type::pinhole,
+            .position = make_float3(0.0f, 0.0f, 0.0f),
+            .look_at  = make_float3(0.0f, 0.0f, -1.0f),
+            .up       = make_float3(0.0f, 1.0f, 0.0f)};
+
+        renderer->m_camera     = Camera::create(camera_info, *renderer, command_buffer);
         renderer->m_integrator = Integrator::create(*renderer);
+
+        command_buffer << synchronize();
 
         return renderer;
     }

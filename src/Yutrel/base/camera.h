@@ -7,43 +7,46 @@
 
 namespace Yutrel
 {
-    struct CameraData
-    {
-        luisa::float2 resolution;
-        float tan_half_fov;
-    };
-} // namespace Yutrel
-
-LUISA_STRUCT(Yutrel::CameraData, resolution, tan_half_fov){};
-
-namespace Yutrel
-{
     using namespace luisa;
     using namespace luisa::compute;
 
     class Renderer;
     class Film;
 
-    struct Sample
-    {
-        Var<Ray> ray;
-        Float2 pixel;
-    };
-
     class Camera
     {
+    public:
+        enum class Type
+        {
+            pinhole,
+        };
+
+        struct CreateInfo
+        {
+            Type type{Type::pinhole};
+            float3 position{};
+            float3 look_at{};
+            float3 up{0.0f, 1.0f, 0.0f};
+            float fov{45.0f};
+        };
+
+        [[nodiscard]] static luisa::unique_ptr<Camera> create(const CreateInfo& info, Renderer& renderer, CommandBuffer& command_buffer) noexcept;
+
+        struct Sample
+        {
+            Var<Ray> ray;
+            Float2 pixel;
+        };
+
     private:
         const Renderer* m_renderer;
         luisa::unique_ptr<Film> m_film;
 
-        BufferView<CameraData> m_device_data;
-
         uint m_spp;
-        float m_fov;
 
     public:
         explicit Camera(Renderer& renderer, CommandBuffer& command_buffer) noexcept;
-        ~Camera() noexcept;
+        virtual ~Camera() noexcept;
 
         Camera() noexcept                = delete;
         Camera(const Camera&)            = delete;
@@ -52,11 +55,9 @@ namespace Yutrel
         Camera& operator=(Camera&&)      = delete;
 
     public:
-        [[nodiscard]] static luisa::unique_ptr<Camera> create(Renderer& renderer, CommandBuffer& command_buffer) noexcept;
-
         [[nodiscard]] auto film() const noexcept { return m_film.get(); }
         [[nodiscard]] auto spp() const noexcept { return m_spp; }
-        [[nodiscard]] Sample generate_ray(Expr<uint2> pixel_coord, Expr<float2> u_filter) const noexcept;
+        [[nodiscard]] virtual Sample generate_ray(Expr<uint2> pixel_coord, Expr<float2> u_filter) const noexcept = 0;
     };
 
 } // namespace Yutrel

@@ -23,14 +23,16 @@ namespace Yutrel
 
         // TODO: from scene description
         Camera::CreateInfo camera_info{
-            .type           = Camera::Type::thin_lens,
-            .spp            = 1024u,
-            .position       = make_float3(13.0f, 2.0f, 3.0f),
-            .lookat         = make_float3(0.0f, 0.0f, 0.0f),
-            .up             = make_float3(0.0f, 1.0f, 0.0f),
-            .aperture       = 0.4f,
-            .focal_length   = 78.0f,
-            .focus_distance = 13.0f,
+            .type                  = Camera::Type::thin_lens,
+            .spp                   = 1024u,
+            .shutter_span          = {0.0f, 1.0f},
+            .shutter_samples_count = 64u,
+            .position              = make_float3(13.0f, 2.0f, 3.0f),
+            .lookat                = make_float3(0.0f, 0.0f, 0.0f),
+            .up                    = make_float3(0.0f, 1.0f, 0.0f),
+            .aperture              = 0.4f,
+            .focal_length          = 78.0f,
+            .focus_distance        = 13.0f,
         };
 
         renderer->m_camera     = Camera::create(camera_info, *renderer, command_buffer);

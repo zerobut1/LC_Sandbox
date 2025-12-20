@@ -17,7 +17,7 @@ namespace Yutrel
             << commit();
     }
 
-    Var<Ray> PinholeCamera::generate_ray_in_camera_space(Expr<float2> pixel, Expr<float2> u_lens) const noexcept
+    Var<Ray> PinholeCamera::generate_ray_in_camera_space(Expr<float2> pixel, Expr<float> time, Expr<float2> u_lens) const noexcept
     {
         auto data         = m_device_data->read(0u);
         auto p            = (pixel * 2.0f - data.resolution) * (data.tan_half_fov / data.resolution.y);

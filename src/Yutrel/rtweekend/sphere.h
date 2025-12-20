@@ -12,6 +12,7 @@ namespace Yutrel::RTWeekend
     private:
         float3 m_center;
         float m_radius;
+        float3 m_velocity{make_float3(0.0f)};
         uint m_mat_id;
 
     public:
@@ -20,15 +21,22 @@ namespace Yutrel::RTWeekend
               m_radius{radius},
               m_mat_id{mat_id} {}
 
-        [[nodiscard]] Bool hit(Var<Ray> ray, Float t_min, Float t_max, HitRecord& rec) const noexcept override
+        Sphere(float3 center, float radius, float3 velocity, uint mat_id) noexcept
+            : m_center{center},
+              m_radius{radius},
+              m_velocity{velocity},
+              m_mat_id{mat_id} {}
+
+        [[nodiscard]] Bool hit(Var<Ray> ray, Expr<float> t_min, Expr<float> t_max, Expr<float> time, HitRecord& rec) const noexcept override
         {
             Bool hit = true;
 
-            auto oc           = m_center - ray->origin();
-            auto a            = dot(ray->direction(), ray->direction());
-            auto h            = dot(ray->direction(), oc);
-            auto c            = dot(oc, oc) - m_radius * m_radius;
-            auto discriminant = h * h - a * c;
+            auto current_center = m_center + m_velocity * time;
+            auto oc             = current_center - ray->origin();
+            auto a              = dot(ray->direction(), ray->direction());
+            auto h              = dot(ray->direction(), oc);
+            auto c              = dot(oc, oc) - m_radius * m_radius;
+            auto discriminant   = h * h - a * c;
 
             $if(discriminant < 0.0f)
             {
@@ -51,7 +59,7 @@ namespace Yutrel::RTWeekend
                 {
                     rec.t               = root;
                     rec.position        = ray->origin() + ray->direction() * rec.t;
-                    auto outward_normal = (rec.position - m_center) / m_radius;
+                    auto outward_normal = (rec.position - current_center) / m_radius;
                     rec.set_face_normal(ray, outward_normal);
                     rec.mat_id = m_mat_id;
                 };

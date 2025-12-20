@@ -30,7 +30,7 @@ namespace Yutrel::RTWeekend
             objects.push_back(object);
         }
 
-        Bool hit(Var<Ray> ray, Float t_min, Float t_max, HitRecord& rec) const noexcept override
+        Bool hit(Var<Ray> ray, Expr<float> t_min, Expr<float> t_max, Expr<float> time, HitRecord& rec) const noexcept override
         {
             Bool hit_anything    = false;
             Float closest_so_far = t_max;
@@ -38,7 +38,7 @@ namespace Yutrel::RTWeekend
             for (const auto& object : objects)
             {
                 HitRecord temp_rec;
-                $if(object->hit(ray, t_min, closest_so_far, temp_rec))
+                $if(object->hit(ray, t_min, closest_so_far, time, temp_rec))
                 {
                     hit_anything   = true;
                     closest_so_far = temp_rec.t;

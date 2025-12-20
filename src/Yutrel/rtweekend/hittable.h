@@ -29,7 +29,7 @@ namespace Yutrel::RTWeekend
         Hittable() noexcept          = default;
         virtual ~Hittable() noexcept = default;
 
-        [[nodiscard]] virtual Bool hit(Var<Ray> ray, Float t_min, Float t_max, HitRecord& rec) const noexcept = 0;
+        [[nodiscard]] virtual Bool hit(Var<Ray> ray, Expr<float> t_min, Expr<float> t_max, Expr<float> time, HitRecord& rec) const noexcept = 0;
     };
 
 } // namespace Yutrel::RTWeekend

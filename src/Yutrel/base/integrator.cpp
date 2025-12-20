@@ -71,7 +71,8 @@ namespace Yutrel
                                                     static_cast<float>(random_double()) * static_cast<float>(random_double()),
                                                     static_cast<float>(random_double()) * static_cast<float>(random_double()));
                         materials.emplace_back(make_unique<Lambertian>(albedo));
-                        world.add(luisa::make_shared<Sphere>(center, 0.2f, materials.size() - 1));
+                        auto velocity = make_float3(0.0f, 0.5f * static_cast<float>(random_double()), 0.0f);
+                        world.add(luisa::make_shared<Sphere>(center, 0.2f, velocity, materials.size() - 1));
                     }
                     else if (choose_mat < 0.95) // metal
                     {
@@ -106,35 +107,41 @@ namespace Yutrel
             resolution.y,
             spp);
 
-        Kernel2D render_kernel = [&](UInt frame_index, Float time) noexcept
+        Kernel2D render_kernel = [&](UInt frame_index, Float time, Float shutter_weight) noexcept
         {
             set_block_size(16u, 16u, 1u);
             Var pixel_id = dispatch_id().xy();
             Var L        = Li(camera, frame_index, pixel_id, time, world);
-            camera->film()->accumulate(pixel_id, L, 1.0f);
+            camera->film()->accumulate(pixel_id, L * shutter_weight, 1.0f);
         };
 
+        LUISA_INFO("Start compiling Integrator shader");
         Clock clock_compile;
         auto render = renderer()->device().compile(render_kernel);
         LUISA_INFO("Integrator shader compile in {} ms.", clock_compile.toc());
         command_buffer << synchronize();
 
+        auto shutter_samples = camera->shutter_samples();
         LUISA_INFO("Rendering started.");
         Clock clock_render;
-        auto dispatch_count = 0u;
-        for (auto i = 0u; i < spp; i++)
+        auto dispatch_count      = 0u;
+        auto global_sample_index = 0u;
+        for (const auto& s : shutter_samples)
         {
-            dispatch_count++;
-            command_buffer << render(i, 0.0f).dispatch(resolution);
-            if (camera->film()->show(command_buffer))
+            for (auto i = 0u; i < s.spp; i++)
             {
-                dispatch_count = 0u;
-            }
-            const auto dispatches_per_commit = 4u;
-            if (dispatch_count >= dispatches_per_commit)
-            {
-                dispatch_count = 0u;
-                command_buffer << commit();
+                dispatch_count++;
+                command_buffer << render(global_sample_index++, s.time, s.weight).dispatch(resolution);
+                if (camera->film()->show(command_buffer))
+                {
+                    dispatch_count = 0u;
+                }
+                const auto dispatches_per_commit = 4u;
+                if (dispatch_count >= dispatches_per_commit)
+                {
+                    dispatch_count = 0u;
+                    command_buffer << commit();
+                }
             }
         }
         command_buffer << synchronize();
@@ -147,14 +154,14 @@ namespace Yutrel
 
         auto u_filter        = sampler()->generate_2d();
         auto u_lens          = camera->requires_lens_sampling() ? sampler()->generate_2d() : make_float2(0.5f);
-        auto [camera_ray, _] = camera->generate_ray(pixel_id, u_filter, u_lens);
+        auto [camera_ray, _] = camera->generate_ray(pixel_id, time, u_filter, u_lens);
 
-        Float3 color = ray_color(camera_ray, world);
+        Float3 color = ray_color(camera_ray, world, time);
 
         return color;
     };
 
-    Float3 Integrator::ray_color(Var<Ray> ray, const Hittable& world) const noexcept
+    Float3 Integrator::ray_color(Var<Ray> ray, const Hittable& world, Expr<float> time) const noexcept
     {
         Float3 color = make_float3(1.0f);
 
@@ -165,7 +172,7 @@ namespace Yutrel
         $for(depth, MAX_DEPTH)
         {
             HitRecord rec;
-            $if(!world.hit(ray, T_MIN, T_MAX, rec))
+            $if(!world.hit(ray, T_MIN, T_MAX, time, rec))
             {
                 // background color
                 auto direction = normalize(ray->direction());

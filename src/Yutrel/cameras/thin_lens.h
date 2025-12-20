@@ -40,7 +40,7 @@ namespace Yutrel
         ThinLensCamera& operator=(ThinLensCamera&&)      = delete;
 
     private:
-        [[nodiscard]] Var<Ray> generate_ray_in_camera_space(Expr<float2> pixel, Expr<float2> u_lens) const noexcept override;
+        [[nodiscard]] Var<Ray> generate_ray_in_camera_space(Expr<float2> pixel, Expr<float> time, Expr<float2> u_lens) const noexcept override;
         [[nodiscard]] bool requires_lens_sampling() const noexcept override { return true; }
 
         [[nodiscard]] auto aperture() const noexcept { return m_aperture; }

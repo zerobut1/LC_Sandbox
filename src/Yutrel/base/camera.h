@@ -26,6 +26,8 @@ namespace Yutrel
         {
             Type type{Type::pinhole};
             uint spp{1024u};
+            float2 shutter_span{0.0f, 0.0f};
+            uint shutter_samples_count{0u};
 
             float3 position{};
             float3 lookat{};
@@ -48,12 +50,21 @@ namespace Yutrel
             Float2 pixel;
         };
 
+        struct ShutterSample
+        {
+            float time;
+            float weight;
+            uint spp;
+        };
+
     private:
         const Renderer* m_renderer;
         luisa::unique_ptr<Film> m_film;
 
         float4x4 m_transform;
         uint m_spp;
+        float2 m_shutter_span;
+        uint m_shutter_samples_count;
 
     public:
         explicit Camera(const CreateInfo& info, Renderer& renderer, CommandBuffer& command_buffer) noexcept;
@@ -70,8 +81,10 @@ namespace Yutrel
         [[nodiscard]] auto spp() const noexcept { return m_spp; }
         [[nodiscard]] auto transform() const noexcept { return m_transform; }
 
-        [[nodiscard]] Sample generate_ray(Expr<uint2> pixel_coord, Expr<float2> u_filter, Expr<float2> u_lens) const noexcept;
-        [[nodiscard]] virtual Var<Ray> generate_ray_in_camera_space(Expr<float2> pixel, Expr<float2> u_lens) const noexcept = 0;
+        [[nodiscard]] Sample generate_ray(Expr<uint2> pixel_coord, Expr<float> time, Expr<float2> u_filter, Expr<float2> u_lens) const noexcept;
+        [[nodiscard]] luisa::vector<ShutterSample> shutter_samples() const noexcept;
+
+        [[nodiscard]] virtual Var<Ray> generate_ray_in_camera_space(Expr<float2> pixel, Expr<float> time, Expr<float2> u_lens) const noexcept = 0;
         [[nodiscard]] virtual bool requires_lens_sampling() const noexcept { return false; }
     };
 

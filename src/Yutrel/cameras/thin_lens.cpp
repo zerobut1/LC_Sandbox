@@ -41,7 +41,7 @@ namespace Yutrel
             << commit();
     }
 
-    [[nodiscard]] Var<Ray> ThinLensCamera::generate_ray_in_camera_space(Expr<float2> pixel, Expr<float2> u_lens) const noexcept
+    [[nodiscard]] Var<Ray> ThinLensCamera::generate_ray_in_camera_space(Expr<float2> pixel, Expr<float> time, Expr<float2> u_lens) const noexcept
     {
         auto data        = m_device_data->read(0u);
         auto coord_focal = (pixel - data.pixel_offset) * data.projected_pixel_size;

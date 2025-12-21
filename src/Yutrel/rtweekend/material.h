@@ -9,6 +9,24 @@
 
 namespace Yutrel::RTWeekend
 {
+    enum MaterialType : uint
+    {
+        MT_Lambertian = 0u,
+        MT_Metal      = 1u,
+        MT_Dielectric = 2u
+    };
+
+    struct MaterialData
+    {
+        uint type{MT_Lambertian};
+        float4 data{make_float4(0.0f)};
+    };
+} // namespace Yutrel::RTWeekend
+
+LUISA_STRUCT(Yutrel::RTWeekend::MaterialData, type, data){};
+
+namespace Yutrel::RTWeekend
+{
     using namespace luisa;
     using namespace luisa::compute;
     using namespace RTWeekend;
@@ -22,15 +40,17 @@ namespace Yutrel::RTWeekend
         {
             return false;
         }
+
+        [[nodiscard]] static Bool scatter(Var<Ray>& ray, const HitRecord& rec, Var<float3>& attenuation, Expr<float2> u, Expr<float> u_lobe, Expr<MaterialData> material) noexcept;
     };
 
     class Lambertian : public Material
     {
     private:
-        float3 m_albedo;
+        Float3 m_albedo;
 
     public:
-        explicit Lambertian(const float3& a) noexcept
+        explicit Lambertian(Float3 a) noexcept
             : m_albedo{a} {}
 
         Bool scatter(Var<Ray>& ray, const HitRecord& rec, Var<float3>& attenuation, Expr<float2> u, Expr<float> u_lobe) const noexcept override
@@ -47,11 +67,11 @@ namespace Yutrel::RTWeekend
     class Metal : public Material
     {
     private:
-        float3 m_albedo;
-        float m_fuzz;
+        Float3 m_albedo;
+        Float m_fuzz;
 
     public:
-        Metal(const float3& a, float f) noexcept
+        Metal(Float3 a, Float f) noexcept
             : m_albedo{a},
               m_fuzz{f} {}
 
@@ -70,10 +90,10 @@ namespace Yutrel::RTWeekend
     class Dielectric : public Material
     {
     private:
-        float m_ior; // Index of Refraction
+        Float m_ior; // Index of Refraction
     public:
-        explicit Dielectric(float index_of_refraction) noexcept
-            : m_ior{index_of_refraction} {}
+        explicit Dielectric(Float ior) noexcept
+            : m_ior{ior} {}
 
         Bool scatter(Var<Ray>& ray, const HitRecord& rec, Var<float3>& attenuation, Expr<float2> u, Expr<float> u_lobe) const noexcept override
         {
@@ -115,5 +135,28 @@ namespace Yutrel::RTWeekend
             return lerp(R0, 1.f, SchlickWeight(cosTheta));
         }
     };
+
+    [[nodiscard]] inline Bool Material::scatter(Var<Ray>& ray, const HitRecord& rec, Var<float3>& attenuation, Expr<float2> u, Expr<float> u_lobe, Expr<MaterialData> material) noexcept
+    {
+        Bool is_scattered = false;
+
+        $if(material.type == static_cast<uint>(MT_Lambertian))
+        {
+            Lambertian _mat(material.data.xyz());
+            is_scattered = _mat.scatter(ray, rec, attenuation, u, u_lobe);
+        }
+        $elif(material.type == static_cast<uint>(MT_Metal))
+        {
+            Metal _mat(material.data.xyz(), material.data.w);
+            is_scattered = _mat.scatter(ray, rec, attenuation, u, u_lobe);
+        }
+        $elif(material.type == static_cast<uint>(MT_Dielectric))
+        {
+            Dielectric _mat(material.data.x);
+            is_scattered = _mat.scatter(ray, rec, attenuation, u, u_lobe);
+        };
+
+        return is_scattered;
+    }
 
 } // namespace Yutrel::RTWeekend

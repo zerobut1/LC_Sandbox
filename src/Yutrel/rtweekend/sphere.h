@@ -9,35 +9,49 @@
 
 namespace Yutrel::RTWeekend
 {
+    struct SphereData
+    {
+        float3 center{make_float3(0.0f)};
+        float radius{0.0f};
+        float3 velocity{make_float3(0.0f)};
+        uint mat_id{0u};
+    };
+
     class Sphere : public Hittable
     {
     private:
-        float3 m_center;
-        float m_radius;
-        float3 m_velocity{make_float3(0.0f)};
-        uint m_mat_id;
+        Float3 m_center;
+        Float m_radius;
+        Float3 m_velocity{make_float3(0.0f)};
+        UInt m_mat_id;
         AABB m_bbox;
 
     public:
-        Sphere(float3 center, float radius, uint mat_id) noexcept
+        Sphere(Float3 center, Float radius, UInt mat_id) noexcept
             : m_center{center},
               m_radius{radius},
-              m_mat_id{mat_id}
+              m_mat_id{mat_id} {}
+
+        Sphere(float3 center, float radius, uint mat_id) noexcept
+            : Sphere(def(center), radius, mat_id)
         {
-            float3 radius_vec = make_float3(m_radius);
-            m_bbox            = AABB(m_center - radius_vec, m_center + radius_vec);
+            float3 radius_vec = make_float3(radius);
+            m_bbox            = AABB(center - radius_vec, center + radius_vec);
         }
 
-        Sphere(float3 center, float radius, float3 velocity, uint mat_id) noexcept
+        Sphere(Float3 center, Float radius, Float3 velocity, UInt mat_id) noexcept
             : m_center{center},
               m_radius{radius},
               m_mat_id{mat_id},
-              m_velocity{velocity}
+              m_velocity{velocity} {}
+
+        Sphere(float3 center, float radius, float3 velocity, uint mat_id) noexcept
+            : Sphere(def(center), radius, def(velocity), mat_id)
         {
             // 假设运动时间限定在0-1之间
-            float3 radius_vec = make_float3(m_radius);
-            AABB box0(m_center - radius_vec, m_center + radius_vec);
-            AABB box1(m_center + m_velocity - radius_vec, m_center + m_velocity + radius_vec);
+            float3 radius_vec = make_float3(radius);
+            AABB box0(center - radius_vec, center + radius_vec);
+            AABB box1(center + velocity - radius_vec, center + velocity + radius_vec);
             m_bbox = AABB(box0, box1);
         }
 
@@ -88,3 +102,5 @@ namespace Yutrel::RTWeekend
         }
     };
 } // namespace Yutrel::RTWeekend
+
+LUISA_STRUCT(Yutrel::RTWeekend::SphereData, center, radius, velocity, mat_id){};

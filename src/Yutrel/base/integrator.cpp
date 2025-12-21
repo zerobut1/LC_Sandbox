@@ -8,8 +8,6 @@
 #include "base/sampler.h"
 #include "utils/command_buffer.h"
 
-#include <random>
-
 namespace Yutrel
 {
     Integrator::Integrator(Renderer& renderer) noexcept
@@ -42,16 +40,19 @@ namespace Yutrel
     {
         // temp
         //-------------------------
-        HittableList world;
+        luisa::vector<MaterialData> host_materials;
+        host_materials.reserve(256u);
+        luisa::vector<SphereData> host_spheres;
+        host_spheres.reserve(256u);
 
         // ground
-        materials.emplace_back(luisa::make_unique<Lambertian>(make_float3(137.0f / 255.0f, 227.0f / 255.0f, 78.0f / 255.0f)));
-        world.add(luisa::make_shared<Sphere>(make_float3(0.0f, -1000.0f, 0.0f), 1000.0f, materials.size() - 1));
+        host_materials.emplace_back(MaterialData{MT_Lambertian, make_float4(137.0f / 255.0f, 227.0f / 255.0f, 78.0f / 255.0f, 0.0f)});
+        host_spheres.emplace_back(SphereData{make_float3(0.0f, -1000.0f, 0.0f), 1000.0f, make_float3(0.0f), static_cast<uint>(host_materials.size() - 1u)});
 
         // small spheres
-        for (int a = -5; a < 5; a++)
+        for (int a = -11; a < 11; a++)
         {
-            for (int b = -5; b < 5; b++)
+            for (int b = -11; b < 11; b++)
             {
                 auto choose_mat = random_double();
                 float3 center(static_cast<float>(a) + 0.9f * static_cast<float>(random_double()), 0.2f, static_cast<float>(b) + 0.9f * static_cast<float>(random_double()));
@@ -63,9 +64,9 @@ namespace Yutrel
                         float3 albedo = make_float3(static_cast<float>(random_double()) * static_cast<float>(random_double()),
                                                     static_cast<float>(random_double()) * static_cast<float>(random_double()),
                                                     static_cast<float>(random_double()) * static_cast<float>(random_double()));
-                        materials.emplace_back(make_unique<Lambertian>(albedo));
+                        host_materials.emplace_back(MaterialData{MT_Lambertian, make_float4(albedo, 0.0f)});
                         auto velocity = make_float3(0.0f, 0.5f * static_cast<float>(random_double()), 0.0f);
-                        world.add(luisa::make_shared<Sphere>(center, 0.2f, velocity, materials.size() - 1));
+                        host_spheres.emplace_back(SphereData{center, 0.2f, velocity, static_cast<uint>(host_materials.size() - 1u)});
                     }
                     else if (choose_mat < 0.95) // metal
                     {
@@ -73,21 +74,29 @@ namespace Yutrel
                                                     0.5f * (1.0f + static_cast<float>(random_double())),
                                                     0.5f * (1.0f + static_cast<float>(random_double())));
                         float fuzz    = 0.5f * static_cast<float>(random_double());
-                        materials.emplace_back(make_unique<Metal>(albedo, fuzz));
-                        world.add(luisa::make_shared<Sphere>(center, 0.2f, materials.size() - 1));
+                        host_materials.emplace_back(MaterialData{MT_Metal, make_float4(albedo, fuzz)});
+                        host_spheres.emplace_back(SphereData{center, 0.2f, make_float3(0.0f), static_cast<uint>(host_materials.size() - 1u)});
                     }
                     else // glass
                     {
-                        materials.emplace_back(make_unique<Dielectric>(1.5f));
+                        host_materials.emplace_back(MaterialData{MT_Dielectric, make_float4(1.5f, 0.0f, 0.0f, 0.0f)});
                         auto radius = static_cast<float>(random_double());
                         center.y    = radius;
-                        world.add(luisa::make_shared<Sphere>(center, radius, materials.size() - 1));
+                        host_spheres.emplace_back(SphereData{center, radius, make_float3(0.0f), static_cast<uint>(host_materials.size() - 1u)});
                     }
                 }
             }
         }
 
-        world = HittableList(luisa::make_shared<BVH_Node>(world));
+        auto material_buffer = renderer()->device().create_buffer<MaterialData>(host_materials.size());
+        command_buffer << material_buffer.copy_from(host_materials.data()) << commit();
+        m_material_buffer = material_buffer.view();
+
+        auto sphere_buffer = renderer()->device().create_buffer<SphereData>(host_spheres.size());
+        command_buffer << sphere_buffer.copy_from(host_spheres.data()) << commit();
+        auto sphere_buffer_view = sphere_buffer.view();
+        auto sphere_count       = static_cast<uint>(host_spheres.size());
+        m_world                 = luisa::make_unique<HittableList>(sphere_buffer_view, sphere_count);
         //-------------------------
 
         auto spp        = camera->spp();
@@ -106,7 +115,7 @@ namespace Yutrel
         {
             set_block_size(16u, 16u, 1u);
             Var pixel_id = dispatch_id().xy();
-            Var L        = Li(camera, frame_index, pixel_id, time, world);
+            Var L        = Li(camera, frame_index, pixel_id, time);
             camera->film()->accumulate(pixel_id, L * shutter_weight, 1.0f);
         };
 
@@ -143,7 +152,7 @@ namespace Yutrel
         LUISA_INFO("Rendering finished in {} ms.", clock_render.toc());
     }
 
-    Float3 Integrator::Li(const Camera* camera, Expr<uint> frame_index, Expr<uint2> pixel_id, Expr<float> time, HittableList& world) const noexcept
+    Float3 Integrator::Li(const Camera* camera, Expr<uint> frame_index, Expr<uint2> pixel_id, Expr<float> time) const noexcept
     {
         sampler()->start(pixel_id, frame_index);
 
@@ -151,12 +160,12 @@ namespace Yutrel
         auto u_lens          = camera->requires_lens_sampling() ? sampler()->generate_2d() : make_float2(0.5f);
         auto [camera_ray, _] = camera->generate_ray(pixel_id, time, u_filter, u_lens);
 
-        Float3 color = ray_color(camera_ray, world, time);
+        Float3 color = ray_color(camera_ray, time);
 
         return color;
     };
 
-    Float3 Integrator::ray_color(Var<Ray> ray, const Hittable& world, Expr<float> time) const noexcept
+    Float3 Integrator::ray_color(Var<Ray> ray, Expr<float> time) const noexcept
     {
         Float3 color = make_float3(1.0f);
 
@@ -167,7 +176,7 @@ namespace Yutrel
         $for(depth, MAX_DEPTH)
         {
             HitRecord rec;
-            $if(!world.hit(ray, T_MIN, T_MAX, time, rec))
+            $if(!m_world->hit(ray, T_MIN, T_MAX, time, rec))
             {
                 // background color
                 auto direction = normalize(ray->direction());
@@ -176,19 +185,12 @@ namespace Yutrel
                 $break;
             };
 
-            Bool is_scattered = false;
-            Float3 attenuation;
-            for (uint mat_id = 0; mat_id < materials.size(); mat_id++)
-            {
-                $if(rec.mat_id == mat_id)
-                {
-                    auto u_lobe  = sampler()->generate_1d();
-                    auto u       = sampler()->generate_2d();
-                    is_scattered = materials[mat_id]->scatter(ray, rec, attenuation, u, u_lobe);
-                };
-            };
+            Float3 attenuation = make_float3(0.0f);
+            auto u_lobe        = sampler()->generate_1d();
+            auto u             = sampler()->generate_2d();
+            auto mat           = m_material_buffer->read(rec.mat_id);
 
-            $if(!is_scattered)
+            $if(!Material::scatter(ray, rec, attenuation, u, u_lobe, mat))
             {
                 color = make_float3(0.0f);
                 $break;

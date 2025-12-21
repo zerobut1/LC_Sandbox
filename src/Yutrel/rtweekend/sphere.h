@@ -5,8 +5,6 @@
 #include <luisa/dsl/sugar.h>
 #include <luisa/dsl/syntax.h>
 
-#include "rtweekend/aabb.h"
-
 namespace Yutrel::RTWeekend
 {
     struct SphereData
@@ -24,7 +22,6 @@ namespace Yutrel::RTWeekend
         Float m_radius;
         Float3 m_velocity{make_float3(0.0f)};
         UInt m_mat_id;
-        AABB m_bbox;
 
     public:
         Sphere(Float3 center, Float radius, UInt mat_id) noexcept
@@ -32,28 +29,11 @@ namespace Yutrel::RTWeekend
               m_radius{radius},
               m_mat_id{mat_id} {}
 
-        Sphere(float3 center, float radius, uint mat_id) noexcept
-            : Sphere(def(center), radius, mat_id)
-        {
-            float3 radius_vec = make_float3(radius);
-            m_bbox            = AABB(center - radius_vec, center + radius_vec);
-        }
-
         Sphere(Float3 center, Float radius, Float3 velocity, UInt mat_id) noexcept
             : m_center{center},
               m_radius{radius},
               m_mat_id{mat_id},
               m_velocity{velocity} {}
-
-        Sphere(float3 center, float radius, float3 velocity, uint mat_id) noexcept
-            : Sphere(def(center), radius, def(velocity), mat_id)
-        {
-            // 假设运动时间限定在0-1之间
-            float3 radius_vec = make_float3(radius);
-            AABB box0(center - radius_vec, center + radius_vec);
-            AABB box1(center + velocity - radius_vec, center + velocity + radius_vec);
-            m_bbox = AABB(box0, box1);
-        }
 
         [[nodiscard]] Bool hit(Var<Ray> ray, Expr<float> t_min, Expr<float> t_max, Expr<float> time, HitRecord& rec) const noexcept override
         {
@@ -94,11 +74,6 @@ namespace Yutrel::RTWeekend
             };
 
             return hit;
-        }
-
-        [[nodiscard]] AABB bounding_box() const noexcept override
-        {
-            return m_bbox;
         }
     };
 } // namespace Yutrel::RTWeekend

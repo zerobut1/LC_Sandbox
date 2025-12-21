@@ -2,7 +2,6 @@
 
 #include <luisa/core/stl/memory.h>
 
-#include <rtweekend/bvh.h>
 #include <rtweekend/hittable.h>
 #include <rtweekend/hittable_list.h>
 #include <rtweekend/material.h>

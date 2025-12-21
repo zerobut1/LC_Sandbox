@@ -30,7 +30,7 @@ namespace Yutrel
         float3 m_albedo;
 
     public:
-        Lambertian(const float3& a) noexcept
+        explicit Lambertian(const float3& a) noexcept
             : m_albedo{a} {}
 
         Bool scatter(Var<Ray>& ray, const HitRecord& rec, Var<float3>& attenuation, Expr<float2> u, Expr<float> u_lobe) const noexcept override
@@ -72,7 +72,7 @@ namespace Yutrel
     private:
         float m_ior; // Index of Refraction
     public:
-        Dielectric(float index_of_refraction) noexcept
+        explicit Dielectric(float index_of_refraction) noexcept
             : m_ior{index_of_refraction} {}
 
         Bool scatter(Var<Ray>& ray, const HitRecord& rec, Var<float3>& attenuation, Expr<float2> u, Expr<float> u_lobe) const noexcept override
@@ -104,7 +104,7 @@ namespace Yutrel
             return true;
         }
 
-        [[nodiscard]] Float SchlickWeight(Expr<float> cosTheta) const noexcept
+        static [[nodiscard]] Float SchlickWeight(Expr<float> cosTheta) noexcept
         {
             auto m = saturate(1.f - cosTheta);
             return sqr(sqr(m)) * m;

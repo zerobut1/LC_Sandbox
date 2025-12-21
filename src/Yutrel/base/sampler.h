@@ -22,7 +22,7 @@ namespace Yutrel
         luisa::optional<Var<uint>> m_state;
 
     public:
-        Sampler(const Renderer* renderer) noexcept;
+        explicit Sampler(const Renderer* renderer) noexcept;
         ~Sampler() noexcept = default;
 
         Sampler(const Sampler&) noexcept            = delete;

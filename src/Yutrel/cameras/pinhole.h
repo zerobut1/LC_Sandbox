@@ -7,7 +7,7 @@ namespace Yutrel
     struct PinholeCameraData
     {
         luisa::float2 resolution;
-        float tan_half_fov;
+        float tan_half_fov{};
     };
 } // namespace Yutrel
 

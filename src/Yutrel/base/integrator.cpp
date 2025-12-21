@@ -86,7 +86,7 @@ namespace Yutrel
                     else // glass
                     {
                         materials.emplace_back(make_unique<Dielectric>(1.5f));
-                        float radius = static_cast<float>(random_double());
+                        auto radius = static_cast<float>(random_double());
                         center.y     = radius;
                         world.add(luisa::make_shared<Sphere>(center, radius, materials.size() - 1));
                     }

@@ -21,7 +21,7 @@ namespace Yutrel
     {
     private:
         const Renderer* m_renderer;
-        Stream* m_stream;
+        Stream* m_stream{};
 
         luisa::unique_ptr<Window> m_window;
         Swapchain m_swapchain;

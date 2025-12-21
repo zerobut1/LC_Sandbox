@@ -46,6 +46,6 @@ namespace Yutrel
         void render_one_camera(CommandBuffer& command_buffer, Camera* camera);
         Float3 Li(const Camera* camera, Expr<uint> frame_index, Expr<uint2> pixel_id, Expr<float> time, HittableList& world) const noexcept;
 
-        Float3 ray_color(Var<Ray> ray, const Hittable& world, Expr<float> time) const noexcept;
+        [[nodiscard]] Float3 ray_color(Var<Ray> ray, const Hittable& world, Expr<float> time) const noexcept;
     };
 } // namespace Yutrel

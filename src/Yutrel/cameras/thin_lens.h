@@ -8,9 +8,9 @@ namespace Yutrel
     {
         float2 pixel_offset;
         float2 resolution;
-        float focus_distance;
-        float lens_radius;
-        float projected_pixel_size;
+        float focus_distance{};
+        float lens_radius{};
+        float projected_pixel_size{};
     };
 
 } // namespace Yutrel

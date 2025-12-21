@@ -7,7 +7,7 @@
 #include "utils/sampling.h"
 #include "utils/scattering.h"
 
-namespace Yutrel
+namespace Yutrel::RTWeekend
 {
     using namespace luisa;
     using namespace luisa::compute;
@@ -104,16 +104,16 @@ namespace Yutrel
             return true;
         }
 
-        static [[nodiscard]] Float SchlickWeight(Expr<float> cosTheta) noexcept
+        [[nodiscard]] static Float SchlickWeight(Expr<float> cosTheta) noexcept
         {
             auto m = saturate(1.f - cosTheta);
             return sqr(sqr(m)) * m;
         }
 
-        [[nodiscard]] inline Float FrSchlick(Expr<float> R0, Expr<float> cosTheta) const noexcept
+        [[nodiscard]] static Float FrSchlick(Expr<float> R0, Expr<float> cosTheta) noexcept
         {
             return lerp(R0, 1.f, SchlickWeight(cosTheta));
         }
     };
 
-} // namespace Yutrel
+} // namespace Yutrel::RTWeekend

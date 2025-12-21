@@ -38,13 +38,6 @@ namespace Yutrel
         camera->film()->release();
     }
 
-    double random_double()
-    {
-        static std::uniform_real_distribution<double> distribution(0.0, 1.0);
-        static std::mt19937 generator(std::random_device{}());
-        return distribution(generator);
-    }
-
     void Integrator::render_one_camera(CommandBuffer& command_buffer, Camera* camera)
     {
         // temp
@@ -87,12 +80,14 @@ namespace Yutrel
                     {
                         materials.emplace_back(make_unique<Dielectric>(1.5f));
                         auto radius = static_cast<float>(random_double());
-                        center.y     = radius;
+                        center.y    = radius;
                         world.add(luisa::make_shared<Sphere>(center, radius, materials.size() - 1));
                     }
                 }
             }
         }
+
+        world = HittableList(luisa::make_shared<BVH_Node>(world));
         //-------------------------
 
         auto spp        = camera->spp();

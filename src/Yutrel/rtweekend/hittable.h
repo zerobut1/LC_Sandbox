@@ -2,6 +2,8 @@
 
 #include <luisa/dsl/syntax.h>
 
+#include "rtweekend/aabb.h"
+
 namespace Yutrel::RTWeekend
 {
     using namespace luisa;
@@ -30,6 +32,8 @@ namespace Yutrel::RTWeekend
         virtual ~Hittable() noexcept = default;
 
         [[nodiscard]] virtual Bool hit(Var<Ray> ray, Expr<float> t_min, Expr<float> t_max, Expr<float> time, HitRecord& rec) const noexcept = 0;
+
+        [[nodiscard]] virtual AABB bounding_box() const noexcept = 0;
     };
 
 } // namespace Yutrel::RTWeekend

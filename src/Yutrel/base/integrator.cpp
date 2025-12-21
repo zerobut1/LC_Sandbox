@@ -7,6 +7,7 @@
 #include "base/renderer.h"
 #include "base/sampler.h"
 #include "utils/command_buffer.h"
+#include "utils/progress_bar.h"
 
 namespace Yutrel
 {
@@ -128,6 +129,8 @@ namespace Yutrel
         auto shutter_samples = camera->shutter_samples();
         LUISA_INFO("Rendering started.");
         Clock clock_render;
+        ProgressBar progress_bar;
+        progress_bar.update(0.0);
         auto dispatch_count      = 0u;
         auto global_sample_index = 0u;
         for (const auto& s : shutter_samples)
@@ -136,19 +139,20 @@ namespace Yutrel
             {
                 dispatch_count++;
                 command_buffer << render(global_sample_index++, s.time, s.weight).dispatch(resolution);
-                if (camera->film()->show(command_buffer))
-                {
-                    dispatch_count = 0u;
-                }
                 const auto dispatches_per_commit = 4u;
-                if (dispatch_count >= dispatches_per_commit)
+                if (camera->film()->show(command_buffer) || dispatch_count >= dispatches_per_commit) [[unlikely]]
                 {
                     dispatch_count = 0u;
-                    command_buffer << commit();
+                    auto p         = global_sample_index / static_cast<double>(spp);
+                    command_buffer << [&progress_bar, p]
+                    {
+                        progress_bar.update(p);
+                    };
                 }
             }
         }
         command_buffer << synchronize();
+        progress_bar.done();
         LUISA_INFO("Rendering finished in {} ms.", clock_render.toc());
     }
 

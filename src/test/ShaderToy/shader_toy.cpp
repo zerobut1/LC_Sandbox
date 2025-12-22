@@ -102,8 +102,6 @@ int main(int argc, char* argv[])
         {
             framerate.record(frame_count);
             frame_count = 0;
-            auto title  = luisa::format("ShaderToy - {} - {:.2f} fps", argv[1], framerate.report());
-            window.set_window_name(title);
         }
     }
     stream << synchronize();

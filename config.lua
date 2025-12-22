@@ -13,5 +13,6 @@ lc_options = {
     lc_enable_simd = true,
     lc_external_marl = false,
     lc_enable_unity_build = true,
-    lc_dx_cuda_interop = false
+    lc_dx_cuda_interop = false,
+    lc_glfw_use_xrepo = true,
 }

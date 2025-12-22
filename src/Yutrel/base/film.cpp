@@ -47,7 +47,7 @@ namespace Yutrel
     {
         m_rendering_finished = false;
 
-        auto device      = m_renderer->device();
+        auto&& device    = m_renderer->device();
         uint2 size       = resolution();
         auto pixel_count = size.x * size.y;
 
@@ -66,18 +66,18 @@ namespace Yutrel
         {
             m_stream = command_buffer.stream();
 
-            m_window    = luisa::make_unique<Window>("Yutrel", size);
-            m_swapchain = device.create_swapchain(
-                *m_stream,
-                SwapchainOption{
-                    .display           = m_window->native_display(),
-                    .window            = m_window->native_handle(),
-                    .size              = size,
-                    .wants_hdr         = false,
-                    .wants_vsync       = false,
-                    .back_buffer_count = 2,
+            m_window = luisa::make_unique<ImGuiWindow>(
+                device,
+                *command_buffer.stream(),
+                "Yutrel",
+                ImGuiWindow::Config{
+                    .size         = size,
+                    .vsync        = false,
+                    .hdr          = false,
+                    .back_buffers = 3,
                 });
-            m_framebuffer = device.create_image<float>(m_swapchain.backend_storage(), size);
+            m_framebuffer = device.create_image<float>(m_window->swapchain().backend_storage(), size);
+            m_background  = m_window->register_texture(m_framebuffer, Sampler::linear_linear_zero());
 
             Kernel2D blit_kernel = [&]() noexcept
             {
@@ -135,21 +135,38 @@ namespace Yutrel
             command_buffer << synchronize();
             exit(0);
         }
-
         m_framerate.record();
-        {
-            m_window->poll_events();
 
-            command_buffer
-                << m_clear(m_framebuffer).dispatch(resolution())
-                << m_blit().dispatch(resolution())
-                << m_swapchain.present(m_framebuffer)
-                << commit();
-        }
-        auto name = luisa::format("Yutrel - {:.2f} fps", m_framerate.report());
-        m_window->set_window_name(name);
+        m_window->prepare_frame();
+        command_buffer
+            << m_clear(m_framebuffer).dispatch(m_framebuffer.size())
+            << m_blit().dispatch(resolution())
+            << commit();
+        display();
+        m_window->render_frame();
 
         return true;
+    }
+
+    void Film::display() const noexcept
+    {
+        auto viewport = ImGui::GetMainViewport();
+        auto bg_size  = make_float2(viewport->Size.x, viewport->Size.y);
+        auto p_min    = make_float2(viewport->Pos.x, viewport->Pos.y);
+
+        ImGui::GetBackgroundDrawList()->AddImage(m_background, ImVec2{p_min.x, p_min.y}, ImVec2{p_min.x + bg_size.x, p_min.y + bg_size.y});
+        ImGui::Begin("Console", nullptr, ImGuiWindowFlags_NoResize);
+        {
+            // TODO : 区分渲染分辨率&显示分辨率
+            ImGui::Text("Render: %ux%u",
+                        resolution().x,
+                        resolution().y);
+            ImGui::Text("Display: %ux%u (%.2ffps)",
+                        static_cast<uint>(viewport->Size.x),
+                        static_cast<uint>(viewport->Size.y),
+                        ImGui::GetIO().Framerate);
+        }
+        ImGui::End();
     }
 
 } // namespace Yutrel

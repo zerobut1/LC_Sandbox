@@ -1,9 +1,10 @@
 #pragma once
 
+#include <imgui.h>
 #include <luisa/core/stl/memory.h>
 #include <luisa/dsl/syntax.h>
 #include <luisa/gui/framerate.h>
-#include <luisa/gui/window.h>
+#include <luisa/gui/imgui_window.h>
 #include <luisa/runtime/image.h>
 #include <luisa/runtime/swapchain.h>
 
@@ -23,9 +24,9 @@ namespace Yutrel
         const Renderer* m_renderer;
         Stream* m_stream{};
 
-        luisa::unique_ptr<Window> m_window;
-        Swapchain m_swapchain;
+        luisa::unique_ptr<ImGuiWindow> m_window;
         Image<float> m_framebuffer;
+        ImTextureID m_background{};
         mutable Framerate m_framerate{};
 
         mutable Buffer<float4> m_image;
@@ -57,5 +58,8 @@ namespace Yutrel
         void prepare(CommandBuffer& command_buffer) noexcept;
         void release() noexcept;
         bool show(CommandBuffer& command_buffer) const noexcept;
+
+    private:
+        void display() const noexcept;
     };
 } // namespace Yutrel

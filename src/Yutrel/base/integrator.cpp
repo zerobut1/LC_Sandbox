@@ -185,12 +185,23 @@ namespace Yutrel
             auto u_lobe        = sampler()->generate_1d();
             auto u             = sampler()->generate_2d();
 
+            PolymorphicCall<Material::Closure> call;
             m_materials.dispatch(rec.mat_id, [&](auto material) noexcept
             {
-                material->scatter(ray, rec, attenuation, u, u_lobe);
+                material->closure(call);
+            });
+            Bool scattered;
+            call.execute([&](auto closure) noexcept
+            {
+                scattered = closure->scatter(ray, rec, attenuation, u, u_lobe);
+                color *= attenuation;
             });
 
-            color *= attenuation;
+            $if(!scattered)
+            {
+                color = make_float3(0.0f);
+                $break;
+            };
         };
 
         return color;

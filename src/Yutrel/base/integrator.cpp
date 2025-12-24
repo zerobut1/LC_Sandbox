@@ -188,12 +188,12 @@ namespace Yutrel
             PolymorphicCall<Material::Closure> call;
             m_materials.dispatch(rec.mat_id, [&](auto material) noexcept
             {
-                material->closure(call);
+                material->closure(call, rec);
             });
             Bool scattered;
             call.execute([&](auto closure) noexcept
             {
-                scattered = closure->scatter(ray, rec, attenuation, u, u_lobe);
+                scattered = closure->scatter(ray, attenuation, u, u_lobe);
                 color *= attenuation;
             });
 

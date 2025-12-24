@@ -11,7 +11,7 @@ namespace Yutrel
           m_aperture(info.aperture),
           m_focal_length(info.focal_length),
           m_focus_distance(info.focus_distance),
-          m_device_data{renderer.arena_buffer<ThinLensCameraData>(1u)}
+          m_device_data(renderer.arena_buffer<ThinLensCameraData>(1u))
     {
         m_focus_distance = max(m_focus_distance, 1e-4f);
 

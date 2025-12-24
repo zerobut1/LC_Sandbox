@@ -21,7 +21,7 @@ LUISA_STRUCT(Yutrel::ThinLensCameraData,
 
 namespace Yutrel
 {
-    class ThinLensCamera : public Camera
+    class ThinLensCamera final : public Camera
     {
     private:
         float m_aperture;

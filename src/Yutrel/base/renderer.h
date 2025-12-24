@@ -10,7 +10,7 @@ namespace Yutrel
     class Camera;
     class Integrator;
 
-    class Renderer
+    class Renderer final
     {
     private:
         Device& m_device;

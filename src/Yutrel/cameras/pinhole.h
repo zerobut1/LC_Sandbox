@@ -15,7 +15,7 @@ LUISA_STRUCT(Yutrel::PinholeCameraData, resolution, tan_half_fov){};
 
 namespace Yutrel
 {
-    class PinholeCamera : public Camera
+    class PinholeCamera final : public Camera
     {
     private:
         float m_fov;

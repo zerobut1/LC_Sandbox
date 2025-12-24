@@ -58,7 +58,7 @@ namespace Yutrel
         };
 
     private:
-        const Renderer* m_renderer;
+        const Renderer& m_renderer;
         luisa::unique_ptr<Film> m_film;
 
         float4x4 m_transform;

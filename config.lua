@@ -7,12 +7,9 @@ lc_options = {
     lc_enable_osl = false,
     lc_enable_dsl = true,
     lc_enable_tests = false,
-    lc_enable_clangcxx = false,
-    lc_enable_ir = false,
     lc_enable_mimalloc = true,
     lc_enable_simd = true,
-    lc_external_marl = false,
     lc_enable_unity_build = true,
-    lc_dx_cuda_interop = false,
-    lc_glfw_use_xrepo = true,
+    lc_dx_cuda_interop = true,
+    lc_glfw_use_xrepo = true
 }

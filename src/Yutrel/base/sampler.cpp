@@ -7,12 +7,10 @@
 
 namespace Yutrel
 {
-    Sampler::Sampler(const Renderer* renderer) noexcept
-        : m_renderer(renderer)
-    {
-    }
+    Sampler::Sampler(const Renderer& renderer) noexcept
+        : m_renderer(renderer) {}
 
-    luisa::unique_ptr<Sampler> Sampler::create(const Renderer* renderer) noexcept
+    luisa::unique_ptr<Sampler> Sampler::create(const Renderer& renderer) noexcept
     {
         return luisa::make_unique<Sampler>(renderer);
     }
@@ -21,7 +19,7 @@ namespace Yutrel
     {
         if (!m_states || state_count > m_states.size())
         {
-            m_states = m_renderer->device().create_buffer<uint>(next_pow2(state_count));
+            m_states = m_renderer.device().create_buffer<uint>(next_pow2(state_count));
         }
     }
 

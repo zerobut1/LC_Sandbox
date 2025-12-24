@@ -13,7 +13,7 @@ namespace Yutrel
 
     class Renderer;
 
-    class Application
+    class Application final
     {
     public:
         struct CreateInfo

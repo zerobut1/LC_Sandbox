@@ -2,7 +2,7 @@
 
 #include <luisa/dsl/syntax.h>
 
-#include "utils/frame.h"
+#include "frame.h"
 
 namespace Yutrel
 {

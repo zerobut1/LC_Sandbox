@@ -7,11 +7,8 @@
 
 namespace Yutrel
 {
-
     Renderer::Renderer(Device& device) noexcept
-        : m_device(device)
-    {
-    }
+        : m_device(device) {}
 
     Renderer::~Renderer() noexcept = default;
 
@@ -19,7 +16,7 @@ namespace Yutrel
     {
         auto renderer = luisa::make_unique<Renderer>(device);
 
-        CommandBuffer command_buffer{&stream};
+        CommandBuffer command_buffer{stream};
 
         // TODO: from scene description
         Camera::CreateInfo camera_info{

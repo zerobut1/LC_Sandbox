@@ -7,9 +7,7 @@
 namespace Yutrel
 {
     Film::Film(Renderer& renderer) noexcept
-        : m_renderer{&renderer}
-    {
-    }
+        : m_renderer(renderer) {}
 
     Film::~Film() noexcept = default;
 
@@ -47,18 +45,18 @@ namespace Yutrel
     {
         m_rendering_finished = false;
 
-        auto&& device    = m_renderer->device();
+        auto&& device    = m_renderer.device();
         uint2 size       = resolution();
         auto pixel_count = size.x * size.y;
 
         if (!m_image)
         {
-            m_image                     = renderer()->device().create_buffer<float4>(pixel_count);
+            m_image                     = renderer().device().create_buffer<float4>(pixel_count);
             Kernel1D clear_image_kernel = [](BufferFloat4 image) noexcept
             {
                 image.write(dispatch_x(), make_float4(0.f));
             };
-            m_clear_image = m_renderer->device().compile(clear_image_kernel);
+            m_clear_image = m_renderer.device().compile(clear_image_kernel);
         }
         command_buffer << m_clear_image(m_image).dispatch(pixel_count);
 
@@ -107,7 +105,7 @@ namespace Yutrel
     {
         m_rendering_finished = true;
 
-        CommandBuffer command_buffer{m_stream};
+        CommandBuffer command_buffer{*m_stream};
 
         while (!m_window->should_close())
         {

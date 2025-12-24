@@ -7,7 +7,7 @@ namespace Yutrel
 {
     PinholeCamera::PinholeCamera(const Camera::CreateInfo& info, Renderer& renderer, CommandBuffer& command_buffer) noexcept
         : Camera(info, renderer, command_buffer),
-          m_device_data{renderer.arena_buffer<PinholeCameraData>(1u)},
+          m_device_data(renderer.arena_buffer<PinholeCameraData>(1u)),
           m_fov(radians(info.fov))
     {
         PinholeCameraData host_data{make_float2(film()->resolution()), tan(m_fov * 0.5f)};

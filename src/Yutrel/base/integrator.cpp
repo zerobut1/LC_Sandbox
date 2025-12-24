@@ -12,10 +12,8 @@
 namespace Yutrel
 {
     Integrator::Integrator(Renderer& renderer) noexcept
-        : m_renderer{&renderer},
-          m_sampler(Sampler::create(m_renderer))
-    {
-    }
+        : m_renderer(renderer),
+          m_sampler(Sampler::create(renderer)) {}
 
     Integrator::~Integrator() noexcept = default;
 
@@ -26,9 +24,9 @@ namespace Yutrel
 
     void Integrator::render(Stream& stream)
     {
-        CommandBuffer command_buffer{&stream};
+        CommandBuffer command_buffer{stream};
 
-        auto camera = m_renderer->camera();
+        auto camera = m_renderer.camera();
 
         camera->film()->prepare(command_buffer);
         {
@@ -89,11 +87,11 @@ namespace Yutrel
             }
         }
 
-        auto material_buffer = renderer()->device().create_buffer<MaterialData>(host_materials.size());
+        auto material_buffer = renderer().device().create_buffer<MaterialData>(host_materials.size());
         command_buffer << material_buffer.copy_from(host_materials.data()) << commit();
         m_material_buffer = material_buffer.view();
 
-        auto sphere_buffer = renderer()->device().create_buffer<SphereData>(host_spheres.size());
+        auto sphere_buffer = renderer().device().create_buffer<SphereData>(host_spheres.size());
         command_buffer << sphere_buffer.copy_from(host_spheres.data()) << commit();
         auto sphere_buffer_view = sphere_buffer.view();
         auto sphere_count       = static_cast<uint>(host_spheres.size());
@@ -122,7 +120,7 @@ namespace Yutrel
 
         LUISA_INFO("Start compiling Integrator shader");
         Clock clock_compile;
-        auto render = renderer()->device().compile(render_kernel);
+        auto render = renderer().device().compile(render_kernel);
         LUISA_INFO("Integrator shader compile in {} ms.", clock_compile.toc());
         command_buffer << synchronize();
 

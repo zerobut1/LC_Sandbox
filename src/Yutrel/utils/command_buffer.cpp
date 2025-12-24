@@ -4,8 +4,8 @@
 
 namespace Yutrel
 {
-    CommandBuffer::CommandBuffer(Stream* stream) noexcept
-        : _stream{stream} {}
+    CommandBuffer::CommandBuffer(Stream& stream) noexcept
+        : _stream{&stream} {}
 
     CommandBuffer::~CommandBuffer() noexcept
     {

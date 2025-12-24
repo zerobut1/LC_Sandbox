@@ -24,11 +24,11 @@ namespace Yutrel
     }
 
     Camera::Camera(const CreateInfo& info, Renderer& renderer, CommandBuffer& command_buffer) noexcept
-        : m_renderer{&renderer},
-          m_film{Film::create(renderer)},
-          m_spp{info.spp},
-          m_shutter_span{info.shutter_span},
-          m_shutter_samples_count{info.shutter_samples_count}
+        : m_renderer(renderer),
+          m_film(Film::create(renderer)),
+          m_spp(info.spp),
+          m_shutter_span(info.shutter_span),
+          m_shutter_samples_count(info.shutter_samples_count)
     {
         auto w = normalize(info.position - info.lookat);
         auto u = normalize(cross(info.up, w));

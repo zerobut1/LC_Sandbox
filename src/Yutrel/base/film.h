@@ -21,7 +21,7 @@ namespace Yutrel
     class Film
     {
     private:
-        const Renderer* m_renderer;
+        const Renderer& m_renderer;
         Stream* m_stream{};
 
         luisa::unique_ptr<ImGuiWindow> m_window;
@@ -49,7 +49,7 @@ namespace Yutrel
 
     public:
         [[nodiscard]] static luisa::unique_ptr<Film> create(Renderer& renderer) noexcept;
-        [[nodiscard]] auto renderer() const noexcept { return m_renderer; }
+        [[nodiscard]] auto& renderer() const noexcept { return m_renderer; }
 
         [[nodiscard]] uint2 resolution() const noexcept { return m_resolution; }
 

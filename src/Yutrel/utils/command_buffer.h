@@ -16,7 +16,7 @@ namespace Yutrel
         CommandList _list;
 
     public:
-        explicit CommandBuffer(Stream* stream) noexcept;
+        explicit CommandBuffer(Stream& stream) noexcept;
         ~CommandBuffer() noexcept;
 
         [[nodiscard]] auto stream() const noexcept { return _stream; }

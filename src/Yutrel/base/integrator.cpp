@@ -39,14 +39,12 @@ namespace Yutrel
     {
         // temp
         //-------------------------
-        luisa::vector<MaterialData> host_materials;
-        host_materials.reserve(256u);
         luisa::vector<SphereData> host_spheres;
         host_spheres.reserve(256u);
 
         // ground
-        host_materials.emplace_back(MaterialData{MT_Lambertian, make_float4(137.0f / 255.0f, 227.0f / 255.0f, 78.0f / 255.0f, 0.0f)});
-        host_spheres.emplace_back(SphereData{make_float3(0.0f, -1000.0f, 0.0f), 1000.0f, make_float3(0.0f), static_cast<uint>(host_materials.size() - 1u)});
+        auto mat_id = m_materials.create<Lambertian>(make_float3(137.0f / 255.0f, 227.0f / 255.0f, 78.0f / 255.0f));
+        host_spheres.emplace_back(SphereData{make_float3(0.0f, -1000.0f, 0.0f), 1000.0f, make_float3(0.0f), mat_id});
 
         // small spheres
         for (int a = -11; a < 11; a++)
@@ -63,9 +61,9 @@ namespace Yutrel
                         float3 albedo = make_float3(static_cast<float>(random_double()) * static_cast<float>(random_double()),
                                                     static_cast<float>(random_double()) * static_cast<float>(random_double()),
                                                     static_cast<float>(random_double()) * static_cast<float>(random_double()));
-                        host_materials.emplace_back(MaterialData{MT_Lambertian, make_float4(albedo, 0.0f)});
+                        auto mat_id   = m_materials.create<Lambertian>(albedo);
                         auto velocity = make_float3(0.0f, 0.5f * static_cast<float>(random_double()), 0.0f);
-                        host_spheres.emplace_back(SphereData{center, 0.2f, velocity, static_cast<uint>(host_materials.size() - 1u)});
+                        host_spheres.emplace_back(SphereData{center, 0.2f, velocity, mat_id});
                     }
                     else if (choose_mat < 0.95) // metal
                     {
@@ -73,23 +71,19 @@ namespace Yutrel
                                                     0.5f * (1.0f + static_cast<float>(random_double())),
                                                     0.5f * (1.0f + static_cast<float>(random_double())));
                         float fuzz    = 0.5f * static_cast<float>(random_double());
-                        host_materials.emplace_back(MaterialData{MT_Metal, make_float4(albedo, fuzz)});
-                        host_spheres.emplace_back(SphereData{center, 0.2f, make_float3(0.0f), static_cast<uint>(host_materials.size() - 1u)});
+                        auto mat_id   = m_materials.create<Metal>(albedo, fuzz);
+                        host_spheres.emplace_back(SphereData{center, 0.2f, make_float3(0.0f), mat_id});
                     }
                     else // glass
                     {
-                        host_materials.emplace_back(MaterialData{MT_Dielectric, make_float4(1.5f, 0.0f, 0.0f, 0.0f)});
+                        auto mat_id = m_materials.create<Dielectric>(1.5f);
                         auto radius = static_cast<float>(random_double());
                         center.y    = radius;
-                        host_spheres.emplace_back(SphereData{center, radius, make_float3(0.0f), static_cast<uint>(host_materials.size() - 1u)});
+                        host_spheres.emplace_back(SphereData{center, radius, make_float3(0.0f), mat_id});
                     }
                 }
             }
         }
-
-        auto material_buffer = renderer().device().create_buffer<MaterialData>(host_materials.size());
-        command_buffer << material_buffer.copy_from(host_materials.data()) << commit();
-        m_material_buffer = material_buffer.view();
 
         auto sphere_buffer = renderer().device().create_buffer<SphereData>(host_spheres.size());
         command_buffer << sphere_buffer.copy_from(host_spheres.data()) << commit();
@@ -190,13 +184,11 @@ namespace Yutrel
             Float3 attenuation = make_float3(0.0f);
             auto u_lobe        = sampler()->generate_1d();
             auto u             = sampler()->generate_2d();
-            auto mat           = m_material_buffer->read(rec.mat_id);
 
-            $if(!Material::scatter(ray, rec, attenuation, u, u_lobe, mat))
+            m_materials.dispatch(rec.mat_id, [&](auto material) noexcept
             {
-                color = make_float3(0.0f);
-                $break;
-            };
+                material->scatter(ray, rec, attenuation, u, u_lobe);
+            });
 
             color *= attenuation;
         };

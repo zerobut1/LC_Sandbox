@@ -25,8 +25,8 @@ namespace Yutrel
 
         luisa::unique_ptr<Sampler> m_sampler;
 
-        BufferView<MaterialData> m_material_buffer;
         luisa::unique_ptr<HittableList> m_world;
+        Polymorphic<Material> m_materials;
 
     public:
         explicit Integrator(Renderer& renderer) noexcept;

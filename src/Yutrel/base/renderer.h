@@ -4,10 +4,13 @@
 
 #include "base/camera.h"
 
+#include <rtweekend/rtweekend.h>
+
 namespace Yutrel
 {
     using namespace luisa;
     using namespace luisa::compute;
+    using namespace RTWeekend;
 
     class Scene;
     class Integrator;
@@ -20,6 +23,10 @@ namespace Yutrel
 
         luisa::unique_ptr<Camera::Instance> m_camera;
         luisa::unique_ptr<Integrator> m_integrator;
+
+    public:
+        luisa::unique_ptr<HittableList> m_world;
+        Polymorphic<Material::Instance> m_materials;
 
     public:
         explicit Renderer(Device& device) noexcept;

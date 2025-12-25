@@ -5,9 +5,12 @@
 #include <luisa/dsl/syntax.h>
 
 #include "rtweekend/hittable.h"
+#include "utils/command_buffer.h"
 #include "utils/polymorphic_closure.h"
 #include "utils/sampling.h"
 #include "utils/scattering.h"
+
+class Renderer;
 
 namespace Yutrel::RTWeekend
 {
@@ -24,21 +27,36 @@ namespace Yutrel::RTWeekend
             [[nodiscard]] virtual Bool scatter(Var<Ray>& ray, Var<float3>& attenuation, Expr<float2> u, Expr<float> u_lobe) const noexcept = 0;
         };
 
+        class Instance
+        {
+        private:
+            const Renderer& m_renderer;
+            const Material* m_material;
+
+        public:
+            explicit Instance(const Renderer& renderer, const Material* material) noexcept
+                : m_renderer(renderer), m_material(material) {}
+            virtual ~Instance() noexcept = default;
+
+        public:
+            void closure(PolymorphicCall<Closure>& call, const HitRecord& rec) const noexcept
+            {
+                auto cls = call.collect(closure_identifier(), [&]
+                {
+                    return create_closure();
+                });
+                populate_closure(cls, rec);
+            }
+
+            [[nodiscard]] virtual luisa::string closure_identifier() const noexcept              = 0;
+            [[nodiscard]] virtual luisa::unique_ptr<Closure> create_closure() const noexcept     = 0;
+            virtual void populate_closure(Closure* closure, const HitRecord& rec) const noexcept = 0;
+        };
+
     public:
         virtual ~Material() = default;
 
-        void closure(PolymorphicCall<Closure>& call, const HitRecord& rec) const noexcept
-        {
-            auto cls = call.collect(closure_identifier(), [&]
-            {
-                return create_closure();
-            });
-            populate_closure(cls, rec);
-        }
-
-        virtual luisa::string closure_identifier() const noexcept                            = 0;
-        [[nodiscard]] virtual luisa::unique_ptr<Closure> create_closure() const noexcept     = 0;
-        virtual void populate_closure(Closure* closure, const HitRecord& rec) const noexcept = 0;
+        [[nodiscard]] virtual luisa::unique_ptr<Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept = 0;
     };
 
     class Lambertian : public Material
@@ -68,29 +86,46 @@ namespace Yutrel::RTWeekend
             }
         };
 
+        class Instance : public Material::Instance
+        {
+        private:
+            float3 m_albedo;
+
+        public:
+            explicit Instance(const Renderer& renderer, const Material* material, float3 albedo) noexcept
+                : Material::Instance(renderer, material), m_albedo(albedo) {}
+            ~Instance() noexcept override = default;
+
+        public:
+            [[nodiscard]] luisa::string closure_identifier() const noexcept override
+            {
+                return "Lambertian";
+            }
+
+            [[nodiscard]] luisa::unique_ptr<Material::Closure> create_closure() const noexcept override
+            {
+                return luisa::make_unique<Closure>();
+            }
+
+            void populate_closure(Material::Closure* closure, const HitRecord& rec) const noexcept override
+            {
+                auto albedo = m_albedo;
+
+                Lambertian::Closure::Context ctx{
+                    .rec    = rec,
+                    .albedo = albedo,
+                };
+                closure->bind(std::move(ctx));
+            }
+        };
+
     public:
         explicit Lambertian(float3 a) noexcept
             : m_albedo{a} {}
 
-        luisa::string closure_identifier() const noexcept override
+        [[nodiscard]] luisa::unique_ptr<Material::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept
         {
-            return "Lambertian";
-        }
-
-        [[nodiscard]] luisa::unique_ptr<Material::Closure> create_closure() const noexcept override
-        {
-            return luisa::make_unique<Closure>();
-        }
-
-        void populate_closure(Material::Closure* closure, const HitRecord& rec) const noexcept override
-        {
-            auto albedo = m_albedo;
-
-            Lambertian::Closure::Context ctx{
-                .rec    = rec,
-                .albedo = albedo,
-            };
-            closure->bind(std::move(ctx));
+            return luisa::make_unique<Instance>(renderer, this, make_float3(m_albedo));
         }
     };
 
@@ -121,36 +156,53 @@ namespace Yutrel::RTWeekend
             }
         };
 
+        class Instance : public Material::Instance
+        {
+        private:
+            float3 m_albedo;
+            float m_fuzz;
+
+        public:
+            explicit Instance(const Renderer& renderer, const Material* material, float3 albedo, float fuzz) noexcept
+                : Material::Instance(renderer, material), m_albedo(albedo), m_fuzz(fuzz) {}
+            ~Instance() noexcept override = default;
+
+        public:
+            [[nodiscard]] luisa::string closure_identifier() const noexcept override
+            {
+                return "Metal";
+            }
+
+            [[nodiscard]] luisa::unique_ptr<Material::Closure> create_closure() const noexcept override
+            {
+                return luisa::make_unique<Closure>();
+            }
+
+            void populate_closure(Material::Closure* closure, const HitRecord& rec) const noexcept override
+            {
+                auto albedo = m_albedo;
+                auto fuzz   = m_fuzz;
+
+                Metal::Closure::Context ctx{
+                    .rec    = rec,
+                    .albedo = albedo,
+                    .fuzz   = fuzz,
+                };
+                closure->bind(std::move(ctx));
+            }
+        };
+
     private:
         float3 m_albedo;
         float m_fuzz;
 
     public:
         Metal(float3 a, float f) noexcept
-            : m_albedo{a},
-              m_fuzz{f} {}
+            : m_albedo{a}, m_fuzz{f} {}
 
-        luisa::string closure_identifier() const noexcept override
+        [[nodiscard]] luisa::unique_ptr<Material::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept
         {
-            return "Metal";
-        }
-
-        [[nodiscard]] luisa::unique_ptr<Material::Closure> create_closure() const noexcept override
-        {
-            return luisa::make_unique<Closure>();
-        }
-
-        void populate_closure(Material::Closure* closure, const HitRecord& rec) const noexcept override
-        {
-            auto albedo = m_albedo;
-            auto fuzz   = m_fuzz;
-
-            Metal::Closure::Context ctx{
-                .rec    = rec,
-                .albedo = albedo,
-                .fuzz   = fuzz,
-            };
-            closure->bind(std::move(ctx));
+            return luisa::make_unique<Instance>(renderer, this, make_float3(m_albedo), m_fuzz);
         }
     };
 
@@ -163,7 +215,7 @@ namespace Yutrel::RTWeekend
             struct Context
             {
                 HitRecord rec;
-                float ior;
+                Float ior;
             };
 
             [[nodiscard]] Bool scatter(Var<Ray>& ray, Var<float3>& attenuation, Expr<float2> u, Expr<float> u_lobe) const noexcept override
@@ -208,6 +260,39 @@ namespace Yutrel::RTWeekend
             }
         };
 
+        class Instance : public Material::Instance
+        {
+        private:
+            float m_ior;
+
+        public:
+            explicit Instance(const Renderer& renderer, const Material* material, float ior) noexcept
+                : Material::Instance(renderer, material), m_ior(ior) {}
+            ~Instance() noexcept override = default;
+
+        public:
+            [[nodiscard]] luisa::string closure_identifier() const noexcept override
+            {
+                return "Dielectric";
+            }
+
+            [[nodiscard]] luisa::unique_ptr<Material::Closure> create_closure() const noexcept override
+            {
+                return luisa::make_unique<Closure>();
+            }
+
+            void populate_closure(Material::Closure* closure, const HitRecord& rec) const noexcept override
+            {
+                auto ior = m_ior;
+
+                Dielectric::Closure::Context ctx{
+                    .rec = rec,
+                    .ior = ior,
+                };
+                closure->bind(std::move(ctx));
+            }
+        };
+
     private:
         float m_ior; // Index of Refraction
 
@@ -215,25 +300,9 @@ namespace Yutrel::RTWeekend
         explicit Dielectric(float ior) noexcept
             : m_ior{ior} {}
 
-        luisa::string closure_identifier() const noexcept override
+        [[nodiscard]] luisa::unique_ptr<Material::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept
         {
-            return "Dielectric";
-        }
-
-        [[nodiscard]] luisa::unique_ptr<Material::Closure> create_closure() const noexcept override
-        {
-            return luisa::make_unique<Closure>();
-        }
-
-        void populate_closure(Material::Closure* closure, const HitRecord& rec) const noexcept override
-        {
-            auto ior = m_ior;
-
-            Dielectric::Closure::Context ctx{
-                .rec = rec,
-                .ior = ior,
-            };
-            closure->bind(std::move(ctx));
+            return luisa::make_unique<Instance>(renderer, this, m_ior);
         }
     };
 

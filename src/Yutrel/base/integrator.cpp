@@ -37,61 +37,6 @@ namespace Yutrel
 
     void Integrator::render_one_camera(CommandBuffer& command_buffer, Camera::Instance* camera)
     {
-        // temp
-        //-------------------------
-        luisa::vector<SphereData> host_spheres;
-        host_spheres.reserve(256u);
-
-        // ground
-        auto mat_id = m_materials.create<Lambertian>(make_float3(137.0f / 255.0f, 227.0f / 255.0f, 78.0f / 255.0f));
-        host_spheres.emplace_back(SphereData{make_float3(0.0f, -1000.0f, 0.0f), 1000.0f, make_float3(0.0f), mat_id});
-
-        // small spheres
-        for (int a = -11; a < 11; a++)
-        {
-            for (int b = -11; b < 11; b++)
-            {
-                auto choose_mat = random_double();
-                float3 center(static_cast<float>(a) + 0.9f * static_cast<float>(random_double()), 0.2f, static_cast<float>(b) + 0.9f * static_cast<float>(random_double()));
-
-                if (length(center - float3(4.0f, 0.2f, 0.0f)) > 0.9f)
-                {
-                    if (choose_mat < 0.8) // diffuse
-                    {
-                        float3 albedo = make_float3(static_cast<float>(random_double()) * static_cast<float>(random_double()),
-                                                    static_cast<float>(random_double()) * static_cast<float>(random_double()),
-                                                    static_cast<float>(random_double()) * static_cast<float>(random_double()));
-                        auto mat_id   = m_materials.create<Lambertian>(albedo);
-                        auto velocity = make_float3(0.0f, 0.5f * static_cast<float>(random_double()), 0.0f);
-                        host_spheres.emplace_back(SphereData{center, 0.2f, velocity, mat_id});
-                    }
-                    else if (choose_mat < 0.95) // metal
-                    {
-                        float3 albedo = make_float3(0.5f * (1.0f + static_cast<float>(random_double())),
-                                                    0.5f * (1.0f + static_cast<float>(random_double())),
-                                                    0.5f * (1.0f + static_cast<float>(random_double())));
-                        float fuzz    = 0.5f * static_cast<float>(random_double());
-                        auto mat_id   = m_materials.create<Metal>(albedo, fuzz);
-                        host_spheres.emplace_back(SphereData{center, 0.2f, make_float3(0.0f), mat_id});
-                    }
-                    else // glass
-                    {
-                        auto mat_id = m_materials.create<Dielectric>(1.5f);
-                        auto radius = static_cast<float>(random_double());
-                        center.y    = radius;
-                        host_spheres.emplace_back(SphereData{center, radius, make_float3(0.0f), mat_id});
-                    }
-                }
-            }
-        }
-
-        auto sphere_buffer = renderer().device().create_buffer<SphereData>(host_spheres.size());
-        command_buffer << sphere_buffer.copy_from(host_spheres.data()) << commit();
-        auto sphere_buffer_view = sphere_buffer.view();
-        auto sphere_count       = static_cast<uint>(host_spheres.size());
-        m_world                 = luisa::make_unique<HittableList>(sphere_buffer_view, sphere_count);
-        //-------------------------
-
         auto spp        = camera->base()->spp();
         auto resolution = camera->film()->resolution();
 
@@ -172,7 +117,7 @@ namespace Yutrel
         $for(depth, MAX_DEPTH)
         {
             HitRecord rec;
-            $if(!m_world->hit(ray, T_MIN, T_MAX, time, rec))
+            $if(!renderer().m_world->hit(ray, T_MIN, T_MAX, time, rec))
             {
                 // background color
                 auto direction = normalize(ray->direction());
@@ -186,7 +131,7 @@ namespace Yutrel
             auto u             = sampler()->generate_2d();
 
             PolymorphicCall<Material::Closure> call;
-            m_materials.dispatch(rec.mat_id, [&](auto material) noexcept
+            renderer().m_materials.dispatch(rec.mat_id, [&](auto material) noexcept
             {
                 material->closure(call, rec);
             });

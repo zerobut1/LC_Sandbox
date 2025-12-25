@@ -11,6 +11,7 @@ namespace Yutrel
     using namespace luisa;
     using namespace luisa::compute;
 
+    class Scene;
     class Renderer;
 
     class Application final
@@ -29,6 +30,7 @@ namespace Yutrel
         Device m_device;
         Stream m_stream;
 
+        luisa::unique_ptr<Scene> m_scene;
         luisa::unique_ptr<Renderer> m_renderer;
 
     public:

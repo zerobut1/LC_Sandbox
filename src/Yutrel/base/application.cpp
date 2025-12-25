@@ -4,6 +4,7 @@
 #include <luisa/luisa-compute.h>
 
 #include "base/renderer.h"
+#include "base/scene.h"
 
 namespace Yutrel
 {
@@ -13,6 +14,7 @@ namespace Yutrel
         m_device = m_context.create_device(info.backend);
         m_stream = m_device.create_stream(StreamTag::GRAPHICS);
 
+        m_scene    = Scene::create(m_context);
         m_renderer = Renderer::create(m_device, m_stream);
     }
 

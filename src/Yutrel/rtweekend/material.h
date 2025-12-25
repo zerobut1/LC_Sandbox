@@ -4,13 +4,13 @@
 #include <luisa/dsl/sugar.h>
 #include <luisa/dsl/syntax.h>
 
+#include "base/scene.h"
+#include "base/texture.h"
 #include "rtweekend/hittable.h"
 #include "utils/command_buffer.h"
 #include "utils/polymorphic_closure.h"
 #include "utils/sampling.h"
 #include "utils/scattering.h"
-
-class Renderer;
 
 namespace Yutrel::RTWeekend
 {
@@ -61,9 +61,6 @@ namespace Yutrel::RTWeekend
 
     class Lambertian : public Material
     {
-    private:
-        float3 m_albedo;
-
     public:
         class Closure : public Material::Closure
         {
@@ -89,10 +86,11 @@ namespace Yutrel::RTWeekend
         class Instance : public Material::Instance
         {
         private:
-            float3 m_albedo;
+            // float3 m_albedo;
+            const Texture::Instance* m_albedo;
 
         public:
-            explicit Instance(const Renderer& renderer, const Material* material, float3 albedo) noexcept
+            explicit Instance(const Renderer& renderer, const Material* material, const Texture::Instance* albedo) noexcept
                 : Material::Instance(renderer, material), m_albedo(albedo) {}
             ~Instance() noexcept override = default;
 
@@ -109,7 +107,7 @@ namespace Yutrel::RTWeekend
 
             void populate_closure(Material::Closure* closure, const HitRecord& rec) const noexcept override
             {
-                auto albedo = m_albedo;
+                Float3 albedo = m_albedo->evaluate().xyz();
 
                 Lambertian::Closure::Context ctx{
                     .rec    = rec,
@@ -119,14 +117,21 @@ namespace Yutrel::RTWeekend
             }
         };
 
-    public:
-        explicit Lambertian(float3 a) noexcept
-            : m_albedo{a} {}
+    private:
+        const Texture* m_albedo;
 
-        [[nodiscard]] luisa::unique_ptr<Material::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept
+    public:
+        explicit Lambertian(Scene& scene, float3 a) noexcept
         {
-            return luisa::make_unique<Instance>(renderer, this, make_float3(m_albedo));
+            Texture::CreateInfo info{
+                .type = Texture::Type::constant,
+                .v    = make_float4(a, 1.0f),
+            };
+
+            m_albedo = scene.load_texture(info);
         }
+
+        [[nodiscard]] luisa::unique_ptr<Material::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept override;
     };
 
     class Metal : public Material
@@ -159,12 +164,11 @@ namespace Yutrel::RTWeekend
         class Instance : public Material::Instance
         {
         private:
-            float3 m_albedo;
-            float m_fuzz;
+            const Texture::Instance* m_albedo_fuzz;
 
         public:
-            explicit Instance(const Renderer& renderer, const Material* material, float3 albedo, float fuzz) noexcept
-                : Material::Instance(renderer, material), m_albedo(albedo), m_fuzz(fuzz) {}
+            explicit Instance(const Renderer& renderer, const Material* material, const Texture::Instance* albedo_fuzz) noexcept
+                : Material::Instance(renderer, material), m_albedo_fuzz(albedo_fuzz) {}
             ~Instance() noexcept override = default;
 
         public:
@@ -180,8 +184,9 @@ namespace Yutrel::RTWeekend
 
             void populate_closure(Material::Closure* closure, const HitRecord& rec) const noexcept override
             {
-                auto albedo = m_albedo;
-                auto fuzz   = m_fuzz;
+                auto albedo_fuzz = m_albedo_fuzz->evaluate();
+                auto albedo      = albedo_fuzz.xyz();
+                auto fuzz        = albedo_fuzz.w;
 
                 Metal::Closure::Context ctx{
                     .rec    = rec,
@@ -193,17 +198,21 @@ namespace Yutrel::RTWeekend
         };
 
     private:
-        float3 m_albedo;
-        float m_fuzz;
+        const Texture* m_albedo_fuzz;
 
     public:
-        Metal(float3 a, float f) noexcept
-            : m_albedo{a}, m_fuzz{f} {}
-
-        [[nodiscard]] luisa::unique_ptr<Material::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept
+        Metal(Scene& scene, float3 a, float f) noexcept
         {
-            return luisa::make_unique<Instance>(renderer, this, make_float3(m_albedo), m_fuzz);
+            Texture::CreateInfo info{
+
+                .type = Texture::Type::constant,
+                .v    = make_float4(a, f),
+            };
+
+            m_albedo_fuzz = scene.load_texture(info);
         }
+
+        [[nodiscard]] luisa::unique_ptr<Material::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept override;
     };
 
     class Dielectric : public Material
@@ -300,10 +309,7 @@ namespace Yutrel::RTWeekend
         explicit Dielectric(float ior) noexcept
             : m_ior{ior} {}
 
-        [[nodiscard]] luisa::unique_ptr<Material::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept
-        {
-            return luisa::make_unique<Instance>(renderer, this, m_ior);
-        }
+        [[nodiscard]] luisa::unique_ptr<Material::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept override;
     };
 
 } // namespace Yutrel::RTWeekend

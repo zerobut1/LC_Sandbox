@@ -3,6 +3,7 @@
 #include <luisa/luisa-compute.h>
 
 #include "base/camera.h"
+#include "base/texture.h"
 
 #include <rtweekend/rtweekend.h>
 
@@ -23,6 +24,7 @@ namespace Yutrel
 
         luisa::unique_ptr<Camera::Instance> m_camera;
         luisa::unique_ptr<Integrator> m_integrator;
+        luisa::unordered_map<const Texture*, luisa::unique_ptr<Texture::Instance>> m_textures;
 
     public:
         luisa::unique_ptr<HittableList> m_world;
@@ -56,12 +58,15 @@ namespace Yutrel
         }
 
     public:
-        [[nodiscard]] static luisa::unique_ptr<Renderer> create(Device& device, Stream& stream, const Scene& scene) noexcept;
+        // TODO : const Scene &
+        [[nodiscard]] static luisa::unique_ptr<Renderer> create(Device& device, Stream& stream, Scene& scene) noexcept;
         [[nodiscard]] auto& device() const noexcept { return m_device; }
         [[nodiscard]] auto camera() const noexcept { return m_camera.get(); }
         [[nodiscard]] auto integrator() const noexcept { return m_integrator.get(); }
 
         void render(Stream& stream);
+
+        [[nodiscard]] const Texture::Instance* build_texture(CommandBuffer& command_buffer, const Texture* texture) noexcept;
     };
 
 } // namespace Yutrel

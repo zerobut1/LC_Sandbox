@@ -13,7 +13,7 @@ namespace Yutrel
 
     Renderer::~Renderer() noexcept = default;
 
-    luisa::unique_ptr<Renderer> Renderer::create(Device& device, Stream& stream, const Scene& scene) noexcept
+    luisa::unique_ptr<Renderer> Renderer::create(Device& device, Stream& stream, Scene& scene) noexcept
     {
         auto renderer = luisa::make_unique<Renderer>(device);
 
@@ -28,7 +28,7 @@ namespace Yutrel
         host_spheres.reserve(256u);
 
         // ground
-        auto mat_id = renderer->m_materials.emplace(Lambertian(make_float3(137.0f / 255.0f, 227.0f / 255.0f, 78.0f / 255.0f)).build(*renderer, command_buffer));
+        auto mat_id = renderer->m_materials.emplace(Lambertian(scene, make_float3(137.0f / 255.0f, 227.0f / 255.0f, 78.0f / 255.0f)).build(*renderer, command_buffer));
         host_spheres.emplace_back(SphereData{make_float3(0.0f, -1000.0f, 0.0f), 1000.0f, make_float3(0.0f), mat_id});
 
         // small spheres
@@ -46,7 +46,7 @@ namespace Yutrel
                         float3 albedo = make_float3(static_cast<float>(random_double()) * static_cast<float>(random_double()),
                                                     static_cast<float>(random_double()) * static_cast<float>(random_double()),
                                                     static_cast<float>(random_double()) * static_cast<float>(random_double()));
-                        auto mat_id   = renderer->m_materials.emplace(Lambertian(albedo).build(*renderer, command_buffer));
+                        auto mat_id   = renderer->m_materials.emplace(Lambertian(scene, albedo).build(*renderer, command_buffer));
                         auto velocity = make_float3(0.0f, 0.5f * static_cast<float>(random_double()), 0.0f);
                         host_spheres.emplace_back(SphereData{center, 0.2f, velocity, mat_id});
                     }
@@ -56,7 +56,7 @@ namespace Yutrel
                                                     0.5f * (1.0f + static_cast<float>(random_double())),
                                                     0.5f * (1.0f + static_cast<float>(random_double())));
                         float fuzz    = 0.5f * static_cast<float>(random_double());
-                        auto mat_id   = renderer->m_materials.emplace(Metal(albedo, fuzz).build(*renderer, command_buffer));
+                        auto mat_id   = renderer->m_materials.emplace(Metal(scene, albedo, fuzz).build(*renderer, command_buffer));
                         host_spheres.emplace_back(SphereData{center, 0.2f, make_float3(0.0f), mat_id});
                     }
                     else // glass
@@ -85,6 +85,18 @@ namespace Yutrel
     void Renderer::render(Stream& stream)
     {
         m_integrator->render(stream);
+    }
+
+    const Texture::Instance* Renderer::build_texture(CommandBuffer& command_buffer, const Texture* texture) noexcept
+    {
+        if (texture == nullptr)
+            return nullptr;
+        if (auto iter = m_textures.find(texture); iter != m_textures.end())
+        {
+            return iter->second.get();
+        }
+        auto t = texture->build(*this, command_buffer);
+        return m_textures.emplace(texture, std::move(t)).first->second.get();
     }
 
 } // namespace Yutrel

@@ -42,6 +42,9 @@ namespace Yutrel
             float focus_distance{10.0f};
         };
 
+        [[nodiscard]] static luisa::unique_ptr<Camera> create(const CreateInfo& info) noexcept;
+
+    public:
         struct Sample
         {
             Var<Ray> ray;
@@ -105,7 +108,6 @@ namespace Yutrel
         Camera& operator=(Camera&&)      = delete;
 
     public:
-        [[nodiscard]] static luisa::unique_ptr<Camera> create(const CreateInfo& info) noexcept;
         [[nodiscard]] virtual luisa::unique_ptr<Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept = 0;
 
         [[nodiscard]] auto spp() const noexcept { return m_spp; }

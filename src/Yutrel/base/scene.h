@@ -2,18 +2,22 @@
 
 #include <luisa/luisa-compute.h>
 
+#include "base/camera.h"
+#include "base/texture.h"
+
 namespace Yutrel
 {
     using namespace luisa;
     using namespace luisa::compute;
 
-    class Camera;
-
     class Scene
     {
+    public:
+        struct Config;
+
     private:
         const Context& m_context;
-        luisa::unique_ptr<Camera> m_camera;
+        luisa::unique_ptr<Config> m_config;
 
     public:
         explicit Scene(const Context& context) noexcept;
@@ -28,7 +32,10 @@ namespace Yutrel
     public:
         [[nodiscard]] static luisa::unique_ptr<Scene> create(const Context& context) noexcept;
 
-        [[nodiscard]] Camera* camera() const noexcept;
+        void load_camera(const Camera::CreateInfo& info) const noexcept;
+        [[nodiscard]] const Texture* load_texture(const Texture::CreateInfo& info) const noexcept;
+
+        [[nodiscard]] const Camera* camera() const noexcept;
     };
 
 } // namespace Yutrel

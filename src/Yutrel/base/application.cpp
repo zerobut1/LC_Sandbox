@@ -15,7 +15,7 @@ namespace Yutrel
         m_stream = m_device.create_stream(StreamTag::GRAPHICS);
 
         m_scene    = Scene::create(m_context);
-        m_renderer = Renderer::create(m_device, m_stream);
+        m_renderer = Renderer::create(m_device, m_stream, *m_scene);
     }
 
     Application::~Application() noexcept = default;

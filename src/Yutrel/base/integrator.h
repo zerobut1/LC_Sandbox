@@ -4,6 +4,7 @@
 #include <luisa/dsl/syntax.h>
 #include <luisa/runtime/stream.h>
 
+#include "base/camera.h"
 #include "utils/command_buffer.h"
 
 #include <rtweekend/rtweekend.h>
@@ -15,7 +16,6 @@ namespace Yutrel
     using namespace RTWeekend;
 
     class Renderer;
-    class Camera;
     class Sampler;
 
     class Integrator
@@ -46,8 +46,8 @@ namespace Yutrel
         void render(Stream& stream);
 
     private:
-        void render_one_camera(CommandBuffer& command_buffer, Camera* camera);
-        Float3 Li(const Camera* camera, Expr<uint> frame_index, Expr<uint2> pixel_id, Expr<float> time) const noexcept;
+        void render_one_camera(CommandBuffer& command_buffer, Camera::Instance* camera);
+        Float3 Li(const Camera::Instance* camera, Expr<uint> frame_index, Expr<uint2> pixel_id, Expr<float> time) const noexcept;
 
         [[nodiscard]] Float3 ray_color(Var<Ray> ray, Expr<float> time) const noexcept;
     };

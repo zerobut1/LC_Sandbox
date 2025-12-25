@@ -38,7 +38,7 @@ namespace Yutrel
         uint2 m_resolution{1920u, 1080u};
 
     public:
-        explicit Film(Renderer& renderer) noexcept;
+        explicit Film(const Renderer& renderer) noexcept;
         ~Film() noexcept;
 
         Film() noexcept              = delete;
@@ -48,7 +48,7 @@ namespace Yutrel
         Film& operator=(Film&&)      = delete;
 
     public:
-        [[nodiscard]] static luisa::unique_ptr<Film> create(Renderer& renderer) noexcept;
+        [[nodiscard]] static luisa::unique_ptr<Film> create(const Renderer& renderer) noexcept;
         [[nodiscard]] auto& renderer() const noexcept { return m_renderer; }
 
         [[nodiscard]] uint2 resolution() const noexcept { return m_resolution; }

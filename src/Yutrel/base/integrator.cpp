@@ -35,7 +35,7 @@ namespace Yutrel
         camera->film()->release();
     }
 
-    void Integrator::render_one_camera(CommandBuffer& command_buffer, Camera* camera)
+    void Integrator::render_one_camera(CommandBuffer& command_buffer, Camera::Instance* camera)
     {
         // temp
         //-------------------------
@@ -92,7 +92,7 @@ namespace Yutrel
         m_world                 = luisa::make_unique<HittableList>(sphere_buffer_view, sphere_count);
         //-------------------------
 
-        auto spp        = camera->spp();
+        auto spp        = camera->base()->spp();
         auto resolution = camera->film()->resolution();
 
         sampler()->reset(command_buffer, resolution.x * resolution.y);
@@ -118,7 +118,7 @@ namespace Yutrel
         LUISA_INFO("Integrator shader compile in {} ms.", clock_compile.toc());
         command_buffer << synchronize();
 
-        auto shutter_samples = camera->shutter_samples();
+        auto shutter_samples = camera->base()->shutter_samples();
         LUISA_INFO("Rendering started.");
         Clock clock_render;
         ProgressBar progress_bar;
@@ -148,12 +148,12 @@ namespace Yutrel
         LUISA_INFO("Rendering finished in {} ms.", clock_render.toc());
     }
 
-    Float3 Integrator::Li(const Camera* camera, Expr<uint> frame_index, Expr<uint2> pixel_id, Expr<float> time) const noexcept
+    Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Expr<uint2> pixel_id, Expr<float> time) const noexcept
     {
         sampler()->start(pixel_id, frame_index);
 
         auto u_filter        = sampler()->generate_2d();
-        auto u_lens          = camera->requires_lens_sampling() ? sampler()->generate_2d() : make_float2(0.5f);
+        auto u_lens          = camera->base()->requires_lens_sampling() ? sampler()->generate_2d() : make_float2(0.5f);
         auto [camera_ray, _] = camera->generate_ray(pixel_id, time, u_filter, u_lens);
 
         Float3 color = ray_color(camera_ray, time);

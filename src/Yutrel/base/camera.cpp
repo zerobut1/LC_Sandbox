@@ -10,23 +10,22 @@
 
 namespace Yutrel
 {
-    luisa::unique_ptr<Camera> Camera::create(const CreateInfo& info, Renderer& renderer, CommandBuffer& command_buffer) noexcept
+    luisa::unique_ptr<Camera> Camera::create(const CreateInfo& info) noexcept
     {
         switch (info.type)
         {
         case Type::pinhole:
-            return luisa::make_unique<PinholeCamera>(info, renderer, command_buffer);
+            return luisa::make_unique<PinholeCamera>(info);
         case Type::thin_lens:
-            return luisa::make_unique<ThinLensCamera>(info, renderer, command_buffer);
+            return luisa::make_unique<ThinLensCamera>(info);
         default:
-            return luisa::make_unique<PinholeCamera>(info, renderer, command_buffer);
+            LUISA_ERROR("Unsupported camera type {}.", static_cast<uint>(info.type));
+            return nullptr;
         }
     }
 
-    Camera::Camera(const CreateInfo& info, Renderer& renderer, CommandBuffer& command_buffer) noexcept
-        : m_renderer(renderer),
-          m_film(Film::create(renderer)),
-          m_spp(info.spp),
+    Camera::Camera(const CreateInfo& info) noexcept
+        : m_spp(info.spp),
           m_shutter_span(info.shutter_span),
           m_shutter_samples_count(info.shutter_samples_count)
     {
@@ -65,25 +64,6 @@ namespace Yutrel
     }
 
     Camera::~Camera() noexcept = default;
-
-    Camera::Sample Camera::generate_ray(Expr<uint2> pixel_coord, Expr<float> time, Expr<float2> u_filter, Expr<float2> u_lens) const noexcept
-    {
-        auto filter_offset = lerp(-0.5f, 0.5f, u_filter);
-        auto pixel         = make_float2(pixel_coord) + 0.5f + filter_offset;
-
-        auto ray_cs = generate_ray_in_camera_space(pixel, time, u_lens);
-
-        auto c2w    = transform();
-        auto origin = make_float3(c2w * make_float4(ray_cs->origin(), 1.0f));
-
-        auto d_camera  = make_float3x3(c2w) * ray_cs->direction();
-        auto len       = length(d_camera);
-        auto direction = ite(len < 1e-7f, make_float3(0.0f, 0.0f, -1.0f), d_camera / len);
-
-        auto ray = make_ray(origin, direction);
-
-        return {std::move(ray), pixel};
-    }
 
     luisa::vector<Camera::ShutterSample> Camera::shutter_samples() const noexcept
     {
@@ -150,6 +130,30 @@ namespace Yutrel
         }
 
         return buckets;
+    }
+
+    Camera::Instance::Instance(const Renderer& renderer, const Camera* camera) noexcept
+        : m_renderer(renderer),
+          m_camera(camera),
+          m_film(Film::create(renderer)) {}
+
+    Camera::Sample Camera::Instance::generate_ray(Expr<uint2> pixel_coord, Expr<float> time, Expr<float2> u_filter, Expr<float2> u_lens) const noexcept
+    {
+        auto filter_offset = lerp(-0.5f, 0.5f, u_filter);
+        auto pixel         = make_float2(pixel_coord) + 0.5f + filter_offset;
+
+        auto ray_cs = generate_ray_in_camera_space(pixel, time, u_lens);
+
+        auto c2w    = base()->transform();
+        auto origin = make_float3(c2w * make_float4(ray_cs->origin(), 1.0f));
+
+        auto d_camera  = make_float3x3(c2w) * ray_cs->direction();
+        auto len       = length(d_camera);
+        auto direction = ite(len < 1e-7f, make_float3(0.0f, 0.0f, -1.0f), d_camera / len);
+
+        auto ray = make_ray(origin, direction);
+
+        return {std::move(ray), pixel};
     }
 
 } // namespace Yutrel

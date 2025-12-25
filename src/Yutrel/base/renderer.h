@@ -2,12 +2,14 @@
 
 #include <luisa/luisa-compute.h>
 
+#include "base/camera.h"
+
 namespace Yutrel
 {
     using namespace luisa;
     using namespace luisa::compute;
 
-    class Camera;
+    class Scene;
     class Integrator;
 
     class Renderer final
@@ -16,7 +18,7 @@ namespace Yutrel
         Device& m_device;
         luisa::vector<luisa::unique_ptr<Resource>> m_resources;
 
-        luisa::unique_ptr<Camera> m_camera;
+        luisa::unique_ptr<Camera::Instance> m_camera;
         luisa::unique_ptr<Integrator> m_integrator;
 
     public:
@@ -47,7 +49,7 @@ namespace Yutrel
         }
 
     public:
-        [[nodiscard]] static luisa::unique_ptr<Renderer> create(Device& device, Stream& stream) noexcept;
+        [[nodiscard]] static luisa::unique_ptr<Renderer> create(Device& device, Stream& stream, const Scene& scene) noexcept;
         [[nodiscard]] auto& device() const noexcept { return m_device; }
         [[nodiscard]] auto camera() const noexcept { return m_camera.get(); }
         [[nodiscard]] auto integrator() const noexcept { return m_integrator.get(); }

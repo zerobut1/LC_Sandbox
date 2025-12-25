@@ -17,12 +17,24 @@ namespace Yutrel
 {
     class PinholeCamera final : public Camera
     {
+        class Instance final : public Camera::Instance
+        {
+        private:
+            BufferView<PinholeCameraData> m_device_data;
+
+        public:
+            explicit Instance(Renderer& renderer, CommandBuffer& command_buffer, const PinholeCamera* camera) noexcept;
+            ~Instance() noexcept override = default;
+
+        private:
+            [[nodiscard]] Var<Ray> generate_ray_in_camera_space(Expr<float2> pixel, Expr<float> time, Expr<float2> u_lens) const noexcept override;
+        };
+
     private:
         float m_fov;
-        BufferView<PinholeCameraData> m_device_data;
 
     public:
-        explicit PinholeCamera(const Camera::CreateInfo& info, Renderer& renderer, CommandBuffer& command_buffer) noexcept;
+        explicit PinholeCamera(const Camera::CreateInfo& info) noexcept;
         ~PinholeCamera() noexcept override = default;
 
         PinholeCamera() noexcept                       = delete;
@@ -31,8 +43,8 @@ namespace Yutrel
         PinholeCamera(PinholeCamera&&)                 = delete;
         PinholeCamera& operator=(PinholeCamera&&)      = delete;
 
-    private:
-        [[nodiscard]] Var<Ray> generate_ray_in_camera_space(Expr<float2> pixel, Expr<float> time, Expr<float2> u_lens) const noexcept override;
+    public:
+        [[nodiscard]] luisa::unique_ptr<Camera::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept override;
     };
 
 } // namespace Yutrel

@@ -42,8 +42,6 @@ namespace Yutrel
             float focus_distance{10.0f};
         };
 
-        [[nodiscard]] static luisa::unique_ptr<Camera> create(const CreateInfo& info, Renderer& renderer, CommandBuffer& command_buffer) noexcept;
-
         struct Sample
         {
             Var<Ray> ray;
@@ -57,17 +55,47 @@ namespace Yutrel
             uint spp;
         };
 
-    private:
-        const Renderer& m_renderer;
-        luisa::unique_ptr<Film> m_film;
+    public:
+        class Instance
+        {
+        private:
+            const Renderer& m_renderer;
+            const Camera* m_camera;
+            luisa::unique_ptr<Film> m_film;
 
+        public:
+            explicit Instance(const Renderer& renderer, const Camera* camera) noexcept;
+            virtual ~Instance() noexcept = default;
+
+            Instance() noexcept                  = delete;
+            Instance(const Instance&)            = delete;
+            Instance& operator=(const Instance&) = delete;
+            Instance(Instance&&)                 = delete;
+            Instance& operator=(Instance&&)      = delete;
+
+        public:
+            template <typename T = Camera>
+                requires std::is_base_of_v<Camera, T>
+            [[nodiscard]] auto base() const noexcept
+            {
+                return static_cast<const T*>(m_camera);
+            }
+            [[nodiscard]] auto film() const noexcept { return m_film.get(); }
+
+            [[nodiscard]] Sample generate_ray(Expr<uint2> pixel_coord, Expr<float> time, Expr<float2> u_filter, Expr<float2> u_lens) const noexcept;
+
+        private:
+            [[nodiscard]] virtual Var<Ray> generate_ray_in_camera_space(Expr<float2> pixel, Expr<float> time, Expr<float2> u_lens) const noexcept = 0;
+        };
+
+    private:
         float4x4 m_transform;
         uint m_spp;
         float2 m_shutter_span;
         uint m_shutter_samples_count;
 
     public:
-        explicit Camera(const CreateInfo& info, Renderer& renderer, CommandBuffer& command_buffer) noexcept;
+        explicit Camera(const CreateInfo& info) noexcept;
         virtual ~Camera() noexcept;
 
         Camera() noexcept                = delete;
@@ -77,14 +105,12 @@ namespace Yutrel
         Camera& operator=(Camera&&)      = delete;
 
     public:
-        [[nodiscard]] auto film() const noexcept { return m_film.get(); }
+        [[nodiscard]] static luisa::unique_ptr<Camera> create(const CreateInfo& info) noexcept;
+        [[nodiscard]] virtual luisa::unique_ptr<Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept = 0;
+
         [[nodiscard]] auto spp() const noexcept { return m_spp; }
         [[nodiscard]] auto transform() const noexcept { return m_transform; }
-
-        [[nodiscard]] Sample generate_ray(Expr<uint2> pixel_coord, Expr<float> time, Expr<float2> u_filter, Expr<float2> u_lens) const noexcept;
         [[nodiscard]] luisa::vector<ShutterSample> shutter_samples() const noexcept;
-
-        [[nodiscard]] virtual Var<Ray> generate_ray_in_camera_space(Expr<float2> pixel, Expr<float> time, Expr<float2> u_lens) const noexcept = 0;
         [[nodiscard]] virtual bool requires_lens_sampling() const noexcept { return false; }
     };
 

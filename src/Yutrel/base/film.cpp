@@ -6,12 +6,12 @@
 
 namespace Yutrel
 {
-    Film::Film(Renderer& renderer) noexcept
+    Film::Film(const Renderer& renderer) noexcept
         : m_renderer(renderer) {}
 
     Film::~Film() noexcept = default;
 
-    luisa::unique_ptr<Film> Film::create(Renderer& renderer) noexcept
+    luisa::unique_ptr<Film> Film::create(const Renderer& renderer) noexcept
     {
         return luisa::make_unique<Film>(renderer);
     }

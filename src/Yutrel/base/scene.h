@@ -33,7 +33,7 @@ namespace Yutrel
         [[nodiscard]] static luisa::unique_ptr<Scene> create(const Context& context) noexcept;
 
         void load_camera(const Camera::CreateInfo& info) const noexcept;
-        [[nodiscard]] const Texture* load_texture(const Texture::CreateInfo& info) const noexcept;
+        [[nodiscard]] const Texture* load_texture(const Texture::CreateInfo& info) noexcept;
 
         [[nodiscard]] const Camera* camera() const noexcept;
     };

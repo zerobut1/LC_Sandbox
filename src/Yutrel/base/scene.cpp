@@ -50,9 +50,9 @@ namespace Yutrel
         m_config->camera = Camera::create(info);
     }
 
-    const Texture* Scene::load_texture(const Texture::CreateInfo& info) const noexcept
+    const Texture* Scene::load_texture(const Texture::CreateInfo& info) noexcept
     {
-        return m_config->textures.emplace_back(Texture::create(info)).get();
+        return m_config->textures.emplace_back(Texture::create(*this, info)).get();
     }
 
     const Camera* Scene::camera() const noexcept

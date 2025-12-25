@@ -14,6 +14,7 @@ namespace Yutrel::RTWeekend
         UInt mat_id;
         Float3 normal;
         Float t;
+        Float2 uv;
         Bool front_face;
 
         void set_face_normal(Var<Ray> ray, Float3 outward_normal) noexcept

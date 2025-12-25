@@ -3,6 +3,11 @@
 #include <luisa/core/stl/memory.h>
 #include <luisa/dsl/syntax.h>
 
+namespace Yutrel::RTWeekend
+{
+    struct HitRecord;
+}
+
 namespace Yutrel
 {
     using namespace luisa;
@@ -10,6 +15,7 @@ namespace Yutrel
 
     class Renderer;
     class CommandBuffer;
+    class Scene;
 
     class Texture
     {
@@ -17,6 +23,7 @@ namespace Yutrel
         enum class Type
         {
             constant,
+            checker_board,
         };
 
         struct CreateInfo
@@ -24,9 +31,13 @@ namespace Yutrel
             Type type{Type::constant};
             // constant
             float4 v;
+            // checker_board
+            float scale{1.0f};
+            float4 even;
+            float4 odd;
         };
 
-        [[nodiscard]] static luisa::unique_ptr<Texture> create(const CreateInfo& info) noexcept;
+        [[nodiscard]] static luisa::unique_ptr<Texture> create(Scene& scene, const CreateInfo& info) noexcept;
 
     public:
         class Instance
@@ -53,11 +64,11 @@ namespace Yutrel
             Instance& operator=(Instance&&)      = delete;
 
         public:
-            [[nodiscard]] virtual Float4 evaluate() const noexcept = 0;
+            [[nodiscard]] virtual Float4 evaluate(const RTWeekend::HitRecord& rec) const noexcept = 0;
         };
 
     public:
-        explicit Texture(const Texture::CreateInfo& info) noexcept {}
+        explicit Texture(Scene& scene, const Texture::CreateInfo& info) noexcept {}
         virtual ~Texture() noexcept = default;
 
         Texture(const Texture&)            = delete;
@@ -66,6 +77,6 @@ namespace Yutrel
         Texture& operator=(Texture&&)      = delete;
 
     public:
-        [[nodiscard]] virtual luisa::unique_ptr<Instance> build(const Renderer& renderer, const CommandBuffer& command_buffer) const noexcept = 0;
+        [[nodiscard]] virtual luisa::unique_ptr<Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept = 0;
     };
 } // namespace Yutrel

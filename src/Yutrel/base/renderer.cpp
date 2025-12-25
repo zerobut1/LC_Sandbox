@@ -28,7 +28,13 @@ namespace Yutrel
         host_spheres.reserve(256u);
 
         // ground
-        auto mat_id = renderer->m_materials.emplace(Lambertian(scene, make_float3(137.0f / 255.0f, 227.0f / 255.0f, 78.0f / 255.0f)).build(*renderer, command_buffer));
+        Texture::CreateInfo ground_info{
+            .type  = Texture::Type::checker_board,
+            .scale = 0.32f,
+            .even  = make_float4(0.2f, 0.3f, 0.1f, 1.0f),
+            .odd   = make_float4(0.9f, 0.9f, 0.9f, 1.0f),
+        };
+        auto mat_id = renderer->m_materials.emplace(Lambertian(scene, ground_info).build(*renderer, command_buffer));
         host_spheres.emplace_back(SphereData{make_float3(0.0f, -1000.0f, 0.0f), 1000.0f, make_float3(0.0f), mat_id});
 
         // small spheres
@@ -46,7 +52,8 @@ namespace Yutrel
                         float3 albedo = make_float3(static_cast<float>(random_double()) * static_cast<float>(random_double()),
                                                     static_cast<float>(random_double()) * static_cast<float>(random_double()),
                                                     static_cast<float>(random_double()) * static_cast<float>(random_double()));
-                        auto mat_id   = renderer->m_materials.emplace(Lambertian(scene, albedo).build(*renderer, command_buffer));
+                        Texture::CreateInfo texture_info{.v = make_float4(albedo, 1.0f)};
+                        auto mat_id   = renderer->m_materials.emplace(Lambertian(scene, texture_info).build(*renderer, command_buffer));
                         auto velocity = make_float3(0.0f, 0.5f * static_cast<float>(random_double()), 0.0f);
                         host_spheres.emplace_back(SphereData{center, 0.2f, velocity, mat_id});
                     }

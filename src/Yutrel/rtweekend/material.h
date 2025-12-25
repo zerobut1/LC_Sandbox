@@ -86,7 +86,6 @@ namespace Yutrel::RTWeekend
         class Instance : public Material::Instance
         {
         private:
-            // float3 m_albedo;
             const Texture::Instance* m_albedo;
 
         public:
@@ -107,7 +106,7 @@ namespace Yutrel::RTWeekend
 
             void populate_closure(Material::Closure* closure, const HitRecord& rec) const noexcept override
             {
-                Float3 albedo = m_albedo->evaluate().xyz();
+                Float3 albedo = m_albedo->evaluate(rec).xyz();
 
                 Lambertian::Closure::Context ctx{
                     .rec    = rec,
@@ -121,13 +120,8 @@ namespace Yutrel::RTWeekend
         const Texture* m_albedo;
 
     public:
-        explicit Lambertian(Scene& scene, float3 a) noexcept
+        explicit Lambertian(Scene& scene, const Texture::CreateInfo& info) noexcept
         {
-            Texture::CreateInfo info{
-                .type = Texture::Type::constant,
-                .v    = make_float4(a, 1.0f),
-            };
-
             m_albedo = scene.load_texture(info);
         }
 
@@ -184,7 +178,7 @@ namespace Yutrel::RTWeekend
 
             void populate_closure(Material::Closure* closure, const HitRecord& rec) const noexcept override
             {
-                auto albedo_fuzz = m_albedo_fuzz->evaluate();
+                auto albedo_fuzz = m_albedo_fuzz->evaluate(rec);
                 auto albedo      = albedo_fuzz.xyz();
                 auto fuzz        = albedo_fuzz.w;
 

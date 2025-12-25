@@ -1,15 +1,18 @@
 #include "texture.h"
 
+#include "textures/checker_board.h"
 #include "textures/constant.h"
 
 namespace Yutrel
 {
-    luisa::unique_ptr<Texture> Texture::create(const CreateInfo& info) noexcept
+    luisa::unique_ptr<Texture> Texture::create(Scene& scene, const CreateInfo& info) noexcept
     {
         switch (info.type)
         {
         case Type::constant:
-            return luisa::make_unique<ConstantTexture>(info);
+            return luisa::make_unique<ConstantTexture>(scene, info);
+        case Type::checker_board:
+            return luisa::make_unique<CheckerBoard>(scene, info);
         default:
             LUISA_ERROR("Unsupported texture");
             return nullptr;

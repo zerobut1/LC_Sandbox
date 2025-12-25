@@ -67,6 +67,10 @@ namespace Yutrel
         void render(Stream& stream);
 
         [[nodiscard]] const Texture::Instance* build_texture(CommandBuffer& command_buffer, const Texture* texture) noexcept;
+
+        //  temp
+    private:
+        void scene_spheres(Scene& scene, CommandBuffer& command_buffer) noexcept;
     };
 
 } // namespace Yutrel

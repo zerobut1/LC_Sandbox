@@ -13,17 +13,8 @@ namespace Yutrel
 
     Renderer::~Renderer() noexcept = default;
 
-    luisa::unique_ptr<Renderer> Renderer::create(Device& device, Stream& stream, Scene& scene) noexcept
+    void Renderer::scene_spheres(Scene& scene, CommandBuffer& command_buffer) noexcept
     {
-        auto renderer = luisa::make_unique<Renderer>(device);
-
-        CommandBuffer command_buffer{stream};
-
-        renderer->m_camera     = scene.camera()->build(*renderer, command_buffer);
-        renderer->m_integrator = Integrator::create(*renderer);
-
-        // temp
-        //-------------------------
         luisa::vector<SphereData> host_spheres;
         host_spheres.reserve(256u);
 
@@ -34,7 +25,7 @@ namespace Yutrel
             .even  = make_float4(0.2f, 0.3f, 0.1f, 1.0f),
             .odd   = make_float4(0.9f, 0.9f, 0.9f, 1.0f),
         };
-        auto mat_id = renderer->m_materials.emplace(Lambertian(scene, ground_info).build(*renderer, command_buffer));
+        auto mat_id = m_materials.emplace(Lambertian(scene, ground_info).build(*this, command_buffer));
         host_spheres.emplace_back(SphereData{make_float3(0.0f, -1000.0f, 0.0f), 1000.0f, make_float3(0.0f), mat_id});
 
         // small spheres
@@ -53,7 +44,7 @@ namespace Yutrel
                                                     static_cast<float>(random_double()) * static_cast<float>(random_double()),
                                                     static_cast<float>(random_double()) * static_cast<float>(random_double()));
                         Texture::CreateInfo texture_info{.v = make_float4(albedo, 1.0f)};
-                        auto mat_id   = renderer->m_materials.emplace(Lambertian(scene, texture_info).build(*renderer, command_buffer));
+                        auto mat_id   = m_materials.emplace(Lambertian(scene, texture_info).build(*this, command_buffer));
                         auto velocity = make_float3(0.0f, 0.5f * static_cast<float>(random_double()), 0.0f);
                         host_spheres.emplace_back(SphereData{center, 0.2f, velocity, mat_id});
                     }
@@ -63,12 +54,12 @@ namespace Yutrel
                                                     0.5f * (1.0f + static_cast<float>(random_double())),
                                                     0.5f * (1.0f + static_cast<float>(random_double())));
                         float fuzz    = 0.5f * static_cast<float>(random_double());
-                        auto mat_id   = renderer->m_materials.emplace(Metal(scene, albedo, fuzz).build(*renderer, command_buffer));
+                        auto mat_id   = m_materials.emplace(Metal(scene, albedo, fuzz).build(*this, command_buffer));
                         host_spheres.emplace_back(SphereData{center, 0.2f, make_float3(0.0f), mat_id});
                     }
                     else // glass
                     {
-                        auto mat_id = renderer->m_materials.emplace(Dielectric(1.5f).build(*renderer, command_buffer));
+                        auto mat_id = m_materials.emplace(Dielectric(1.5f).build(*this, command_buffer));
                         auto radius = static_cast<float>(random_double());
                         center.y    = radius;
                         host_spheres.emplace_back(SphereData{center, radius, make_float3(0.0f), mat_id});
@@ -77,12 +68,43 @@ namespace Yutrel
             }
         }
 
-        auto sphere_buffer = renderer->create<Buffer<SphereData>>(host_spheres.size());
+        auto sphere_buffer = create<Buffer<SphereData>>(host_spheres.size());
         command_buffer << sphere_buffer->copy_from(host_spheres.data()) << commit();
         auto sphere_buffer_view = sphere_buffer->view();
         auto sphere_count       = static_cast<uint>(host_spheres.size());
-        renderer->m_world       = luisa::make_unique<HittableList>(sphere_buffer_view, sphere_count);
+        m_world                 = luisa::make_unique<HittableList>(sphere_buffer_view, sphere_count);
+
+        // camera
+        Camera::CreateInfo camera_info{
+            .type                  = Camera::Type::thin_lens,
+            .spp                   = 1024u,
+            .shutter_span          = {0.0f, 1.0f},
+            .shutter_samples_count = 64u,
+            .position              = make_float3(13.0f, 2.0f, 3.0f),
+            .lookat                = make_float3(0.0f, 0.0f, 0.0f),
+            .up                    = make_float3(0.0f, 1.0f, 0.0f),
+            // pinhole
+            .fov = 20.0f,
+            // thin lens
+            .aperture       = 0.4f,
+            .focal_length   = 78.0f,
+            .focus_distance = 13.0f,
+        };
+        scene.load_camera(camera_info);
+    }
+
+    luisa::unique_ptr<Renderer> Renderer::create(Device& device, Stream& stream, Scene& scene) noexcept
+    {
+        auto renderer = luisa::make_unique<Renderer>(device);
+
+        CommandBuffer command_buffer{stream};
+
         //-------------------------
+        renderer->scene_spheres(scene, command_buffer);
+        //-------------------------
+
+        renderer->m_camera     = scene.camera()->build(*renderer, command_buffer);
+        renderer->m_integrator = Integrator::create(*renderer);
 
         command_buffer << synchronize();
 

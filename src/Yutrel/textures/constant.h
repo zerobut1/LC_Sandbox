@@ -25,11 +25,6 @@ namespace Yutrel
         explicit ConstantTexture(Scene& scene, const Texture::CreateInfo& info) noexcept;
         ~ConstantTexture() noexcept override = default;
 
-        ConstantTexture(const ConstantTexture&)            = delete;
-        ConstantTexture& operator=(const ConstantTexture&) = delete;
-        ConstantTexture(ConstantTexture&&)                 = delete;
-        ConstantTexture& operator=(ConstantTexture&&)      = delete;
-
     public:
         [[nodiscard]] luisa::unique_ptr<Texture::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept override;
     };

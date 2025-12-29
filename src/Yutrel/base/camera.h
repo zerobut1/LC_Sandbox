@@ -70,7 +70,7 @@ namespace Yutrel
             explicit Instance(const Renderer& renderer, const Camera* camera) noexcept;
             virtual ~Instance() noexcept = default;
 
-            Instance() noexcept                  = delete;
+            Instance()                           = delete;
             Instance(const Instance&)            = delete;
             Instance& operator=(const Instance&) = delete;
             Instance(Instance&&)                 = delete;
@@ -101,7 +101,7 @@ namespace Yutrel
         explicit Camera(const CreateInfo& info) noexcept;
         virtual ~Camera() noexcept;
 
-        Camera() noexcept                = delete;
+        Camera()                         = delete;
         Camera(const Camera&)            = delete;
         Camera& operator=(const Camera&) = delete;
         Camera(Camera&&)                 = delete;

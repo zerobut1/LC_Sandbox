@@ -37,12 +37,6 @@ namespace Yutrel
         explicit PinholeCamera(const Camera::CreateInfo& info) noexcept;
         ~PinholeCamera() noexcept override = default;
 
-        PinholeCamera() noexcept                       = delete;
-        PinholeCamera(const PinholeCamera&)            = delete;
-        PinholeCamera& operator=(const PinholeCamera&) = delete;
-        PinholeCamera(PinholeCamera&&)                 = delete;
-        PinholeCamera& operator=(PinholeCamera&&)      = delete;
-
     public:
         [[nodiscard]] luisa::unique_ptr<Camera::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept override;
     };

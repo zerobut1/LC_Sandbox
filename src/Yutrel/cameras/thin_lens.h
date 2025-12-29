@@ -33,12 +33,6 @@ namespace Yutrel
             explicit Instance(Renderer& renderer, CommandBuffer& command_buffer, const ThinLensCamera* camera) noexcept;
             ~Instance() noexcept override = default;
 
-            Instance() noexcept                  = delete;
-            Instance(const Instance&)            = delete;
-            Instance& operator=(const Instance&) = delete;
-            Instance(Instance&&)                 = delete;
-            Instance& operator=(Instance&&)      = delete;
-
         private:
             [[nodiscard]] Var<Ray> generate_ray_in_camera_space(Expr<float2> pixel, Expr<float> time, Expr<float2> u_lens) const noexcept override;
         };
@@ -51,12 +45,6 @@ namespace Yutrel
     public:
         explicit ThinLensCamera(const Camera::CreateInfo& info) noexcept;
         ~ThinLensCamera() noexcept override = default;
-
-        ThinLensCamera() noexcept                        = delete;
-        ThinLensCamera(const ThinLensCamera&)            = delete;
-        ThinLensCamera& operator=(const ThinLensCamera&) = delete;
-        ThinLensCamera(ThinLensCamera&&)                 = delete;
-        ThinLensCamera& operator=(ThinLensCamera&&)      = delete;
 
     private:
         [[nodiscard]] bool requires_lens_sampling() const noexcept override { return true; }

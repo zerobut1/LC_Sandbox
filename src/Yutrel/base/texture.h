@@ -57,7 +57,7 @@ namespace Yutrel
             {
                 return static_cast<const T*>(m_texture);
             }
-            Instance() noexcept                  = delete;
+            Instance()                           = delete;
             Instance(const Instance&)            = delete;
             Instance& operator=(const Instance&) = delete;
             Instance(Instance&&)                 = delete;
@@ -71,6 +71,7 @@ namespace Yutrel
         explicit Texture(Scene& scene, const Texture::CreateInfo& info) noexcept {}
         virtual ~Texture() noexcept = default;
 
+        Texture()                          = delete;
         Texture(const Texture&)            = delete;
         Texture& operator=(const Texture&) = delete;
         Texture(Texture&&)                 = delete;

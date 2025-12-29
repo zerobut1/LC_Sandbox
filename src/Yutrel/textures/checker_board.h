@@ -31,11 +31,6 @@ namespace Yutrel
         explicit CheckerBoard(Scene& scene, const Texture::CreateInfo& info) noexcept;
         ~CheckerBoard() noexcept override = default;
 
-        CheckerBoard(const CheckerBoard&)            = delete;
-        CheckerBoard& operator=(const CheckerBoard&) = delete;
-        CheckerBoard(CheckerBoard&&)                 = delete;
-        CheckerBoard& operator=(CheckerBoard&&)      = delete;
-
     public:
         [[nodiscard]] luisa::unique_ptr<Texture::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept override;
         [[nodiscard]] auto scale() const noexcept { return m_scale; }

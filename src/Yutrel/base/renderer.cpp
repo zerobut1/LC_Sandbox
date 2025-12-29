@@ -74,7 +74,9 @@ namespace Yutrel
         auto sphere_buffer_view = sphere_buffer->view();
         auto sphere_count       = static_cast<uint>(host_spheres.size());
         auto quad_buffer_view   = create<Buffer<QuadData>>(1u)->view();
-        m_world                 = luisa::make_unique<HittableList>(sphere_buffer_view, sphere_count, quad_buffer_view, 0u);
+
+        m_world = luisa::make_unique<HittableList>(sphere_buffer_view, sphere_count, quad_buffer_view, 0u);
+        m_world->set_background_color(make_float3(0.4f, 0.8f, 1.0f));
 
         // camera
         Camera::CreateInfo camera_info{
@@ -114,17 +116,17 @@ namespace Yutrel
         auto sphere_buffer_view = sphere_buffer->view();
         auto sphere_count       = static_cast<uint>(host_spheres.size());
         auto quad_buffer_view   = create<Buffer<QuadData>>(1u)->view();
-        m_world                 = luisa::make_unique<HittableList>(sphere_buffer_view, sphere_count, quad_buffer_view, 0u);
+
+        m_world = luisa::make_unique<HittableList>(sphere_buffer_view, sphere_count, quad_buffer_view, 0u);
+        m_world->set_background_color(make_float3(0.4f, 0.8f, 1.0f));
 
         // camera
         Camera::CreateInfo camera_info{
-            .type                  = Camera::Type::pinhole,
-            .spp                   = 1024u,
-            .shutter_span          = {0.0f, 1.0f},
-            .shutter_samples_count = 64u,
-            .position              = make_float3(0.0f, 0.0f, -12.0f),
-            .lookat                = make_float3(0.0f, 0.0f, 0.0f),
-            .up                    = make_float3(0.0f, 1.0f, 0.0f),
+            .type     = Camera::Type::pinhole,
+            .spp      = 1024u,
+            .position = make_float3(0.0f, 0.0f, -12.0f),
+            .lookat   = make_float3(0.0f, 0.0f, 0.0f),
+            .up       = make_float3(0.0f, 1.0f, 0.0f),
             // pinhole
             .fov = 20.0f,
         };
@@ -165,19 +167,67 @@ namespace Yutrel
         command_buffer << quad_buffer->copy_from(host_quads.data()) << commit();
         auto quad_buffer_view = quad_buffer->view();
         auto quad_count       = static_cast<uint>(host_quads.size());
-        m_world               = luisa::make_unique<HittableList>(sphere_buffer_view, 0u, quad_buffer_view, quad_count);
+
+        m_world = luisa::make_unique<HittableList>(sphere_buffer_view, 0u, quad_buffer_view, quad_count);
+        m_world->set_background_color(make_float3(0.4f, 0.8f, 1.0f));
 
         // camera
         Camera::CreateInfo camera_info{
-            .type                  = Camera::Type::pinhole,
-            .spp                   = 1024u,
-            .shutter_span          = {0.0f, 1.0f},
-            .shutter_samples_count = 64u,
-            .position              = make_float3(0.0f, 0.0f, 9.0f),
-            .lookat                = make_float3(0.0f, 0.0f, 0.0f),
-            .up                    = make_float3(0.0f, 1.0f, 0.0f),
+            .type     = Camera::Type::pinhole,
+            .spp      = 1024u,
+            .position = make_float3(0.0f, 0.0f, 9.0f),
+            .lookat   = make_float3(0.0f, 0.0f, 0.0f),
+            .up       = make_float3(0.0f, 1.0f, 0.0f),
             // pinhole
             .fov = 80.0f,
+        };
+        scene.load_camera(camera_info);
+    }
+
+    void Renderer::scene_simple_light(Scene& scene, CommandBuffer& command_buffer) noexcept
+    {
+        luisa::vector<SphereData> host_spheres;
+        host_spheres.reserve(3u);
+        luisa::vector<QuadData> host_quads;
+        host_quads.reserve(1u);
+
+        Texture::CreateInfo texture_info{
+            .type = Texture::Type::constant,
+            .v    = make_float4(0.8f, 0.8f, 0.8f, 1.0f),
+        };
+        auto mat_id = m_materials.emplace(Lambertian(scene, texture_info).build(*this, command_buffer));
+        host_spheres.emplace_back(SphereData{make_float3(0.0f, 2.0f, 0.0f), 2.0f, make_float3(0.0f), mat_id});
+        host_spheres.emplace_back(SphereData{make_float3(0.0f, -1000.0f, 0.0f), 1000.0f, make_float3(0.0f), mat_id});
+
+        Texture::CreateInfo light_info{
+            .type = Texture::Type::constant,
+            .v    = make_float4(4.0f, 4.0f, 4.0f, 1.0f),
+        };
+        mat_id = m_materials.emplace(DiffuseLight(scene, light_info).build(*this, command_buffer));
+        host_quads.emplace_back(QuadData{make_float3(3.0f, 1.0f, -2.0f), make_float3(2.0f, 0.0f, 0.0f), make_float3(0.0f, 2.0f, 0.0f), mat_id});
+        host_spheres.emplace_back(SphereData{make_float3(0.0f, 7.0f, 0.0f), 2.0f, make_float3(0.0f), mat_id});
+
+        auto sphere_buffer = create<Buffer<SphereData>>(host_spheres.size());
+        command_buffer << sphere_buffer->copy_from(host_spheres.data()) << commit();
+        auto sphere_buffer_view = sphere_buffer->view();
+        auto sphere_count       = static_cast<uint>(host_spheres.size());
+        auto quad_buffer        = create<Buffer<QuadData>>(host_quads.size());
+        command_buffer << quad_buffer->copy_from(host_quads.data()) << commit();
+        auto quad_buffer_view = quad_buffer->view();
+        auto quad_count       = static_cast<uint>(host_quads.size());
+
+        m_world = luisa::make_unique<HittableList>(sphere_buffer_view, sphere_count, quad_buffer_view, quad_count);
+        m_world->set_background_color(make_float3(0.0f, 0.0f, 0.0f));
+
+        // camera
+        Camera::CreateInfo camera_info{
+            .type     = Camera::Type::pinhole,
+            .spp      = 1024u,
+            .position = make_float3(26.0f, 3.0f, 6.0f),
+            .lookat   = make_float3(0.0f, 2.0f, 0.0f),
+            .up       = make_float3(0.0f, 1.0f, 0.0f),
+            // pinhole
+            .fov = 20.0f,
         };
         scene.load_camera(camera_info);
     }
@@ -189,7 +239,7 @@ namespace Yutrel
         CommandBuffer command_buffer{stream};
 
         //-------------------------
-        switch (3)
+        switch (4)
         {
         case 1:
             renderer->scene_spheres(scene, command_buffer);
@@ -199,6 +249,10 @@ namespace Yutrel
             break;
         case 3:
             renderer->scene_quads(scene, command_buffer);
+            break;
+        case 4:
+            renderer->scene_simple_light(scene, command_buffer);
+            break;
         default:
             break;
         }

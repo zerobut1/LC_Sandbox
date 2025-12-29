@@ -25,6 +25,10 @@ namespace Yutrel::RTWeekend
         {
         public:
             [[nodiscard]] virtual Bool scatter(Var<Ray>& ray, Var<float3>& attenuation, Expr<float2> u, Expr<float> u_lobe) const noexcept = 0;
+            [[nodiscard]] virtual Float3 emitted() const noexcept
+            {
+                return make_float3(0.0f);
+            }
         };
 
         class Instance
@@ -74,7 +78,7 @@ namespace Yutrel::RTWeekend
             [[nodiscard]] Bool scatter(Var<Ray>& ray, Var<float3>& attenuation, Expr<float2> u, Expr<float> u_lobe) const noexcept override
             {
                 auto&& ctx             = context<Context>();
-                auto scatter_direction = ctx.rec.normal + sample_cosine_hemisphere(u);
+                auto scatter_direction = normalize(ctx.rec.normal + sample_uniform_sphere(u));
 
                 ray         = make_ray(ctx.rec.position, scatter_direction);
                 attenuation = ctx.albedo;
@@ -302,6 +306,75 @@ namespace Yutrel::RTWeekend
     public:
         explicit Dielectric(float ior) noexcept
             : m_ior{ior} {}
+
+        [[nodiscard]] luisa::unique_ptr<Material::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept override;
+    };
+
+    class DiffuseLight : public Material
+    {
+    public:
+        class Closure : public Material::Closure
+        {
+        public:
+            struct Context
+            {
+                HitRecord rec;
+                Float3 emit;
+            };
+
+            [[nodiscard]] Bool scatter(Var<Ray>& ray, Var<float3>& attenuation, Expr<float2> u, Expr<float> u_lobe) const noexcept override
+            {
+                return false;
+            }
+
+            [[nodiscard]] Float3 emitted() const noexcept override
+            {
+                auto&& ctx = context<Context>();
+                return ctx.emit;
+            }
+        };
+
+        class Instance : public Material::Instance
+        {
+        private:
+            const Texture::Instance* m_emit;
+
+        public:
+            explicit Instance(const Renderer& renderer, const Material* material, const Texture::Instance* emit) noexcept
+                : Material::Instance(renderer, material), m_emit(emit) {}
+            ~Instance() noexcept override = default;
+
+        public:
+            [[nodiscard]] luisa::string closure_identifier() const noexcept override
+            {
+                return "DiffuseLight";
+            }
+
+            [[nodiscard]] luisa::unique_ptr<Material::Closure> create_closure() const noexcept override
+            {
+                return luisa::make_unique<Closure>();
+            }
+
+            void populate_closure(Material::Closure* closure, const HitRecord& rec) const noexcept override
+            {
+                Float3 emit = m_emit->evaluate(rec).xyz();
+
+                DiffuseLight::Closure::Context ctx{
+                    .rec  = rec,
+                    .emit = emit,
+                };
+                closure->bind(std::move(ctx));
+            }
+        };
+
+    private:
+        const Texture* m_emit;
+
+    public:
+        explicit DiffuseLight(Scene& scene, const Texture::CreateInfo& info) noexcept
+        {
+            m_emit = scene.load_texture(info);
+        }
 
         [[nodiscard]] luisa::unique_ptr<Material::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept override;
     };

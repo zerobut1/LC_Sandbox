@@ -18,9 +18,20 @@ namespace Yutrel::RTWeekend
         BufferView<QuadData> m_quad_buffer;
         uint m_quad_count = 0u;
 
+        float3 m_background_color{make_float3(0.0f)};
+
     public:
         explicit HittableList(BufferView<SphereData> sphere_buffer, uint sphere_count, BufferView<QuadData> quad_buffer, uint quad_count) noexcept
             : m_sphere_buffer{sphere_buffer}, m_sphere_count{sphere_count}, m_quad_buffer{quad_buffer}, m_quad_count{quad_count} {}
+
+        void set_background_color(float3 color) noexcept
+        {
+            m_background_color = color;
+        }
+        [[nodiscard]] Float3 background_color() const noexcept
+        {
+            return m_background_color;
+        }
 
     public:
         [[nodiscard]] Bool hit(Var<Ray> ray, Expr<float> t_min, Expr<float> t_max, Expr<float> time, HitRecord& rec) const noexcept override

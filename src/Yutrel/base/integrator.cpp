@@ -108,7 +108,8 @@ namespace Yutrel
 
     Float3 Integrator::ray_color(Var<Ray> ray, Expr<float> time) const noexcept
     {
-        Float3 color = make_float3(1.0f);
+        Float3 radiance   = make_float3(0.0f);
+        Float3 throughput = make_float3(1.0f);
 
         const auto MAX_DEPTH = 10u;
         const auto T_MIN     = 0.0001f;
@@ -119,10 +120,7 @@ namespace Yutrel
             HitRecord rec;
             $if(!renderer().m_world->hit(ray, T_MIN, T_MAX, time, rec))
             {
-                // background color
-                auto direction = normalize(ray->direction());
-                auto a         = 0.5f * (direction.y + 1.0f);
-                color *= lerp(make_float3(1.0f, 1.0f, 1.0f), make_float3(0.4f, 0.8f, 1.0f), a);
+                radiance += throughput * renderer().m_world->background_color();
                 $break;
             };
 
@@ -136,20 +134,22 @@ namespace Yutrel
                 material->closure(call, rec);
             });
             Bool scattered;
+            Float3 emission = make_float3(0.0f);
             call.execute([&](auto closure) noexcept
             {
                 scattered = closure->scatter(ray, attenuation, u, u_lobe);
-                color *= attenuation;
+                emission  = closure->emitted();
+                radiance += throughput * emission;
+                throughput *= attenuation;
             });
 
             $if(!scattered)
             {
-                color = make_float3(0.0f);
                 $break;
             };
         };
 
-        return color;
+        return radiance;
     }
 
 } // namespace Yutrel

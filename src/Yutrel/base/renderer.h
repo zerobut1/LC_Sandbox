@@ -88,6 +88,7 @@ namespace Yutrel
         void scene_spheres(Scene& scene, CommandBuffer& command_buffer) noexcept;
         void scene_sphere(Scene& scene, CommandBuffer& command_buffer) noexcept;
         void scene_quads(Scene& scene, CommandBuffer& command_buffer) noexcept;
+        void scene_simple_light(Scene& scene, CommandBuffer& command_buffer) noexcept;
     };
 
 } // namespace Yutrel

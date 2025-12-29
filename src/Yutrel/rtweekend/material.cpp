@@ -26,4 +26,11 @@ namespace Yutrel::RTWeekend
         return luisa::make_unique<Instance>(renderer, this, m_ior);
     }
 
+    // DiffuseLight
+    luisa::unique_ptr<Material::Instance> DiffuseLight::build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept
+    {
+        auto emit = renderer.build_texture(command_buffer, m_emit);
+        return luisa::make_unique<Instance>(renderer, this, emit);
+    }
+
 } // namespace Yutrel::RTWeekend

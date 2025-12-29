@@ -73,7 +73,8 @@ namespace Yutrel
         command_buffer << sphere_buffer->copy_from(host_spheres.data()) << commit();
         auto sphere_buffer_view = sphere_buffer->view();
         auto sphere_count       = static_cast<uint>(host_spheres.size());
-        m_world                 = luisa::make_unique<HittableList>(sphere_buffer_view, sphere_count);
+        auto quad_buffer_view   = create<Buffer<QuadData>>(1u)->view();
+        m_world                 = luisa::make_unique<HittableList>(sphere_buffer_view, sphere_count, quad_buffer_view, 0u);
 
         // camera
         Camera::CreateInfo camera_info{
@@ -97,7 +98,7 @@ namespace Yutrel
     void Renderer::scene_sphere(Scene& scene, CommandBuffer& command_buffer) noexcept
     {
         luisa::vector<SphereData> host_spheres;
-        host_spheres.reserve(256u);
+        host_spheres.reserve(1u);
 
         Texture::CreateInfo texture_info{
             .type     = Texture::Type::image,
@@ -112,7 +113,8 @@ namespace Yutrel
         command_buffer << sphere_buffer->copy_from(host_spheres.data()) << commit();
         auto sphere_buffer_view = sphere_buffer->view();
         auto sphere_count       = static_cast<uint>(host_spheres.size());
-        m_world                 = luisa::make_unique<HittableList>(sphere_buffer_view, sphere_count);
+        auto quad_buffer_view   = create<Buffer<QuadData>>(1u)->view();
+        m_world                 = luisa::make_unique<HittableList>(sphere_buffer_view, sphere_count, quad_buffer_view, 0u);
 
         // camera
         Camera::CreateInfo camera_info{
@@ -120,11 +122,62 @@ namespace Yutrel
             .spp                   = 1024u,
             .shutter_span          = {0.0f, 1.0f},
             .shutter_samples_count = 64u,
-            .position              = make_float3(0.0f, 0.0f, 12.0f),
+            .position              = make_float3(0.0f, 0.0f, -12.0f),
             .lookat                = make_float3(0.0f, 0.0f, 0.0f),
             .up                    = make_float3(0.0f, 1.0f, 0.0f),
             // pinhole
             .fov = 20.0f,
+        };
+        scene.load_camera(camera_info);
+    }
+
+    void Renderer::scene_quads(Scene& scene, CommandBuffer& command_buffer) noexcept
+    {
+        luisa::vector<QuadData> host_quads;
+        host_quads.reserve(5u);
+
+        // left
+        Texture::CreateInfo texture_info{
+            .type = Texture::Type::constant,
+            .v    = make_float4(1.0f, 0.2f, 0.2f, 1.0f),
+        };
+        auto mat_id = m_materials.emplace(Lambertian(scene, texture_info).build(*this, command_buffer));
+        host_quads.emplace_back(QuadData{make_float3(-3.0f, -2.0f, 5.0f), make_float3(0.0f, 0.0f, -4.0f), make_float3(0.0f, 4.0f, 0.0f), mat_id});
+        // back
+        texture_info.v = make_float4(0.2f, 1.0f, 0.2f, 1.0f);
+        mat_id         = m_materials.emplace(Lambertian(scene, texture_info).build(*this, command_buffer));
+        host_quads.emplace_back(QuadData{make_float3(-2.0f, -2.0f, 0.0f), make_float3(4.0f, 0.0f, 0.0f), make_float3(0.0f, 4.0f, 0.0f), mat_id});
+        // right
+        texture_info.v = make_float4(0.2f, 0.2f, 1.0f, 1.0f);
+        mat_id         = m_materials.emplace(Lambertian(scene, texture_info).build(*this, command_buffer));
+        host_quads.emplace_back(QuadData{make_float3(3.0f, -2.0f, 1.0f), make_float3(0.0f, 0.0f, 4.0f), make_float3(0.0f, 4.0f, 0.0f), mat_id});
+        // upper
+        texture_info.v = make_float4(1.0f, 0.5f, 0.0f, 1.0f);
+        mat_id         = m_materials.emplace(Lambertian(scene, texture_info).build(*this, command_buffer));
+        host_quads.emplace_back(QuadData{make_float3(-2.0f, 3.0f, 1.0f), make_float3(4.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 4.0f), mat_id});
+        // lower
+        texture_info.v = make_float4(0.0f, 1.0f, 1.0f, 1.0f);
+        mat_id         = m_materials.emplace(Lambertian(scene, texture_info).build(*this, command_buffer));
+        host_quads.emplace_back(QuadData{make_float3(-2.0f, -3.0f, 5.0f), make_float3(4.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, -4.0f), mat_id});
+
+        auto sphere_buffer_view = create<Buffer<SphereData>>(1u)->view();
+        auto quad_buffer        = create<Buffer<QuadData>>(host_quads.size());
+        command_buffer << quad_buffer->copy_from(host_quads.data()) << commit();
+        auto quad_buffer_view = quad_buffer->view();
+        auto quad_count       = static_cast<uint>(host_quads.size());
+        m_world               = luisa::make_unique<HittableList>(sphere_buffer_view, 0u, quad_buffer_view, quad_count);
+
+        // camera
+        Camera::CreateInfo camera_info{
+            .type                  = Camera::Type::pinhole,
+            .spp                   = 1024u,
+            .shutter_span          = {0.0f, 1.0f},
+            .shutter_samples_count = 64u,
+            .position              = make_float3(0.0f, 0.0f, 9.0f),
+            .lookat                = make_float3(0.0f, 0.0f, 0.0f),
+            .up                    = make_float3(0.0f, 1.0f, 0.0f),
+            // pinhole
+            .fov = 80.0f,
         };
         scene.load_camera(camera_info);
     }
@@ -136,14 +189,17 @@ namespace Yutrel
         CommandBuffer command_buffer{stream};
 
         //-------------------------
-        switch (2)
+        switch (3)
         {
         case 1:
             renderer->scene_spheres(scene, command_buffer);
             break;
         case 2:
-        default:
             renderer->scene_sphere(scene, command_buffer);
+            break;
+        case 3:
+            renderer->scene_quads(scene, command_buffer);
+        default:
             break;
         }
         //-------------------------

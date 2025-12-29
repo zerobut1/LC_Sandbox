@@ -12,6 +12,7 @@ namespace Yutrel
     using namespace luisa;
     using namespace luisa::compute;
     using namespace RTWeekend;
+    using TextureSampler = compute::Sampler;
 
     class Scene;
     class Integrator;
@@ -21,6 +22,8 @@ namespace Yutrel
     private:
         Device& m_device;
         luisa::vector<luisa::unique_ptr<Resource>> m_resources;
+        BindlessArray m_bindless_array;
+        size_t m_bindless_tex2d_count{0u};
 
         luisa::unique_ptr<Camera::Instance> m_camera;
         luisa::unique_ptr<Integrator> m_integrator;
@@ -57,20 +60,33 @@ namespace Yutrel
             return create<Buffer<T>>(n)->view();
         }
 
+        template <typename T>
+        [[nodiscard]] auto register_bindless(const Image<T>& image, TextureSampler sampler) noexcept
+        {
+            auto tex2d_id = m_bindless_tex2d_count++;
+            m_bindless_array.emplace_on_update(tex2d_id, image, sampler);
+            return static_cast<uint>(tex2d_id);
+        }
+
     public:
         // TODO : const Scene &
         [[nodiscard]] static luisa::unique_ptr<Renderer> create(Device& device, Stream& stream, Scene& scene) noexcept;
+
+        void render(Stream& stream);
+
         [[nodiscard]] auto& device() const noexcept { return m_device; }
         [[nodiscard]] auto camera() const noexcept { return m_camera.get(); }
         [[nodiscard]] auto integrator() const noexcept { return m_integrator.get(); }
 
-        void render(Stream& stream);
-
         [[nodiscard]] const Texture::Instance* build_texture(CommandBuffer& command_buffer, const Texture* texture) noexcept;
 
-        //  temp
+        template <typename T>
+        [[nodiscard]] auto tex2d(T&& id) const noexcept { return m_bindless_array->tex2d(std::forward<T>(id)); }
+
     private:
+        //  temp
         void scene_spheres(Scene& scene, CommandBuffer& command_buffer) noexcept;
+        void scene_sphere(Scene& scene, CommandBuffer& command_buffer) noexcept;
     };
 
 } // namespace Yutrel

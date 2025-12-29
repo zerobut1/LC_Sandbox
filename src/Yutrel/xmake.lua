@@ -9,6 +9,7 @@ target("Yutrel")
 
     add_includedirs(os.scriptdir())
 
-    add_deps("lc-dsl","lc-gui")
+    add_deps("lc-dsl","lc-gui","stb-image")
+    add_packages("tinyexr")
 
 target_end()

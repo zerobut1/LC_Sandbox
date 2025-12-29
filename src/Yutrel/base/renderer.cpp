@@ -9,7 +9,8 @@
 namespace Yutrel
 {
     Renderer::Renderer(Device& device) noexcept
-        : m_device(device) {}
+        : m_device(device),
+          m_bindless_array(device.create_bindless_array()) {}
 
     Renderer::~Renderer() noexcept = default;
 
@@ -93,6 +94,41 @@ namespace Yutrel
         scene.load_camera(camera_info);
     }
 
+    void Renderer::scene_sphere(Scene& scene, CommandBuffer& command_buffer) noexcept
+    {
+        luisa::vector<SphereData> host_spheres;
+        host_spheres.reserve(256u);
+
+        Texture::CreateInfo texture_info{
+            .type     = Texture::Type::image,
+            .path     = "scene/common/textures/image.png",
+            .sampler  = TextureSampler::anisotropic_repeat(),
+            .encoding = Texture::Encoding::SRGB,
+        };
+        auto mat_id = m_materials.emplace(Lambertian(scene, texture_info).build(*this, command_buffer));
+        host_spheres.emplace_back(SphereData{make_float3(0.0f, 0.0f, 0.0f), 2.0f, make_float3(0.0f), mat_id});
+
+        auto sphere_buffer = create<Buffer<SphereData>>(host_spheres.size());
+        command_buffer << sphere_buffer->copy_from(host_spheres.data()) << commit();
+        auto sphere_buffer_view = sphere_buffer->view();
+        auto sphere_count       = static_cast<uint>(host_spheres.size());
+        m_world                 = luisa::make_unique<HittableList>(sphere_buffer_view, sphere_count);
+
+        // camera
+        Camera::CreateInfo camera_info{
+            .type                  = Camera::Type::pinhole,
+            .spp                   = 1024u,
+            .shutter_span          = {0.0f, 1.0f},
+            .shutter_samples_count = 64u,
+            .position              = make_float3(0.0f, 0.0f, 12.0f),
+            .lookat                = make_float3(0.0f, 0.0f, 0.0f),
+            .up                    = make_float3(0.0f, 1.0f, 0.0f),
+            // pinhole
+            .fov = 20.0f,
+        };
+        scene.load_camera(camera_info);
+    }
+
     luisa::unique_ptr<Renderer> Renderer::create(Device& device, Stream& stream, Scene& scene) noexcept
     {
         auto renderer = luisa::make_unique<Renderer>(device);
@@ -100,8 +136,22 @@ namespace Yutrel
         CommandBuffer command_buffer{stream};
 
         //-------------------------
-        renderer->scene_spheres(scene, command_buffer);
+        switch (2)
+        {
+        case 1:
+            renderer->scene_spheres(scene, command_buffer);
+            break;
+        case 2:
+        default:
+            renderer->scene_sphere(scene, command_buffer);
+            break;
+        }
         //-------------------------
+
+        if (renderer->m_bindless_array.dirty())
+        {
+            command_buffer << renderer->m_bindless_array.update();
+        }
 
         renderer->m_camera     = scene.camera()->build(*renderer, command_buffer);
         renderer->m_integrator = Integrator::create(*renderer);

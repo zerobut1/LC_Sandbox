@@ -2,6 +2,7 @@
 
 #include "textures/checker_board.h"
 #include "textures/constant.h"
+#include "textures/image.h"
 
 namespace Yutrel
 {
@@ -13,6 +14,8 @@ namespace Yutrel
             return luisa::make_unique<ConstantTexture>(scene, info);
         case Type::checker_board:
             return luisa::make_unique<CheckerBoard>(scene, info);
+        case Type::image:
+            return luisa::make_unique<ImageTexture>(scene, info);
         default:
             LUISA_ERROR("Unsupported texture");
             return nullptr;

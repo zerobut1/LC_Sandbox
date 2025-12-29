@@ -5,6 +5,7 @@ set_languages("cxx20")
 set_encodings("utf-8")
 
 add_requires("glfw", {configs = {shared = true}})
+add_requires("tinyexr")
 
 includes("ext/LuisaCompute")
 includes("config.lua")

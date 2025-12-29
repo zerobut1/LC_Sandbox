@@ -69,11 +69,22 @@ namespace Yutrel::RTWeekend
                     rec.position        = ray->origin() + ray->direction() * rec.t;
                     auto outward_normal = (rec.position - current_center) / m_radius;
                     rec.set_face_normal(ray, outward_normal);
+                    rec.uv     = get_uv(outward_normal);
                     rec.mat_id = m_mat_id;
                 };
             };
 
             return hit;
+        }
+
+        [[nodiscard]] Float2 get_uv(Expr<float3> p) const noexcept
+        {
+            auto theta = acos(p.y);
+            auto phi   = atan2(-p.z, p.x) + pi;
+            auto u     = phi / (2.0f * pi);
+            auto v     = theta / pi;
+
+            return make_float2(u, v);
         }
     };
 } // namespace Yutrel::RTWeekend

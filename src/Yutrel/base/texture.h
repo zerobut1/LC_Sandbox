@@ -12,6 +12,7 @@ namespace Yutrel
 {
     using namespace luisa;
     using namespace luisa::compute;
+    using TextureSampler = compute::Sampler;
 
     class Renderer;
     class CommandBuffer;
@@ -24,6 +25,14 @@ namespace Yutrel
         {
             constant,
             checker_board,
+            image,
+        };
+
+        enum class Encoding : uint
+        {
+            LINEAR,
+            SRGB,
+            GAMMA,
         };
 
         struct CreateInfo
@@ -35,6 +44,10 @@ namespace Yutrel
             float scale{1.0f};
             float4 even;
             float4 odd;
+            // image
+            luisa::filesystem::path path;
+            TextureSampler sampler;
+            Encoding encoding{Encoding::LINEAR};
         };
 
         [[nodiscard]] static luisa::unique_ptr<Texture> create(Scene& scene, const CreateInfo& info) noexcept;
@@ -64,6 +77,8 @@ namespace Yutrel
             Instance& operator=(Instance&&)      = delete;
 
         public:
+            [[nodiscard]] auto& renderer() const noexcept { return m_renderer; }
+
             [[nodiscard]] virtual Float4 evaluate(const RTWeekend::HitRecord& rec) const noexcept = 0;
         };
 

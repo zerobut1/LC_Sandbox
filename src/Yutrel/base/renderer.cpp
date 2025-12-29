@@ -232,6 +232,55 @@ namespace Yutrel
         scene.load_camera(camera_info);
     }
 
+    void Renderer::scene_cornell_box(Scene& scene, CommandBuffer& command_buffer) noexcept
+    {
+        luisa::vector<SphereData> host_spheres(1);
+        luisa::vector<QuadData> host_quads;
+
+        Texture::CreateInfo texture_info{
+            .type = Texture::Type::constant,
+            .v    = make_float4(0.65f, 0.05f, 0.05f, 1.0f),
+        };
+        auto red       = m_materials.emplace(Lambertian(scene, texture_info).build(*this, command_buffer));
+        texture_info.v = make_float4(0.73f, 0.73f, 0.73f, 1.0f);
+        auto white     = m_materials.emplace(Lambertian(scene, texture_info).build(*this, command_buffer));
+        texture_info.v = make_float4(0.12f, 0.45f, 0.15f, 1.0f);
+        auto green     = m_materials.emplace(Lambertian(scene, texture_info).build(*this, command_buffer));
+        texture_info.v = make_float4(15.0f, 15.0f, 15.0f, 1.0f);
+        auto light     = m_materials.emplace(DiffuseLight(scene, texture_info).build(*this, command_buffer));
+
+        host_quads.emplace_back(QuadData{make_float3(555.0f, 0.0f, 0.0f), make_float3(0.0f, 555.0f, 0.0f), make_float3(0.0f, 0.0f, 555.0f), green});
+        host_quads.emplace_back(QuadData{make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 555.0f, 0.0f), make_float3(0.0f, 0.0f, 555.0f), red});
+        host_quads.emplace_back(QuadData{make_float3(343.0f, 554.0f, 332.0f), make_float3(-130.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, -105.0f), light});
+        host_quads.emplace_back(QuadData{make_float3(0.0f, 0.0f, 0.0f), make_float3(555.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 555.0f), white});
+        host_quads.emplace_back(QuadData{make_float3(555.0f, 555.0f, 555.0f), make_float3(-555.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, -555.0f), white});
+        host_quads.emplace_back(QuadData{make_float3(0.0f, 0.0f, 555.0f), make_float3(555.0f, 0.0f, 0.0f), make_float3(0.0f, 555.0f, 0.0f), white});
+
+        auto sphere_buffer = create<Buffer<SphereData>>(host_spheres.size());
+        command_buffer << sphere_buffer->copy_from(host_spheres.data()) << commit();
+        auto sphere_buffer_view = sphere_buffer->view();
+        auto sphere_count       = static_cast<uint>(host_spheres.size());
+        auto quad_buffer        = create<Buffer<QuadData>>(host_quads.size());
+        command_buffer << quad_buffer->copy_from(host_quads.data()) << commit();
+        auto quad_buffer_view = quad_buffer->view();
+        auto quad_count       = static_cast<uint>(host_quads.size());
+
+        m_world = luisa::make_unique<HittableList>(sphere_buffer_view, 0u, quad_buffer_view, quad_count);
+        m_world->set_background_color(make_float3(0.0f, 0.0f, 0.0f));
+
+        // camera
+        Camera::CreateInfo camera_info{
+            .type     = Camera::Type::pinhole,
+            .spp      = 1024u,
+            .position = make_float3(278.0f, 278.0f, -800.0f),
+            .lookat   = make_float3(278.0f, 278.0f, 0.0f),
+            .up       = make_float3(0.0f, 1.0f, 0.0f),
+            // pinhole
+            .fov = 40.0f,
+        };
+        scene.load_camera(camera_info);
+    }
+
     luisa::unique_ptr<Renderer> Renderer::create(Device& device, Stream& stream, Scene& scene) noexcept
     {
         auto renderer = luisa::make_unique<Renderer>(device);
@@ -239,7 +288,7 @@ namespace Yutrel
         CommandBuffer command_buffer{stream};
 
         //-------------------------
-        switch (4)
+        switch (5)
         {
         case 1:
             renderer->scene_spheres(scene, command_buffer);
@@ -252,6 +301,9 @@ namespace Yutrel
             break;
         case 4:
             renderer->scene_simple_light(scene, command_buffer);
+            break;
+        case 5:
+            renderer->scene_cornell_box(scene, command_buffer);
             break;
         default:
             break;

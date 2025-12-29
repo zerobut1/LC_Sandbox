@@ -112,7 +112,7 @@ namespace Yutrel
         Float3 throughput = make_float3(1.0f);
 
         const auto MAX_DEPTH = 10u;
-        const auto T_MIN     = 0.0001f;
+        const auto T_MIN     = 1e-5f;
         const auto T_MAX     = 1e10f;
 
         $for(depth, MAX_DEPTH)

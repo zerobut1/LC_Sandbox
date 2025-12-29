@@ -80,7 +80,7 @@ namespace Yutrel::RTWeekend
                 auto&& ctx             = context<Context>();
                 auto scatter_direction = normalize(ctx.rec.normal + sample_uniform_sphere(u));
 
-                ray         = make_ray(ctx.rec.position, scatter_direction);
+                ray         = make_ray(ctx.rec.position + ctx.rec.normal * 1e-4f, scatter_direction);
                 attenuation = ctx.albedo;
 
                 return true;
@@ -152,7 +152,7 @@ namespace Yutrel::RTWeekend
                 auto reflected = reflect(ray->direction(), normal);
                 reflected      = normalize(reflected) + (ctx.fuzz * sample_uniform_sphere(u));
 
-                ray         = make_ray(ctx.rec.position, reflected);
+                ray         = make_ray(ctx.rec.position + normal * 1e-4f, reflected);
                 attenuation = ctx.albedo;
 
                 return (dot(ray->direction(), normal) > 0.0f);
@@ -251,7 +251,8 @@ namespace Yutrel::RTWeekend
                     };
                 };
 
-                ray = make_ray(ctx.rec.position, out_direction);
+                auto offset_dir = ite(dot(out_direction, normal) > 0.0f, normal, -normal);
+                ray             = make_ray(ctx.rec.position + offset_dir * 1e-4f, out_direction);
                 return true;
             }
 

@@ -34,7 +34,7 @@ namespace Yutrel
         float m_fov;
 
     public:
-        explicit PinholeCamera(const Camera::CreateInfo& info) noexcept;
+        explicit PinholeCamera(Scene& scene, const Camera::CreateInfo& info) noexcept;
         ~PinholeCamera() noexcept override = default;
 
     public:

@@ -6,21 +6,23 @@
 
 namespace Yutrel
 {
-    Film::Film(const Renderer& renderer) noexcept
-        : m_renderer(renderer) {}
+    luisa::unique_ptr<Film> Film::create(const CreateInfo& info) noexcept
+    {
+        return luisa::make_unique<Film>(info);
+    }
+
+    Film::Film(const CreateInfo& info) noexcept
+        : m_resolution(info.resolution)
+    {
+    }
 
     Film::~Film() noexcept = default;
 
-    luisa::unique_ptr<Film> Film::create(const Renderer& renderer) noexcept
-    {
-        return luisa::make_unique<Film>(renderer);
-    }
-
-    void Film::accumulate(Expr<uint2> pixel, Expr<float3> rgb, Expr<float> effective_spp) const noexcept
+    void Film::Instance::accumulate(Expr<uint2> pixel, Expr<float3> rgb, Expr<float> effective_spp) const noexcept
     {
         LUISA_ASSERT(m_image, "Film is not prepared.");
 
-        auto pixel_id = pixel.y * resolution().x + pixel.x;
+        auto pixel_id = pixel.y * base()->resolution().x + pixel.x;
         $if(!any(compute::isnan(rgb) || compute::isinf(rgb)))
         {
             auto threshold = 256.0f * max(effective_spp, 1.f);
@@ -41,12 +43,12 @@ namespace Yutrel
         };
     }
 
-    void Film::prepare(CommandBuffer& command_buffer) noexcept
+    void Film::Instance::prepare(CommandBuffer& command_buffer) noexcept
     {
         m_rendering_finished = false;
 
         auto&& device    = m_renderer.device();
-        uint2 size       = resolution();
+        uint2 size       = base()->resolution();
         auto pixel_count = size.x * size.y;
 
         if (!m_image)
@@ -80,7 +82,7 @@ namespace Yutrel
             Kernel2D blit_kernel = [&]() noexcept
             {
                 auto pixel_coord = dispatch_id().xy();
-                auto pixel_id    = pixel_coord.y * resolution().x + pixel_coord.x;
+                auto pixel_id    = pixel_coord.y * base()->resolution().x + pixel_coord.x;
                 auto image_data  = m_image->read(pixel_id);
                 auto inv_n       = (1.0f / max(image_data.w, 1e-6f));
                 auto color       = image_data.xyz() * inv_n;
@@ -101,7 +103,7 @@ namespace Yutrel
         m_framerate.clear();
     }
 
-    void Film::release() noexcept
+    void Film::Instance::release() noexcept
     {
         m_rendering_finished = true;
 
@@ -117,7 +119,7 @@ namespace Yutrel
         m_framebuffer = {};
     }
 
-    bool Film::show(CommandBuffer& command_buffer) const noexcept
+    bool Film::Instance::show(CommandBuffer& command_buffer) const noexcept
     {
         LUISA_ASSERT(command_buffer.stream() == m_stream, "Command buffer stream mismatch.");
 
@@ -138,7 +140,7 @@ namespace Yutrel
         m_window->prepare_frame();
         command_buffer
             << m_clear(m_framebuffer).dispatch(m_framebuffer.size())
-            << m_blit().dispatch(resolution())
+            << m_blit().dispatch(base()->resolution())
             << commit();
         display();
         m_window->render_frame();
@@ -146,7 +148,7 @@ namespace Yutrel
         return true;
     }
 
-    void Film::display() const noexcept
+    void Film::Instance::display() const noexcept
     {
         auto viewport = ImGui::GetMainViewport();
         auto bg_size  = make_float2(viewport->Size.x, viewport->Size.y);
@@ -157,8 +159,8 @@ namespace Yutrel
         {
             // TODO : 区分渲染分辨率&显示分辨率
             ImGui::Text("Render: %ux%u",
-                        resolution().x,
-                        resolution().y);
+                        base()->resolution().x,
+                        base()->resolution().y);
             ImGui::Text("Display: %ux%u (%.2ffps)",
                         static_cast<uint>(viewport->Size.x),
                         static_cast<uint>(viewport->Size.y),

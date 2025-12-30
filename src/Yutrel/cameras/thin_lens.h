@@ -43,7 +43,7 @@ namespace Yutrel
         float m_focus_distance;
 
     public:
-        explicit ThinLensCamera(const Camera::CreateInfo& info) noexcept;
+        explicit ThinLensCamera(Scene& scene, const Camera::CreateInfo& info) noexcept;
         ~ThinLensCamera() noexcept override = default;
 
     private:

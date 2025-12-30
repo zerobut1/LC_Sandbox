@@ -38,7 +38,7 @@ namespace Yutrel
     void Integrator::render_one_camera(CommandBuffer& command_buffer, Camera::Instance* camera)
     {
         auto spp        = camera->base()->spp();
-        auto resolution = camera->film()->resolution();
+        auto resolution = camera->film()->base()->resolution();
 
         sampler()->reset(command_buffer, resolution.x * resolution.y);
         command_buffer << synchronize();

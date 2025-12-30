@@ -6,8 +6,8 @@
 
 namespace Yutrel
 {
-    ThinLensCamera::ThinLensCamera(const Camera::CreateInfo& info) noexcept
-        : Camera(info),
+    ThinLensCamera::ThinLensCamera(Scene& scene, const Camera::CreateInfo& info) noexcept
+        : Camera(scene, info),
           m_aperture(info.aperture),
           m_focal_length(info.focal_length),
           m_focus_distance(info.focus_distance)
@@ -21,7 +21,7 @@ namespace Yutrel
     }
 
     ThinLensCamera::Instance::Instance(Renderer& renderer, CommandBuffer& command_buffer, const ThinLensCamera* camera) noexcept
-        : Camera::Instance(renderer, camera),
+        : Camera::Instance(renderer, command_buffer, camera),
           m_device_data(renderer.arena_buffer<ThinLensCameraData>(1u))
     {
         auto v                      = camera->focus_distance();
@@ -29,7 +29,7 @@ namespace Yutrel
         auto u                      = 1.0 / (1.0 / f - 1.0 / v);
         auto object_to_sensor_ratio = static_cast<float>(v / u);
         auto lens_radius            = static_cast<float>(.5 * f / camera->aperture());
-        auto resolution             = make_float2(film()->resolution());
+        auto resolution             = make_float2(film()->base()->resolution());
         auto pixel_offset           = 0.5f * resolution;
         auto projected_pixel_size =
             resolution.x > resolution.y

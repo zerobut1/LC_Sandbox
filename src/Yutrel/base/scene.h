@@ -3,6 +3,7 @@
 #include <luisa/luisa-compute.h>
 
 #include "base/camera.h"
+#include "base/film.h"
 #include "base/texture.h"
 
 namespace Yutrel
@@ -32,10 +33,12 @@ namespace Yutrel
     public:
         [[nodiscard]] static luisa::unique_ptr<Scene> create(const Context& context) noexcept;
 
-        void load_camera(const Camera::CreateInfo& info) const noexcept;
+        void load_camera(const Camera::CreateInfo& info) noexcept;
+        [[nodiscard]] const Film* load_film(const Film::CreateInfo& info) noexcept;
         [[nodiscard]] const Texture* load_texture(const Texture::CreateInfo& info) noexcept;
 
         [[nodiscard]] const Camera* camera() const noexcept;
+        [[nodiscard]] const Film* film() const noexcept;
     };
 
 } // namespace Yutrel

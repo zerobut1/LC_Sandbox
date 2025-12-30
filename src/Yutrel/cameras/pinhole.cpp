@@ -5,8 +5,8 @@
 
 namespace Yutrel
 {
-    PinholeCamera::PinholeCamera(const Camera::CreateInfo& info) noexcept
-        : Camera(info),
+    PinholeCamera::PinholeCamera(Scene& scene, const Camera::CreateInfo& info) noexcept
+        : Camera(scene, info),
           m_fov(radians(info.fov))
     {
     }
@@ -17,10 +17,10 @@ namespace Yutrel
     }
 
     PinholeCamera::Instance::Instance(Renderer& renderer, CommandBuffer& command_buffer, const PinholeCamera* camera) noexcept
-        : Camera::Instance(renderer, camera),
+        : Camera::Instance(renderer, command_buffer, camera),
           m_device_data(renderer.arena_buffer<PinholeCameraData>(1u))
     {
-        PinholeCameraData host_data{make_float2(film()->resolution()), tan(camera->m_fov * 0.5f)};
+        PinholeCameraData host_data{make_float2(film()->base()->resolution()), tan(camera->m_fov * 0.5f)};
         m_device_data = renderer.arena_buffer<PinholeCameraData>(1u);
         command_buffer
             << m_device_data.copy_from(&host_data)

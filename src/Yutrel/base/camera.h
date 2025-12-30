@@ -3,6 +3,7 @@
 #include <luisa/core/stl/memory.h>
 #include <luisa/dsl/syntax.h>
 
+#include "base/film.h"
 #include "utils/command_buffer.h"
 
 namespace Yutrel
@@ -10,8 +11,8 @@ namespace Yutrel
     using namespace luisa;
     using namespace luisa::compute;
 
+    class Scene;
     class Renderer;
-    class Film;
 
     class Camera
     {
@@ -25,6 +26,10 @@ namespace Yutrel
         struct CreateInfo
         {
             Type type{Type::pinhole};
+
+            // film
+            uint2 resolution{1920u, 1080u};
+
             uint spp{1024u};
             float2 shutter_span{0.0f, 0.0f};
             uint shutter_samples_count{0u};
@@ -42,7 +47,7 @@ namespace Yutrel
             float focus_distance{10.0f};
         };
 
-        [[nodiscard]] static luisa::unique_ptr<Camera> create(const CreateInfo& info) noexcept;
+        [[nodiscard]] static luisa::unique_ptr<Camera> create(Scene& scene, const CreateInfo& info) noexcept;
 
     public:
         struct Sample
@@ -64,10 +69,10 @@ namespace Yutrel
         private:
             const Renderer& m_renderer;
             const Camera* m_camera;
-            luisa::unique_ptr<Film> m_film;
+            luisa::unique_ptr<Film::Instance> m_film;
 
         public:
-            explicit Instance(const Renderer& renderer, const Camera* camera) noexcept;
+            explicit Instance(const Renderer& renderer, CommandBuffer& command_buffer, const Camera* camera) noexcept;
             virtual ~Instance() noexcept = default;
 
             Instance()                           = delete;
@@ -92,13 +97,14 @@ namespace Yutrel
         };
 
     private:
+        const Film* m_film;
         float4x4 m_transform;
         uint m_spp;
         float2 m_shutter_span;
         uint m_shutter_samples_count;
 
     public:
-        explicit Camera(const CreateInfo& info) noexcept;
+        explicit Camera(Scene& scene, const CreateInfo& info) noexcept;
         virtual ~Camera() noexcept;
 
         Camera()                         = delete;
@@ -110,6 +116,7 @@ namespace Yutrel
     public:
         [[nodiscard]] virtual luisa::unique_ptr<Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept = 0;
 
+        [[nodiscard]] auto film() const noexcept { return m_film; }
         [[nodiscard]] auto spp() const noexcept { return m_spp; }
         [[nodiscard]] auto transform() const noexcept { return m_transform; }
         [[nodiscard]] luisa::vector<ShutterSample> shutter_samples() const noexcept;

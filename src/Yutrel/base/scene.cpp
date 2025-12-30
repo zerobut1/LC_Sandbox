@@ -5,6 +5,7 @@ namespace Yutrel
     struct Scene::Config
     {
         luisa::unique_ptr<Camera> camera;
+        luisa::unique_ptr<Film> film;
         luisa::vector<luisa::unique_ptr<Texture>> textures;
     };
 
@@ -21,14 +22,26 @@ namespace Yutrel
         return scene;
     }
 
-    void Scene::load_camera(const Camera::CreateInfo& info) const noexcept
+    void Scene::load_camera(const Camera::CreateInfo& info) noexcept
     {
         if (m_config->camera)
         {
             LUISA_ERROR("Multiple cameras are not supported yet.");
             return;
         }
-        m_config->camera = Camera::create(info);
+        m_config->camera = Camera::create(*this, info);
+    }
+
+    const Film* Scene::load_film(const Film::CreateInfo& info) noexcept
+    {
+        if (m_config->film)
+        {
+            LUISA_ERROR("Multiple films are not supported yet.");
+            return nullptr;
+        }
+        m_config->film = Film::create(info);
+
+        return film();
     }
 
     const Texture* Scene::load_texture(const Texture::CreateInfo& info) noexcept
@@ -39,6 +52,11 @@ namespace Yutrel
     const Camera* Scene::camera() const noexcept
     {
         return m_config->camera.get();
+    }
+
+    const Film* Scene::film() const noexcept
+    {
+        return m_config->film.get();
     }
 
 } // namespace Yutrel

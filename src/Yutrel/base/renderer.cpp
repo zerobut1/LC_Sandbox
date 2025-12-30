@@ -270,11 +270,12 @@ namespace Yutrel
 
         // camera
         Camera::CreateInfo camera_info{
-            .type     = Camera::Type::pinhole,
-            .spp      = 1024u,
-            .position = make_float3(278.0f, 278.0f, -800.0f),
-            .lookat   = make_float3(278.0f, 278.0f, 0.0f),
-            .up       = make_float3(0.0f, 1.0f, 0.0f),
+            .type       = Camera::Type::pinhole,
+            .resolution = make_uint2(1080u, 1080u),
+            .spp        = 1024u,
+            .position   = make_float3(278.0f, 278.0f, -800.0f),
+            .lookat     = make_float3(278.0f, 278.0f, 0.0f),
+            .up         = make_float3(0.0f, 1.0f, 0.0f),
             // pinhole
             .fov = 40.0f,
         };

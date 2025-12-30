@@ -10,25 +10,30 @@
 
 namespace Yutrel
 {
-    luisa::unique_ptr<Camera> Camera::create(const CreateInfo& info) noexcept
+    luisa::unique_ptr<Camera> Camera::create(Scene& scene, const CreateInfo& info) noexcept
     {
         switch (info.type)
         {
         case Type::pinhole:
-            return luisa::make_unique<PinholeCamera>(info);
+            return luisa::make_unique<PinholeCamera>(scene, info);
         case Type::thin_lens:
-            return luisa::make_unique<ThinLensCamera>(info);
+            return luisa::make_unique<ThinLensCamera>(scene, info);
         default:
             LUISA_ERROR("Unsupported camera type {}.", static_cast<uint>(info.type));
             return nullptr;
         }
     }
 
-    Camera::Camera(const CreateInfo& info) noexcept
+    Camera::Camera(Scene& scene, const CreateInfo& info) noexcept
         : m_spp(info.spp),
           m_shutter_span(info.shutter_span),
           m_shutter_samples_count(info.shutter_samples_count)
     {
+        Film::CreateInfo film_info{
+            .resolution = info.resolution,
+        };
+        m_film = scene.load_film(film_info);
+
         auto w = normalize(info.position - info.lookat);
         auto u = normalize(cross(info.up, w));
         auto v = cross(w, u);
@@ -132,10 +137,10 @@ namespace Yutrel
         return buckets;
     }
 
-    Camera::Instance::Instance(const Renderer& renderer, const Camera* camera) noexcept
+    Camera::Instance::Instance(const Renderer& renderer, CommandBuffer& command_buffer, const Camera* camera) noexcept
         : m_renderer(renderer),
           m_camera(camera),
-          m_film(Film::create(renderer)) {}
+          m_film(camera->film()->build(renderer, command_buffer)) {}
 
     Camera::Sample Camera::Instance::generate_ray(Expr<uint2> pixel_coord, Expr<float> time, Expr<float2> u_filter, Expr<float2> u_lens) const noexcept
     {

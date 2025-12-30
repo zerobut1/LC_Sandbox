@@ -47,9 +47,11 @@ namespace Yutrel
     {
         m_rendering_finished = false;
 
-        auto&& device    = m_renderer.device();
-        uint2 size       = base()->resolution();
-        auto pixel_count = size.x * size.y;
+        auto&& device = m_renderer.device();
+
+        // render image
+        uint2 render_resolution = base()->resolution();
+        auto pixel_count        = render_resolution.x * render_resolution.y;
 
         if (!m_image)
         {
@@ -66,17 +68,19 @@ namespace Yutrel
         {
             m_stream = command_buffer.stream();
 
+            auto window_resolution = render_resolution;
+
             m_window = luisa::make_unique<ImGuiWindow>(
                 device,
                 *command_buffer.stream(),
                 "Yutrel",
                 ImGuiWindow::Config{
-                    .size         = size,
+                    .size         = window_resolution,
                     .vsync        = false,
                     .hdr          = false,
                     .back_buffers = 3,
                 });
-            m_framebuffer = device.create_image<float>(m_window->swapchain().backend_storage(), size);
+            m_framebuffer = device.create_image<float>(m_window->swapchain().backend_storage(), render_resolution);
             m_background  = m_window->register_texture(m_framebuffer, Sampler::linear_linear_zero());
 
             Kernel2D blit_kernel = [&]() noexcept
@@ -139,7 +143,7 @@ namespace Yutrel
 
         m_window->prepare_frame();
         command_buffer
-            << m_clear(m_framebuffer).dispatch(m_framebuffer.size())
+            << m_clear(m_window->framebuffer()).dispatch(m_window->framebuffer().size())
             << m_blit().dispatch(base()->resolution())
             << commit();
         display();
@@ -151,11 +155,19 @@ namespace Yutrel
     void Film::Instance::display() const noexcept
     {
         auto viewport = ImGui::GetMainViewport();
-        auto bg_size  = make_float2(viewport->Size.x, viewport->Size.y);
-        auto p_min    = make_float2(viewport->Pos.x, viewport->Pos.y);
+
+        // aspect fit
+        auto frame_size      = make_float2(base()->resolution());
+        auto viewport_size   = make_float2(viewport->Size.x, viewport->Size.y);
+        auto aspect          = frame_size.x / frame_size.y;
+        auto viewport_aspect = viewport_size.x / viewport_size.y;
+        auto ratio           = aspect > viewport_aspect ? viewport_size.x / frame_size.x : viewport_size.y / frame_size.y;
+
+        auto bg_size = frame_size * ratio;
+        auto p_min   = make_float2(viewport->Pos.x, viewport->Pos.y) + 0.5f * (viewport_size - bg_size);
 
         ImGui::GetBackgroundDrawList()->AddImage(m_background, ImVec2{p_min.x, p_min.y}, ImVec2{p_min.x + bg_size.x, p_min.y + bg_size.y});
-        ImGui::Begin("Console", nullptr, ImGuiWindowFlags_NoResize);
+        ImGui::Begin("Console", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
         {
             // TODO : 区分渲染分辨率&显示分辨率
             ImGui::Text("Render: %ux%u",

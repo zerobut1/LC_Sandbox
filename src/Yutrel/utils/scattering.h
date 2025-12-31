@@ -6,9 +6,9 @@
 
 namespace Yutrel
 {
-    using namespace luisa;
-    using namespace luisa::compute;
+using namespace luisa;
+using namespace luisa::compute;
 
-    [[nodiscard]] Bool refract(Expr<float3> wi, Expr<float3> n, Expr<float> eta, Float3* wt) noexcept;
+[[nodiscard]] Bool refract(Expr<float3> wi, Expr<float3> n, Expr<float> eta, Float3* wt) noexcept;
 
 } // namespace Yutrel

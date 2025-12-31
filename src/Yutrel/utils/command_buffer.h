@@ -6,66 +6,66 @@
 namespace Yutrel
 {
 
-    using luisa::compute::CommandList;
-    using luisa::compute::Stream;
+using luisa::compute::CommandList;
+using luisa::compute::Stream;
 
-    class CommandBuffer
+class CommandBuffer
+{
+private:
+    Stream* _stream;
+    CommandList _list;
+
+public:
+    explicit CommandBuffer(Stream& stream) noexcept;
+    ~CommandBuffer() noexcept;
+
+    [[nodiscard]] auto stream() const noexcept { return _stream; }
+
+    template <typename T>
+    CommandBuffer& operator<<(T&& cmd) noexcept
     {
-    private:
-        Stream* _stream;
-        CommandList _list;
-
-    public:
-        explicit CommandBuffer(Stream& stream) noexcept;
-        ~CommandBuffer() noexcept;
-
-        [[nodiscard]] auto stream() const noexcept { return _stream; }
-
-        template <typename T>
-        CommandBuffer& operator<<(T&& cmd) noexcept
+        if constexpr (requires { _list << std::forward<T>(cmd); })
         {
-            if constexpr (requires { _list << std::forward<T>(cmd); })
-            {
-                _list << std::forward<T>(cmd);
-            }
-            else
-            {
-                *_stream << _list.commit()
-                         << std::forward<T>(cmd);
-            }
-            return *this;
+            _list << std::forward<T>(cmd);
         }
-
-        CommandBuffer& operator<<(Stream::Commit) noexcept
+        else
         {
-            if (!_list.empty())
-            {
-                *_stream << _list.commit();
-            }
-            return *this;
+            *_stream << _list.commit()
+                     << std::forward<T>(cmd);
         }
+        return *this;
+    }
 
-        CommandBuffer& operator<<(Stream::Synchronize) noexcept
+    CommandBuffer& operator<<(Stream::Commit) noexcept
+    {
+        if (!_list.empty())
         {
-            if (!_list.empty())
-            {
-                *_stream << _list.commit();
-            }
-            _stream->synchronize();
-            return *this;
+            *_stream << _list.commit();
         }
+        return *this;
+    }
 
-        template <typename... T>
-        CommandBuffer& operator<<(std::tuple<T...> cmds) noexcept
+    CommandBuffer& operator<<(Stream::Synchronize) noexcept
+    {
+        if (!_list.empty())
         {
-            std::apply(
-                [&]<typename... Cmd>(Cmd&&... cmd) noexcept
-            {
-                ((*this) << ... << std::forward<Cmd>(cmd));
-            },
-                std::move(cmds));
-            return *this;
+            *_stream << _list.commit();
         }
-    };
+        _stream->synchronize();
+        return *this;
+    }
+
+    template <typename... T>
+    CommandBuffer& operator<<(std::tuple<T...> cmds) noexcept
+    {
+        std::apply(
+            [&]<typename... Cmd>(Cmd&&... cmd) noexcept
+        {
+            ((*this) << ... << std::forward<Cmd>(cmd));
+        },
+            std::move(cmds));
+        return *this;
+    }
+};
 
 } // namespace Yutrel

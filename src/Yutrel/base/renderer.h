@@ -3,93 +3,103 @@
 #include <luisa/luisa-compute.h>
 
 #include "base/camera.h"
+#include "base/surface.h"
 #include "base/texture.h"
-
-#include <rtweekend/rtweekend.h>
 
 namespace Yutrel
 {
-    using namespace luisa;
-    using namespace luisa::compute;
-    using namespace RTWeekend;
-    using TextureSampler = compute::Sampler;
+using namespace luisa;
+using namespace luisa::compute;
+using TextureSampler = compute::Sampler;
 
-    class Scene;
-    class Integrator;
+class Scene;
+class Integrator;
+class Geometry;
 
-    class Renderer final
+class Renderer final
+{
+private:
+    Device& m_device;
+    luisa::vector<luisa::unique_ptr<Resource>> m_resources;
+    BindlessArray m_bindless_array;
+    size_t m_bindless_buffer_count{0u};
+    size_t m_bindless_tex2d_count{0u};
+    Polymorphic<Surface::Instance> m_surfaces;
+    luisa::unordered_map<const Surface*, uint> m_surface_tags;
+    luisa::unordered_map<const Texture*, luisa::unique_ptr<Texture::Instance>> m_textures;
+
+    luisa::unique_ptr<Camera::Instance> m_camera;
+    luisa::unique_ptr<Integrator> m_integrator;
+    luisa::unique_ptr<Geometry> m_geometry;
+
+public:
+    explicit Renderer(Device& device) noexcept;
+    ~Renderer() noexcept;
+
+    Renderer() noexcept                  = delete;
+    Renderer(const Renderer&)            = delete;
+    Renderer& operator=(const Renderer&) = delete;
+    Renderer(Renderer&&)                 = delete;
+    Renderer& operator=(Renderer&&)      = delete;
+
+public:
+    template <typename T, typename... Args>
+        requires std::is_base_of_v<Resource, T>
+    [[nodiscard]] auto create(Args&&... args) noexcept -> T*
     {
-    private:
-        Device& m_device;
-        luisa::vector<luisa::unique_ptr<Resource>> m_resources;
-        BindlessArray m_bindless_array;
-        size_t m_bindless_tex2d_count{0u};
+        auto resource = luisa::make_unique<T>(m_device.create<T>(std::forward<Args>(args)...));
+        auto p        = resource.get();
+        m_resources.emplace_back(std::move(resource));
+        return p;
+    }
 
-        luisa::unique_ptr<Camera::Instance> m_camera;
-        luisa::unique_ptr<Integrator> m_integrator;
-        luisa::unordered_map<const Texture*, luisa::unique_ptr<Texture::Instance>> m_textures;
+    template <typename T>
+    [[nodiscard]] BufferView<T> arena_buffer(size_t n) noexcept
+    {
+        return create<Buffer<T>>(n)->view();
+    }
 
-    public:
-        luisa::unique_ptr<HittableList> m_world;
-        Polymorphic<Material::Instance> m_materials;
+    template <typename T>
+    [[nodiscard]] auto register_bindless(BufferView<T> buffer) noexcept
+    {
+        auto buffer_id = m_bindless_buffer_count++;
+        m_bindless_array.emplace_on_update(buffer_id, buffer);
+        return static_cast<uint>(buffer_id);
+    }
 
-    public:
-        explicit Renderer(Device& device) noexcept;
-        ~Renderer() noexcept;
+    template <typename T>
+    [[nodiscard]] auto register_bindless(const Buffer<T>& buffer) noexcept
+    {
+        return register_bindless(buffer.view());
+    }
 
-        Renderer() noexcept                  = delete;
-        Renderer(const Renderer&)            = delete;
-        Renderer& operator=(const Renderer&) = delete;
-        Renderer(Renderer&&)                 = delete;
-        Renderer& operator=(Renderer&&)      = delete;
+    template <typename T>
+    [[nodiscard]] auto register_bindless(const Image<T>& image, TextureSampler sampler) noexcept
+    {
+        auto tex2d_id = m_bindless_tex2d_count++;
+        m_bindless_array.emplace_on_update(tex2d_id, image, sampler);
+        return static_cast<uint>(tex2d_id);
+    }
 
-    public:
-        template <typename T, typename... Args>
-            requires std::is_base_of_v<Resource, T>
-        [[nodiscard]] auto create(Args&&... args) noexcept -> T*
-        {
-            auto resource = luisa::make_unique<T>(m_device.create<T>(std::forward<Args>(args)...));
-            auto p        = resource.get();
-            m_resources.emplace_back(std::move(resource));
-            return p;
-        }
+    [[nodiscard]] uint register_surface(CommandBuffer& command_buffer, const Surface* surface) noexcept;
 
-        template <typename T>
-        [[nodiscard]] BufferView<T> arena_buffer(size_t n) noexcept
-        {
-            return create<Buffer<T>>(n)->view();
-        }
+public:
+    [[nodiscard]] static luisa::unique_ptr<Renderer> create(Device& device, Stream& stream, const Scene& scene) noexcept;
 
-        template <typename T>
-        [[nodiscard]] auto register_bindless(const Image<T>& image, TextureSampler sampler) noexcept
-        {
-            auto tex2d_id = m_bindless_tex2d_count++;
-            m_bindless_array.emplace_on_update(tex2d_id, image, sampler);
-            return static_cast<uint>(tex2d_id);
-        }
+    void render(Stream& stream);
 
-    public:
-        // TODO : const Scene &
-        [[nodiscard]] static luisa::unique_ptr<Renderer> create(Device& device, Stream& stream, Scene& scene) noexcept;
+    [[nodiscard]] auto& device() const noexcept { return m_device; }
+    [[nodiscard]] auto camera() const noexcept { return m_camera.get(); }
+    [[nodiscard]] auto integrator() const noexcept { return m_integrator.get(); }
+    [[nodiscard]] auto geometry() const noexcept { return m_geometry.get(); }
+    [[nodiscard]] auto& surfaces() const noexcept { return m_surfaces; }
 
-        void render(Stream& stream);
+    [[nodiscard]] const Texture::Instance* build_texture(CommandBuffer& command_buffer, const Texture* texture) noexcept;
 
-        [[nodiscard]] auto& device() const noexcept { return m_device; }
-        [[nodiscard]] auto camera() const noexcept { return m_camera.get(); }
-        [[nodiscard]] auto integrator() const noexcept { return m_integrator.get(); }
-
-        [[nodiscard]] const Texture::Instance* build_texture(CommandBuffer& command_buffer, const Texture* texture) noexcept;
-
-        template <typename T>
-        [[nodiscard]] auto tex2d(T&& id) const noexcept { return m_bindless_array->tex2d(std::forward<T>(id)); }
-
-    private:
-        //  temp
-        void scene_spheres(Scene& scene, CommandBuffer& command_buffer) noexcept;
-        void scene_sphere(Scene& scene, CommandBuffer& command_buffer) noexcept;
-        void scene_quads(Scene& scene, CommandBuffer& command_buffer) noexcept;
-        void scene_simple_light(Scene& scene, CommandBuffer& command_buffer) noexcept;
-        void scene_cornell_box(Scene& scene, CommandBuffer& command_buffer) noexcept;
-    };
+    template <typename T, typename I>
+    [[nodiscard]] auto buffer(I&& id) const noexcept { return m_bindless_array->buffer<T>(std::forward<I>(id)); }
+    template <typename T>
+    [[nodiscard]] auto tex2d(T&& id) const noexcept { return m_bindless_array->tex2d(std::forward<T>(id)); }
+};
 
 } // namespace Yutrel

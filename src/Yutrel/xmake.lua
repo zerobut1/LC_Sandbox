@@ -11,5 +11,6 @@ target("Yutrel")
 
     add_deps("lc-dsl","lc-gui","stb-image")
     add_packages("tinyexr")
+    add_packages("assimp")
 
 target_end()

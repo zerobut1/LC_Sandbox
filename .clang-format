@@ -57,7 +57,7 @@ Cpp11BracedListStyle: true
 AlignTrailingComments: true
 
 # 命名空间缩进
-NamespaceIndentation: All
+NamespaceIndentation: None
 
 # 访问修饰符缩进
 IndentAccessModifiers: false

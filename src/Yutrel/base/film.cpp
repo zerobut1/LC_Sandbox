@@ -12,13 +12,13 @@ luisa::unique_ptr<Film> Film::create(const CreateInfo& info) noexcept
 }
 
 Film::Film(const CreateInfo& info) noexcept
-    : m_resolution(info.resolution) {}
+    : m_resolution(info.resolution), m_hdr(info.hdr) {}
 
 Film::~Film() noexcept = default;
 
 void Film::Instance::accumulate(Expr<uint2> pixel, Expr<float3> rgb, Expr<float> effective_spp) const noexcept
 {
-    LUISA_ASSERT(m_image, "Film is not prepared.");
+    LUISA_ASSERT(m_image && m_converted, "Film is not prepared.");
 
     auto pixel_id = pixel.y * base()->resolution().x + pixel.x;
     $if(!any(compute::isnan(rgb) || compute::isinf(rgb)))
@@ -53,12 +53,27 @@ void Film::Instance::prepare(CommandBuffer& command_buffer) noexcept
 
     if (!m_image)
     {
-        m_image                     = renderer().device().create_buffer<float4>(pixel_count);
+        m_image = renderer().device().create_buffer<float4>(pixel_count);
+
         Kernel1D clear_image_kernel = [](BufferFloat4 image) noexcept
         {
             image.write(dispatch_x(), make_float4(0.f));
         };
         m_clear_image = m_renderer.device().compile(clear_image_kernel);
+    }
+    if (!m_converted)
+    {
+        m_converted = renderer().device().create_buffer<float4>(pixel_count);
+
+        Kernel1D convert_image_kernel = [this](BufferFloat4 accum, BufferFloat4 output) noexcept
+        {
+            auto i     = dispatch_x();
+            auto c     = accum.read(i);
+            auto n     = max(c.w, 1.f);
+            auto scale = (1.f / n);
+            output.write(i, make_float4(scale * c.xyz(), 1.f));
+        };
+        m_convert_image = m_renderer.device().compile(convert_image_kernel);
     }
     command_buffer << m_clear_image(m_image).dispatch(pixel_count);
 
@@ -75,13 +90,13 @@ void Film::Instance::prepare(CommandBuffer& command_buffer) noexcept
             ImGuiWindow::Config{
                 .size         = window_resolution,
                 .vsync        = false,
-                .hdr          = false,
+                .hdr          = base()->hdr(),
                 .back_buffers = 3,
             });
         m_framebuffer = device.create_image<float>(m_window->swapchain().backend_storage(), render_resolution);
         m_background  = m_window->register_texture(m_framebuffer, Sampler::linear_linear_zero());
 
-        Kernel2D blit_kernel = [&]() noexcept
+        Kernel2D blit_kernel = [&](Bool is_ldr) noexcept
         {
             auto pixel_coord = dispatch_id().xy();
             auto pixel_id    = pixel_coord.y * base()->resolution().x + pixel_coord.x;
@@ -89,8 +104,11 @@ void Film::Instance::prepare(CommandBuffer& command_buffer) noexcept
             auto inv_n       = (1.0f / max(image_data.w, 1e-6f));
             auto color       = image_data.xyz() * inv_n;
 
-            // linear to sRGB
-            color = ite(color <= .0031308f, color * 12.92f, 1.055f * pow(color, 1.f / 2.4f) - .055f);
+            $if(is_ldr)
+            {
+                // linear to sRGB
+                color = ite(color <= .0031308f, color * 12.92f, 1.055f * pow(color, 1.f / 2.4f) - .055f);
+            };
 
             m_framebuffer->write(pixel_coord, make_float4(color, 1.0f));
         };
@@ -103,6 +121,17 @@ void Film::Instance::prepare(CommandBuffer& command_buffer) noexcept
         m_clear = device.compile(clear_kernel);
     }
     m_framerate.clear();
+}
+
+void Film::Instance::download(CommandBuffer& command_buffer, float4* buffer) const noexcept
+{
+    LUISA_ASSERT(m_image && m_converted, "Film is not prepared.");
+
+    auto pixel_count = base()->resolution().x * base()->resolution().y;
+
+    command_buffer
+        << m_convert_image(m_image, m_converted).dispatch(pixel_count)
+        << m_converted.copy_to(buffer);
 }
 
 void Film::Instance::release() noexcept
@@ -140,9 +169,12 @@ bool Film::Instance::show(CommandBuffer& command_buffer) const noexcept
     m_framerate.record();
 
     m_window->prepare_frame();
+
+    auto is_ldr = m_window->framebuffer().storage() != PixelStorage::FLOAT4;
+
     command_buffer
         << m_clear(m_window->framebuffer()).dispatch(m_window->framebuffer().size())
-        << m_blit().dispatch(base()->resolution())
+        << m_blit(is_ldr).dispatch(base()->resolution())
         << commit();
     display();
     m_window->render_frame();

@@ -9,6 +9,7 @@
 #include "base/renderer.h"
 #include "base/sampler.h"
 #include "utils/command_buffer.h"
+#include "utils/image_io.h"
 #include "utils/progress_bar.h"
 
 namespace Yutrel
@@ -28,11 +29,18 @@ void Integrator::render(Stream& stream)
 {
     CommandBuffer command_buffer{stream};
 
-    auto camera = m_renderer.camera();
+    auto camera      = m_renderer.camera();
+    auto resolution  = camera->film()->base()->resolution();
+    auto pixel_count = resolution.x * resolution.y;
 
     camera->film()->prepare(command_buffer);
     {
         render_one_camera(command_buffer, camera);
+        luisa::vector<float4> pixels(pixel_count);
+        camera->film()->download(command_buffer, pixels.data());
+        command_buffer << synchronize();
+        auto output_path = std::filesystem::canonical(std::filesystem::current_path()) / "render.exr";
+        save_image(output_path, reinterpret_cast<const float*>(pixels.data()), resolution);
     }
     camera->film()->release();
 }

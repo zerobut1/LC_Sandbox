@@ -30,10 +30,7 @@ Camera::Camera(Scene& scene, const CreateInfo& info) noexcept
       m_shutter_span(info.shutter_span),
       m_shutter_samples_count(info.shutter_samples_count)
 {
-    Film::CreateInfo film_info{
-        .resolution = info.resolution,
-    };
-    m_film = scene.load_film(film_info);
+    m_film = scene.load_film(info.film_info);
 
     auto w = normalize(info.position - info.lookat);
     auto u = normalize(cross(info.up, w));

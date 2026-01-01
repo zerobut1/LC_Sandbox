@@ -28,7 +28,7 @@ public:
         Type type{Type::pinhole};
 
         // film
-        uint2 resolution{1920u, 1080u};
+        Film::CreateInfo film_info{};
 
         uint spp{1024u};
         float2 shutter_span{0.0f, 0.0f};

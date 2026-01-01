@@ -24,6 +24,7 @@ public:
     struct CreateInfo
     {
         uint2 resolution{1920u, 1080u};
+        bool hdr{false};
     };
 
     [[nodiscard]] static luisa::unique_ptr<Film> create(const CreateInfo& info) noexcept;
@@ -37,14 +38,16 @@ public:
 
         // render image
         mutable Buffer<float4> m_image;
+        mutable Buffer<float4> m_converted;
         Shader1D<Buffer<float4>> m_clear_image;
+        Shader1D<Buffer<float4>, Buffer<float4>> m_convert_image;
 
         // window display
         Stream* m_stream{};
         luisa::unique_ptr<ImGuiWindow> m_window;
         Image<float> m_framebuffer;
         ImTextureID m_background{};
-        Shader2D<> m_blit;
+        Shader2D<bool> m_blit;
         Shader2D<Image<float>> m_clear;
         bool m_rendering_finished{false};
         mutable Framerate m_framerate{};
@@ -73,6 +76,7 @@ public:
         void accumulate(Expr<uint2> pixel, Expr<float3> rgb, Expr<float> effective_spp) const noexcept;
 
         void prepare(CommandBuffer& command_buffer) noexcept;
+        void download(CommandBuffer& command_buffer, float4* buffer) const noexcept;
         void release() noexcept;
         bool show(CommandBuffer& command_buffer) const noexcept;
 
@@ -82,6 +86,7 @@ public:
 
 private:
     uint2 m_resolution{1920u, 1080u};
+    bool m_hdr{false};
 
 public:
     explicit Film(const CreateInfo& info) noexcept;
@@ -99,6 +104,7 @@ public:
         return luisa::make_unique<Instance>(renderer, this);
     }
 
-    [[nodiscard]] uint2 resolution() const noexcept { return m_resolution; }
+    [[nodiscard]] auto resolution() const noexcept { return m_resolution; }
+    [[nodiscard]] auto hdr() const noexcept { return m_hdr; }
 };
 } // namespace Yutrel

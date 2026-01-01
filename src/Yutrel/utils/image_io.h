@@ -9,10 +9,8 @@ namespace Yutrel
 {
 using namespace luisa;
 
-// TODO: texture cache
 class LoadedImage
 {
-
 public:
     using storage_type = compute::PixelStorage;
 

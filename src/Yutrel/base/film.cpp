@@ -199,7 +199,6 @@ void Film::Instance::display() const noexcept
     ImGui::GetBackgroundDrawList()->AddImage(m_background, ImVec2{p_min.x, p_min.y}, ImVec2{p_min.x + bg_size.x, p_min.y + bg_size.y});
     ImGui::Begin("Console", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
     {
-        // TODO : 区分渲染分辨率&显示分辨率
         ImGui::Text("Render: %ux%u",
                     base()->resolution().x,
                     base()->resolution().y);

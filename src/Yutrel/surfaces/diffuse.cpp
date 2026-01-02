@@ -43,4 +43,11 @@ Bool Diffuse::Closure::scatter(Var<Ray>& ray, Var<float3>& attenuation, Expr<flo
     return true;
 }
 
+Float Diffuse::Closure::scatter_pdf(Expr<float3> wo, Expr<float3> wi, Var<float3>& attenuation, Expr<float2> u, Expr<float> u_lobe) const noexcept
+{
+    auto&& ctx     = context<Context>();
+    auto cos_theta = dot(ctx.it.shading.n(), wi);
+    return ite(cos_theta > 0.0f, cos_theta / pi, 0.0f);
+}
+
 } // namespace Yutrel

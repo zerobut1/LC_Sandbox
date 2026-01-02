@@ -117,8 +117,6 @@ Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Ex
     Float3 throughput = make_float3(1.0f);
 
     const auto MAX_DEPTH = 10u;
-    const auto T_MIN     = 1e-5f;
-    const auto T_MAX     = 1e10f;
 
     $for(depth, MAX_DEPTH)
     {
@@ -147,7 +145,10 @@ Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Ex
             scattered = closure->scatter(ray, attenuation, u, u_lobe);
             emission  = closure->emitted();
             radiance += throughput * emission;
-            throughput *= attenuation;
+
+            auto scattering_pdf = closure->scatter_pdf(wo, ray->direction(), attenuation, u, u_lobe);
+            auto pdf_value      = scattering_pdf;
+            throughput *= (attenuation * scattering_pdf) / pdf_value;
         });
 
         $if(!scattered)

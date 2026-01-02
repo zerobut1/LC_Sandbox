@@ -32,13 +32,15 @@ void Diffuse::Instance::populate_closure(Surface::Closure* closure, const Intera
     closure->bind(std::move(ctx));
 }
 
-Bool Diffuse::Closure::scatter(Var<Ray>& ray, Var<float3>& attenuation, Expr<float2> u, Expr<float> u_lobe) const noexcept
+Bool Diffuse::Closure::scatter(Expr<float3> wo, Var<Ray>& scattered, Var<float3>& attenuation, Var<float>& pdf, Expr<float2> u, Expr<float> u_lobe) const noexcept
 {
-    auto&& ctx             = context<Context>();
-    auto scatter_direction = normalize(ctx.it.shading.n() + sample_uniform_sphere(u));
+    auto&& ctx = context<Context>();
 
-    ray         = make_ray(ctx.it.p_s + ctx.it.shading.n() * 1e-4f, scatter_direction);
+    auto scatter_direction = ctx.it.shading.local_to_world(sample_cosine_hemisphere(u));
+
+    scattered   = make_ray(ctx.it.p_s + ctx.it.shading.n() * 1e-4f, normalize(scatter_direction));
     attenuation = ctx.reflectance;
+    pdf         = dot(ctx.it.shading.n(), scatter_direction) / pi;
 
     return true;
 }

@@ -31,11 +31,6 @@ void DiffuseLight::Instance::populate_closure(Surface::Closure* closure, const I
     closure->bind(std::move(ctx));
 }
 
-Bool DiffuseLight::Closure::scatter(Var<Ray>& ray, Var<float3>& attenuation, Expr<float2> u, Expr<float> u_lobe) const noexcept
-{
-    return false;
-}
-
 Float3 DiffuseLight::Closure::emitted() const noexcept
 {
     auto&& ctx = context<Context>();

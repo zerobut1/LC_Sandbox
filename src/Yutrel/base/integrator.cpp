@@ -130,8 +130,9 @@ Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Ex
         };
 
         Float3 attenuation = make_float3(0.0f);
-        auto u_lobe        = sampler()->generate_1d();
-        auto u             = sampler()->generate_2d();
+        Float pdf_value;
+        auto u_lobe = sampler()->generate_1d();
+        auto u      = sampler()->generate_2d();
 
         PolymorphicCall<Surface::Closure> call;
         renderer().surfaces().dispatch(it->shape.surface_tag(), [&](auto material) noexcept
@@ -142,12 +143,12 @@ Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Ex
         Float3 emission = make_float3(0.0f);
         call.execute([&](auto closure) noexcept
         {
-            scattered = closure->scatter(ray, attenuation, u, u_lobe);
+            scattered = closure->scatter(wo, ray, attenuation, pdf_value, u, u_lobe);
             emission  = closure->emitted();
             radiance += throughput * emission;
 
             auto scattering_pdf = closure->scatter_pdf(wo, ray->direction(), attenuation, u, u_lobe);
-            auto pdf_value      = scattering_pdf;
+            pdf_value           = scattering_pdf;
             throughput *= (attenuation * scattering_pdf) / pdf_value;
         });
 

@@ -104,7 +104,7 @@ public:
     [[nodiscard]] auto& renderer() const noexcept { return m_renderer; }
     [[nodiscard]] auto time() const noexcept { return m_time; }
 
-    [[nodiscard]] virtual Bool scatter(Var<Ray>& ray, Var<float3>& attenuation, Expr<float2> u, Expr<float> u_lobe) const noexcept = 0;
+    [[nodiscard]] virtual Bool scatter(Expr<float3> wo, Var<Ray>& scattered, Var<float3>& attenuation, Var<float>& pdf, Expr<float2> u, Expr<float> u_lobe) const noexcept { return false; }
     [[nodiscard]] virtual Float scatter_pdf(Expr<float3> wo, Expr<float3> wi, Var<float3>& attenuation, Expr<float2> u, Expr<float> u_lobe) const noexcept { return 0; }
     [[nodiscard]] virtual Float3 emitted() const noexcept { return make_float3(0.0f); }
 };

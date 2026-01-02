@@ -24,10 +24,10 @@ int main(int argc, char* argv[])
         .film_info = {
             .resolution = make_uint2(1024u),
             .hdr        = false},
-        .spp      = 1024u,
-        .position = make_float3(0.0f, 1.0f, 6.8f),
-        .lookat   = make_float3(0.0f, 1.0f, 0.0f),
-        .up       = make_float3(0.0f, 1.0f, 0.0f),
+        .spp      = 65536u,
+        .position = make_float3(0.0f, -6.8f, 1.0f),
+        .lookat   = make_float3(0.0f, 0.0f, 1.0f),
+        .up       = make_float3(0.0f, 0.0f, 1.0f),
         // pinhole
         .fov = 19.5f,
     };

@@ -93,7 +93,7 @@ void Film::Instance::prepare(CommandBuffer& command_buffer) noexcept
                 .hdr          = base()->hdr(),
                 .back_buffers = 3,
             });
-        m_framebuffer = device.create_image<float>(m_window->swapchain().backend_storage(), render_resolution);
+        m_framebuffer = device.create_image<float>(PixelStorage::FLOAT4, render_resolution);
         m_background  = m_window->register_texture(m_framebuffer, Sampler::linear_linear_zero());
 
         Kernel2D blit_kernel = [&](Bool is_ldr) noexcept

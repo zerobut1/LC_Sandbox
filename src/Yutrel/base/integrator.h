@@ -14,16 +14,21 @@ using namespace luisa::compute;
 
 class Renderer;
 class Sampler;
+class LightSampler;
 
 class Integrator
 {
+public:
+    [[nodiscard]] static luisa::unique_ptr<Integrator> create(Renderer& renderer, CommandBuffer& command_buffer) noexcept;
+
 private:
     const Renderer& m_renderer;
 
     luisa::unique_ptr<Sampler> m_sampler;
+    luisa::unique_ptr<LightSampler> m_light_sampler;
 
 public:
-    explicit Integrator(Renderer& renderer) noexcept;
+    explicit Integrator(Renderer& renderer, CommandBuffer& command_buffer) noexcept;
     ~Integrator() noexcept;
 
     Integrator() noexcept                    = delete;
@@ -33,7 +38,6 @@ public:
     Integrator& operator=(Integrator&&)      = delete;
 
 public:
-    [[nodiscard]] static luisa::unique_ptr<Integrator> create(Renderer& renderer) noexcept;
     [[nodiscard]] auto& renderer() const noexcept { return m_renderer; }
     [[nodiscard]] auto sampler() const noexcept { return m_sampler.get(); }
 

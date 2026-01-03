@@ -14,6 +14,9 @@ class Renderer;
 
 class Sampler
 {
+public:
+    [[nodiscard]] static luisa::unique_ptr<Sampler> create(const Renderer& renderer) noexcept;
+
 private:
     const Renderer& m_renderer;
 
@@ -32,7 +35,6 @@ public:
     Sampler& operator=(Sampler&&) noexcept      = delete;
 
 public:
-    [[nodiscard]] static luisa::unique_ptr<Sampler> create(const Renderer& renderer) noexcept;
     [[nodiscard]] auto seed() const noexcept { return m_seed; }
 
     void reset(CommandBuffer& command_buffer, uint state_count) noexcept;

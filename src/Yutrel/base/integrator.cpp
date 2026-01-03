@@ -6,6 +6,7 @@
 #include "base/film.h"
 #include "base/geometry.h"
 #include "base/interaction.h"
+#include "base/light_sampler.h"
 #include "base/renderer.h"
 #include "base/sampler.h"
 #include "utils/command_buffer.h"
@@ -14,16 +15,17 @@
 
 namespace Yutrel
 {
-Integrator::Integrator(Renderer& renderer) noexcept
+luisa::unique_ptr<Integrator> Integrator::create(Renderer& renderer, CommandBuffer& command_buffer) noexcept
+{
+    return luisa::make_unique<Integrator>(renderer, command_buffer);
+}
+
+Integrator::Integrator(Renderer& renderer, CommandBuffer& command_buffer) noexcept
     : m_renderer(renderer),
-      m_sampler(Sampler::create(renderer)) {}
+      m_sampler(Sampler::create(renderer)),
+      m_light_sampler(LightSampler::create(renderer, command_buffer)) {}
 
 Integrator::~Integrator() noexcept = default;
-
-luisa::unique_ptr<Integrator> Integrator::create(Renderer& renderer) noexcept
-{
-    return luisa::make_unique<Integrator>(renderer);
-}
 
 void Integrator::render(Stream& stream)
 {

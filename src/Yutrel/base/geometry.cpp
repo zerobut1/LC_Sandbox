@@ -84,6 +84,8 @@ void Geometry::process_shape(CommandBuffer& command_buffer, const Shape* shape) 
             return data;
         }();
 
+        auto instance_id = static_cast<uint>(m_accel.size());
+
         // surfaces
         auto surface_tag = 0u;
         auto properties  = mesh.vertex_properties;
@@ -109,6 +111,14 @@ void Geometry::process_shape(CommandBuffer& command_buffer, const Shape* shape) 
                 properties,
                 surface_tag,
                 light_tag));
+
+        if (properties & Shape::property_flag_has_light)
+        {
+            m_instanced_lights.emplace_back(
+                Light::Handle{
+                    .instance_id = instance_id,
+                    .light_tag   = light_tag});
+        }
 
         m_instanced_triangle_count += mesh.resource->triangle_count();
     }

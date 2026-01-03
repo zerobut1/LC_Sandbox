@@ -63,6 +63,14 @@ public:
     }
 
     template <typename T>
+    [[nodiscard]] std::pair<BufferView<T>, uint /* bindless id */> bindless_arena_buffer(size_t n) noexcept
+    {
+        auto view      = arena_buffer<T>(n);
+        auto buffer_id = register_bindless(view);
+        return std::make_pair(view, buffer_id);
+    }
+
+    template <typename T>
     [[nodiscard]] auto register_bindless(BufferView<T> buffer) noexcept
     {
         auto buffer_id = m_bindless_buffer_count++;
@@ -97,6 +105,7 @@ public:
     [[nodiscard]] auto integrator() const noexcept { return m_integrator.get(); }
     [[nodiscard]] auto geometry() const noexcept { return m_geometry.get(); }
     [[nodiscard]] auto& surfaces() const noexcept { return m_surfaces; }
+    [[nodiscard]] auto& lights() const noexcept { return m_lights; }
 
     [[nodiscard]] const Texture::Instance* build_texture(CommandBuffer& command_buffer, const Texture* texture) noexcept;
 

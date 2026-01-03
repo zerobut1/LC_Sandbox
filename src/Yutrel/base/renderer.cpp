@@ -60,7 +60,7 @@ luisa::unique_ptr<Renderer> Renderer::create(Device& device, Stream& stream, con
     renderer->m_geometry->build(command_buffer, scene.shapes());
     update_bindless_if_dirty();
 
-    renderer->m_integrator = Integrator::create(*renderer);
+    renderer->m_integrator = Integrator::create(*renderer, command_buffer);
     update_bindless_if_dirty();
 
     command_buffer << synchronize();

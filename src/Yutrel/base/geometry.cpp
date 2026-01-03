@@ -85,7 +85,7 @@ void Geometry::process_shape(CommandBuffer& command_buffer, const Shape* shape) 
 
         auto surface_tag = 0u;
         auto properties  = mesh.vertex_properties;
-        if (surface)
+        if (surface && !surface->is_null())
         {
             surface_tag = m_renderer.register_surface(command_buffer, surface);
             properties |= Shape::property_flag_has_surface;

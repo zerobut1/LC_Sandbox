@@ -2,6 +2,7 @@
 
 #include "surfaces/diffuse.h"
 #include "surfaces/diffuselight.h"
+#include "surfaces/null.h"
 
 namespace Yutrel
 {
@@ -13,9 +14,9 @@ luisa::unique_ptr<Surface> Surface::create(Scene& scene, const CreateInfo& info)
         return luisa::make_unique<Diffuse>(scene, info);
     case Type::diffuse_light:
         return luisa::make_unique<DiffuseLight>(scene, info);
+    case Type::null:
     default:
-        LUISA_ERROR("Unsupported surface type {}.", static_cast<uint>(info.type));
-        return nullptr;
+        return luisa::make_unique<NullSurface>(scene, info);
     }
 }
 

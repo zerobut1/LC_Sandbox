@@ -38,21 +38,25 @@ int main(int argc, char* argv[])
         Shape::CreateInfo{
             .path         = "scene/cornell-box/mesh/backwall.obj",
             .surface_info = {
+                .type        = Surface::Type::diffuse,
                 .reflectance = {.v = make_float4(0.725f, 0.71f, 0.68f, 1.0f)}}};
     scene_info.shape_infos[1] =
         Shape::CreateInfo{
             .path         = "scene/cornell-box/mesh/ceiling.obj",
             .surface_info = {
+                .type        = Surface::Type::diffuse,
                 .reflectance = {.v = make_float4(0.725f, 0.71f, 0.68f, 1.0f)}}};
     scene_info.shape_infos[2] =
         Shape::CreateInfo{
             .path         = "scene/cornell-box/mesh/floor.obj",
             .surface_info = {
+                .type        = Surface::Type::diffuse,
                 .reflectance = {.v = make_float4(0.725f, 0.71f, 0.68f, 1.0f)}}};
     scene_info.shape_infos[3] =
         Shape::CreateInfo{
             .path         = "scene/cornell-box/mesh/leftwall.obj",
             .surface_info = {
+                .type        = Surface::Type::diffuse,
                 .reflectance = {.v = make_float4(0.63f, 0.065f, 0.05f, 1.0f)}}};
     scene_info.shape_infos[4] =
         Shape::CreateInfo{
@@ -64,16 +68,19 @@ int main(int argc, char* argv[])
         Shape::CreateInfo{
             .path         = "scene/cornell-box/mesh/rightwall.obj",
             .surface_info = {
+                .type        = Surface::Type::diffuse,
                 .reflectance = {.v = make_float4(0.14f, 0.45f, 0.091f, 1.0f)}}};
     scene_info.shape_infos[6] =
         Shape::CreateInfo{
             .path         = "scene/cornell-box/mesh/shortbox.obj",
             .surface_info = {
+                .type        = Surface::Type::diffuse,
                 .reflectance = {.v = make_float4(0.725f, 0.71f, 0.68f, 1.0f)}}};
     scene_info.shape_infos[7] =
         Shape::CreateInfo{
             .path         = "scene/cornell-box/mesh/tallbox.obj",
             .surface_info = {
+                .type        = Surface::Type::diffuse,
                 .reflectance = {.v = make_float4(0.725f, 0.71f, 0.68f, 1.0f)}}};
 
     Application app{app_info};

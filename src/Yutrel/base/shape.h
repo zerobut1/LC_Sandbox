@@ -99,6 +99,9 @@ public:
     [[nodiscard]] auto test_property_flag(luisa::uint flag) const noexcept { return (properties() & flag) != 0u; }
     [[nodiscard]] auto has_vertex_normal() const noexcept { return test_property_flag(Yutrel::Shape::property_flag_has_vertex_normal); }
     [[nodiscard]] auto has_vertex_uv() const noexcept { return test_property_flag(Yutrel::Shape::property_flag_has_vertex_uv); }
+    [[nodiscard]] auto has_surface() const noexcept { return test_property_flag(Yutrel::Shape::property_flag_has_surface); }
+    [[nodiscard]] auto has_light() const noexcept { return test_property_flag(Yutrel::Shape::property_flag_has_light); }
+    [[nodiscard]] auto has_medium() const noexcept { return test_property_flag(Yutrel::Shape::property_flag_has_medium); }
 };
 
 } // namespace Yutrel

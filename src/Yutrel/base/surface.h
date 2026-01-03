@@ -18,13 +18,14 @@ class Surface
 public:
     enum class Type
     {
+        null,
         diffuse,
         diffuse_light,
     };
 
     struct CreateInfo
     {
-        Type type{Type::diffuse};
+        Type type{Type::null};
         // diffuse
         Texture::CreateInfo reflectance{};
         // diffuse light
@@ -48,6 +49,7 @@ public:
     Surface& operator=(Surface&&)      = delete;
 
 public:
+    [[nodiscard]] virtual bool is_null() const noexcept { return false; }
     [[nodiscard]] virtual luisa::unique_ptr<Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept = 0;
 };
 

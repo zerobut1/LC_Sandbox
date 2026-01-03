@@ -123,11 +123,15 @@ Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Ex
         auto wo = -ray->direction();
         auto it = renderer().geometry()->intersect(ray);
 
+        // miss
         $if(!it->valid())
         {
             radiance += throughput * make_float3(0.0f);
             $break;
         };
+
+        // no surface
+        $if(!it->shape.has_surface()) { $break; };
 
         Float3 attenuation = make_float3(0.0f);
         Float pdf_value;

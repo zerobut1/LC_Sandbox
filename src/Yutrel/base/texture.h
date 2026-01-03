@@ -90,5 +90,9 @@ public:
 
 public:
     [[nodiscard]] virtual luisa::unique_ptr<Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept = 0;
+
+    // TODO 
+    // is black
+    // is constant
 };
 } // namespace Yutrel

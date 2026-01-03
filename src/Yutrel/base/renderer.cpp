@@ -27,6 +27,18 @@ uint Renderer::register_surface(CommandBuffer& command_buffer, const Surface* su
     return tag;
 }
 
+uint Renderer::register_light(CommandBuffer& command_buffer, const Light* light) noexcept
+{
+    if (auto iter = m_light_tags.find(light);
+        iter != m_light_tags.end())
+    {
+        return iter->second;
+    }
+    auto tag = m_lights.emplace(light->build(*this, command_buffer));
+    m_light_tags.emplace(light, tag);
+    return tag;
+}
+
 luisa::unique_ptr<Renderer> Renderer::create(Device& device, Stream& stream, const Scene& scene) noexcept
 {
     auto renderer = luisa::make_unique<Renderer>(device);

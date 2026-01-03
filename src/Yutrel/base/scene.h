@@ -45,6 +45,7 @@ public:
     [[nodiscard]] const Film* load_film(const Film::CreateInfo& info) noexcept;
     [[nodiscard]] const Shape* load_shape(const Shape::CreateInfo& info) noexcept;
     [[nodiscard]] const Surface* load_surface(const Surface::CreateInfo& info) noexcept;
+    [[nodiscard]] const Light* load_light(const Light::CreateInfo& info) noexcept;
     [[nodiscard]] const Texture* load_texture(const Texture::CreateInfo& info) noexcept;
 
     [[nodiscard]] const Camera* camera() const noexcept;

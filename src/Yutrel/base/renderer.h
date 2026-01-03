@@ -3,6 +3,7 @@
 #include <luisa/luisa-compute.h>
 
 #include "base/camera.h"
+#include "base/light.h"
 #include "base/surface.h"
 #include "base/texture.h"
 
@@ -25,7 +26,9 @@ private:
     size_t m_bindless_buffer_count{0u};
     size_t m_bindless_tex2d_count{0u};
     Polymorphic<Surface::Instance> m_surfaces;
+    Polymorphic<Light::Instance> m_lights;
     luisa::unordered_map<const Surface*, uint> m_surface_tags;
+    luisa::unordered_map<const Light*, uint> m_light_tags;
     luisa::unordered_map<const Texture*, luisa::unique_ptr<Texture::Instance>> m_textures;
 
     luisa::unique_ptr<Camera::Instance> m_camera;
@@ -82,6 +85,7 @@ public:
     }
 
     [[nodiscard]] uint register_surface(CommandBuffer& command_buffer, const Surface* surface) noexcept;
+    [[nodiscard]] uint register_light(CommandBuffer& command_buffer, const Light* light) noexcept;
 
 public:
     [[nodiscard]] static luisa::unique_ptr<Renderer> create(Device& device, Stream& stream, const Scene& scene) noexcept;

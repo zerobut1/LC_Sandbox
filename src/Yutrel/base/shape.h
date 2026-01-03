@@ -2,6 +2,7 @@
 
 #include <luisa/core/stl.h>
 
+#include "base/light.h"
 #include "base/surface.h"
 #include "utils/vertex.h"
 
@@ -33,6 +34,7 @@ public:
         std::filesystem::path path;
 
         Surface::CreateInfo surface_info;
+        Light::CreateInfo light_info;
     };
 
     [[nodiscard]] static luisa::unique_ptr<Shape> create(Scene& scene, const CreateInfo& info) noexcept;
@@ -49,6 +51,7 @@ public:
 
 private:
     const Surface* m_surface;
+    const Light* m_light;
 
 public:
     explicit Shape(Scene& scene, const CreateInfo& info) noexcept;
@@ -62,6 +65,7 @@ public:
 
 public:
     [[nodiscard]] const Surface* surface() const noexcept { return m_surface; }
+    [[nodiscard]] const Light* light() const noexcept { return m_light; }
 
     [[nodiscard]] virtual bool is_mesh() const noexcept { return false; }
     [[nodiscard]] virtual MeshView mesh() const noexcept { return {}; }
@@ -78,22 +82,25 @@ private:
     UInt m_buffer_base;
     UInt m_properties;
     UInt m_surface_tag;
+    UInt m_light_tag;
 
 private:
-    Handle(Expr<uint> buffer_base, Expr<uint> flags, Expr<uint> surface_tag) noexcept
+    Handle(Expr<uint> buffer_base, Expr<uint> flags, Expr<uint> surface_tag, Expr<uint> light_tag) noexcept
         : m_buffer_base{buffer_base},
           m_properties{flags},
-          m_surface_tag{surface_tag} {}
+          m_surface_tag{surface_tag},
+          m_light_tag{light_tag} {}
 
 public:
     Handle() = delete;
-    [[nodiscard]] static uint4 encode(uint buffer_base, uint flags, uint surface_tag) noexcept;
+    [[nodiscard]] static uint4 encode(uint buffer_base, uint flags, uint surface_tag, uint light_tag) noexcept;
     [[nodiscard]] static Handle decode(Expr<uint4> compressed) noexcept;
 
 public:
     [[nodiscard]] auto geometry_buffer_base() const noexcept { return m_buffer_base; }
     [[nodiscard]] auto properties() const noexcept { return m_properties; }
     [[nodiscard]] auto surface_tag() const noexcept { return m_surface_tag; }
+    [[nodiscard]] auto light_tag() const noexcept { return m_light_tag; }
     [[nodiscard]] auto vertex_buffer_id() const noexcept { return geometry_buffer_base() + Yutrel::Shape::Handle::vertex_buffer_id_offset; }
     [[nodiscard]] auto triangle_buffer_id() const noexcept { return geometry_buffer_base() + Yutrel::Shape::Handle::triangle_buffer_id_offset; }
     [[nodiscard]] auto test_property_flag(luisa::uint flag) const noexcept { return (properties() & flag) != 0u; }

@@ -18,11 +18,12 @@ luisa::unique_ptr<Shape> Shape::create(Scene& scene, const CreateInfo& info) noe
 }
 
 Shape::Shape(Scene& scene, const CreateInfo& info) noexcept
-    : m_surface(scene.load_surface(info.surface_info)) {}
+    : m_surface(scene.load_surface(info.surface_info)),
+      m_light(scene.load_light(info.light_info)) {}
 
-uint4 Shape::Handle::encode(uint buffer_base, uint flags, uint surface_tag) noexcept
+uint4 Shape::Handle::encode(uint buffer_base, uint flags, uint surface_tag, uint light_tag) noexcept
 {
-    return make_uint4(buffer_base, flags, surface_tag, 0u);
+    return make_uint4(buffer_base, flags, surface_tag, light_tag);
 }
 
 Shape::Handle Shape::Handle::decode(Expr<uint4> compressed) noexcept
@@ -30,8 +31,9 @@ Shape::Handle Shape::Handle::decode(Expr<uint4> compressed) noexcept
     auto buffer_base = compressed.x;
     auto flags       = compressed.y;
     auto surface_tag = compressed.z;
+    auto light_tag   = compressed.w;
 
-    return Handle(buffer_base, flags, surface_tag);
+    return Handle(buffer_base, flags, surface_tag, light_tag);
 }
 
 } // namespace Yutrel

@@ -8,6 +8,7 @@ struct Scene::Config
     luisa::unique_ptr<Film> film;
     luisa::vector<luisa::unique_ptr<Shape>> shapes;
     luisa::vector<luisa::unique_ptr<Surface>> surfaces;
+    luisa::vector<luisa::unique_ptr<Light>> lights;
     luisa::vector<luisa::unique_ptr<Texture>> textures;
 
     luisa::vector<const Shape*> shapes_view;
@@ -61,6 +62,11 @@ const Shape* Scene::load_shape(const Shape::CreateInfo& info) noexcept
 const Surface* Scene::load_surface(const Surface::CreateInfo& info) noexcept
 {
     return m_config->surfaces.emplace_back(Surface::create(*this, info)).get();
+}
+
+const Light* Scene::load_light(const Light::CreateInfo& info) noexcept
+{
+    return m_config->lights.emplace_back(Light::create(*this, info)).get();
 }
 
 const Texture* Scene::load_texture(const Texture::CreateInfo& info) noexcept

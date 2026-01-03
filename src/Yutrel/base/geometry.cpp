@@ -27,6 +27,7 @@ void Geometry::build(CommandBuffer& command_buffer, luisa::span<const Shape* con
 void Geometry::process_shape(CommandBuffer& command_buffer, const Shape* shape) noexcept
 {
     auto surface = shape->surface();
+    auto light   = shape->light();
 
     if (shape->is_mesh())
     {
@@ -83,6 +84,7 @@ void Geometry::process_shape(CommandBuffer& command_buffer, const Shape* shape) 
             return data;
         }();
 
+        // surfaces
         auto surface_tag = 0u;
         auto properties  = mesh.vertex_properties;
         if (surface && !surface->is_null())
@@ -93,11 +95,20 @@ void Geometry::process_shape(CommandBuffer& command_buffer, const Shape* shape) 
 
         m_accel.emplace_back(*mesh.resource, make_float4x4(1.0f));
 
+        // lights
+        auto light_tag = 0u;
+        if (light && !light->is_null())
+        {
+            light_tag = m_renderer.register_light(command_buffer, light);
+            properties |= Shape::property_flag_has_light;
+        }
+
         m_instances.emplace_back(
             Shape::Handle::encode(
                 mesh.geometry_buffer_id_base,
                 properties,
-                surface_tag));
+                surface_tag,
+                light_tag));
 
         m_instanced_triangle_count += mesh.resource->triangle_count();
     }

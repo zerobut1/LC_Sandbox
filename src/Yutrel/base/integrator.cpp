@@ -12,6 +12,7 @@
 #include "utils/command_buffer.h"
 #include "utils/image_io.h"
 #include "utils/progress_bar.h"
+#include "utils/sampling.h"
 
 namespace Yutrel
 {
@@ -113,58 +114,80 @@ Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Ex
     auto u_lens          = camera->base()->requires_lens_sampling() ? sampler()->generate_2d() : make_float2(0.5f);
     auto [camera_ray, _] = camera->generate_ray(pixel_id, time, u_filter, u_lens);
 
-    auto ray = camera_ray;
+    Float3 Li   = make_float3(0.0f);
+    Float3 beta = make_float3(1.0f);
 
-    Float3 radiance   = make_float3(0.0f);
-    Float3 throughput = make_float3(1.0f);
-
-    const auto MAX_DEPTH = 10u;
-
-    $for(depth, MAX_DEPTH)
+    auto ray      = camera_ray;
+    auto pdf_bsdf = def(1e16f);
+    $for(depth, max_depth())
     {
+        // trace
         auto wo = -ray->direction();
         auto it = renderer().geometry()->intersect(ray);
 
         // miss
         $if(!it->valid())
         {
-            radiance += throughput * make_float3(0.0f);
+            // no environment light for now
+            Li += beta * make_float3(0.0f);
             $break;
+        };
+
+        // hit light
+        $if(!renderer().lights().empty())
+        {
+            $outline
+            {
+                $if(it->shape.has_light())
+                {
+                    auto eval = light_sampler()->evaluate_hit(*it, ray->origin(), time);
+                    Li += beta * eval.L;
+                };
+            };
         };
 
         // no surface
         $if(!it->shape.has_surface()) { $break; };
 
-        Float3 attenuation = make_float3(0.0f);
-        Float pdf_value;
         auto u_lobe = sampler()->generate_1d();
-        auto u      = sampler()->generate_2d();
+        auto u_bsdf = sampler()->generate_2d();
 
-        PolymorphicCall<Surface::Closure> call;
-        renderer().surfaces().dispatch(it->shape.surface_tag(), [&](auto material) noexcept
+        auto u_rr = def(0.0f);
+        $if(depth + 1u >= rr_depth())
         {
-            material->closure(call, *it, time);
-        });
-        Bool scattered;
-        Float3 emission = make_float3(0.0f);
-        call.execute([&](auto closure) noexcept
-        {
-            scattered = closure->scatter(wo, ray, attenuation, pdf_value, u, u_lobe);
-            emission  = closure->emitted();
-            radiance += throughput * emission;
+            u_rr = sampler()->generate_1d();
+        };
 
-            auto scattering_pdf = closure->scatter_pdf(wo, ray->direction(), attenuation, u, u_lobe);
-            pdf_value           = scattering_pdf;
-            throughput *= (attenuation * scattering_pdf) / pdf_value;
-        });
-
-        $if(!scattered)
+        $outline
         {
-            $break;
+            PolymorphicCall<Surface::Closure> call;
+            renderer().surfaces().dispatch(it->shape.surface_tag(), [&](auto surface) noexcept
+            {
+                surface->closure(call, *it, time);
+            });
+            call.execute([&](auto closure) noexcept
+            {
+                auto surface_sample = closure->sample(wo, u_lobe, u_bsdf);
+                ray                 = it->spawn_ray(surface_sample.wi);
+                pdf_bsdf            = surface_sample.eval.pdf;
+                auto w              = ite(surface_sample.eval.pdf > 0.0f, 1.0f / surface_sample.eval.pdf, 0.0f);
+                beta *= w * surface_sample.eval.f;
+            });
+        };
+
+        auto q = max(max(beta.x, beta.y), beta.z);
+        q      = max(q, 0.05f);
+        $if(depth + 1u >= rr_depth())
+        {
+            $if(u_rr >= q & q <= rr_threshold())
+            {
+                $break;
+            };
+            beta *= ite(q < rr_threshold(), 1.0f / q, 1.0f);
         };
     };
 
-    Float3 color = radiance;
+    Float3 color = Li;
 
     return color;
 };

@@ -32,24 +32,24 @@ void Diffuse::Instance::populate_closure(Surface::Closure* closure, const Intera
     closure->bind(std::move(ctx));
 }
 
-Bool Diffuse::Closure::scatter(Expr<float3> wo, Var<Ray>& scattered, Var<float3>& attenuation, Var<float>& pdf, Expr<float2> u, Expr<float> u_lobe) const noexcept
+Surface::Sample Diffuse::Closure::sample_impl(Expr<float3> wo, Expr<float> u_lobe, Expr<float2> u) const noexcept
 {
     auto&& ctx = context<Context>();
 
-    auto scatter_direction = ctx.it.shading.local_to_world(sample_cosine_hemisphere(u));
+    auto wi_local = sample_cosine_hemisphere(u);
+    auto wi       = ctx.it.shading.local_to_world(wi_local);
+    auto f        = ctx.reflectance * inv_pi;
+    auto pdf      = abs_cos_theta(wi_local) * inv_pi;
 
-    scattered   = make_ray(ctx.it.p_s + ctx.it.shading.n() * 1e-4f, normalize(scatter_direction));
-    attenuation = ctx.reflectance;
-    pdf         = dot(ctx.it.shading.n(), scatter_direction) / pi;
-
-    return true;
-}
-
-Float Diffuse::Closure::scatter_pdf(Expr<float3> wo, Expr<float3> wi, Var<float3>& attenuation, Expr<float2> u, Expr<float> u_lobe) const noexcept
-{
-    auto&& ctx     = context<Context>();
-    auto cos_theta = dot(ctx.it.shading.n(), wi);
-    return ite(cos_theta > 0.0f, cos_theta / pi, 0.0f);
+    return Surface::Sample{
+        .eval = {
+            .f           = f * abs_cos_theta(wi_local),
+            .pdf         = pdf,
+            .f_diffuse   = f * abs_cos_theta(wi_local),
+            .pdf_diffuse = pdf,
+        },
+        .wi    = wi,
+        .event = Surface::event_reflect};
 }
 
 } // namespace Yutrel

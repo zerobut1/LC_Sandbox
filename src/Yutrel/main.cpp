@@ -60,10 +60,10 @@ int main(int argc, char* argv[])
                 .reflectance = {.v = make_float4(0.63f, 0.065f, 0.05f, 1.0f)}}};
     scene_info.shape_infos[4] =
         Shape::CreateInfo{
-            .path         = "scene/cornell-box/mesh/light.obj",
-            .surface_info = {
-                .type = Surface::Type::diffuse_light,
-                .emit = {.v = make_float4(17.0f, 12.0f, 4.0f, 1.0f)}}};
+            .path       = "scene/cornell-box/mesh/light.obj",
+            .light_info = {
+                .type     = Light::Type::diffuse,
+                .emission = {.v = make_float4(17.0f, 12.0f, 4.0f, 1.0f)}}};
     scene_info.shape_infos[5] =
         Shape::CreateInfo{
             .path         = "scene/cornell-box/mesh/rightwall.obj",

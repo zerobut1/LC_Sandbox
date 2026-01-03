@@ -29,4 +29,7 @@ public:
 
 [[nodiscard]] inline auto sqr(auto x) noexcept { return x * x; }
 [[nodiscard]] inline auto one_minus_sqr(auto x) noexcept { return 1.f - sqr(x); }
+[[nodiscard]] inline auto cos_theta(Expr<float3> w) { return w.z; }
+[[nodiscard]] inline auto cos2_theta(Expr<float3> w) { return sqr(w.z); }
+[[nodiscard]] inline auto abs_cos_theta(Expr<float3> w) { return abs(w.z); }
 } // namespace Yutrel

@@ -20,7 +20,6 @@ public:
     {
         null,
         diffuse,
-        diffuse_light,
     };
 
     struct CreateInfo
@@ -28,11 +27,47 @@ public:
         Type type{Type::null};
         // diffuse
         Texture::CreateInfo reflectance{};
-        // diffuse light
-        Texture::CreateInfo emit{};
     };
 
     [[nodiscard]] static luisa::unique_ptr<Surface> create(Scene& scene, const CreateInfo& info) noexcept;
+
+public:
+    static constexpr auto event_reflect  = 0x00u;
+    static constexpr auto event_enter    = 0x01u;
+    static constexpr auto event_exit     = 0x02u;
+    static constexpr auto event_transmit = event_enter | event_exit;
+    static constexpr auto event_through  = 0x04u;
+
+    struct Evaluation
+    {
+        Float3 f;
+        Float pdf;
+        Float3 f_diffuse;
+        Float pdf_diffuse;
+        [[nodiscard]] static auto zero() noexcept
+        {
+            return Evaluation{
+                .f           = make_float3(0.f),
+                .pdf         = 0.f,
+                .f_diffuse   = make_float3(0.f),
+                .pdf_diffuse = 0.f};
+        }
+    };
+
+    struct Sample
+    {
+        Evaluation eval;
+        Float3 wi;
+        UInt event;
+
+        [[nodiscard]] static auto zero() noexcept
+        {
+            return Sample{
+                .eval  = Evaluation::zero(),
+                .wi    = make_float3(0.f, 0.f, 1.f),
+                .event = Surface::event_reflect};
+        }
+    };
 
 public:
     class Instance;
@@ -105,10 +140,11 @@ public:
 public:
     [[nodiscard]] auto& renderer() const noexcept { return m_renderer; }
     [[nodiscard]] auto time() const noexcept { return m_time; }
+    [[nodiscard]] virtual const Interaction& it() const noexcept = 0;
 
-    [[nodiscard]] virtual Bool scatter(Expr<float3> wo, Var<Ray>& scattered, Var<float3>& attenuation, Var<float>& pdf, Expr<float2> u, Expr<float> u_lobe) const noexcept { return false; }
-    [[nodiscard]] virtual Float scatter_pdf(Expr<float3> wo, Expr<float3> wi, Var<float3>& attenuation, Expr<float2> u, Expr<float> u_lobe) const noexcept { return 0; }
-    [[nodiscard]] virtual Float3 emitted() const noexcept { return make_float3(0.0f); }
+    [[nodiscard]] Surface::Sample sample(Expr<float3> wo, Expr<float> u_lobe, Expr<float2> u) const noexcept;
+
+private:
+    [[nodiscard]] virtual Surface::Sample sample_impl(Expr<float3> wo, Expr<float> u_lobe, Expr<float2> u) const noexcept = 0;
 };
-
 } // namespace Yutrel

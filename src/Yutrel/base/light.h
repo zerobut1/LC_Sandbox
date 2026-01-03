@@ -22,6 +22,23 @@ public:
         uint light_tag;
     };
 
+    struct Evaluation
+    {
+        Float3 L;
+        Float pdf;
+        Float3 p;
+        Float3 ng;
+        [[nodiscard]] static auto zero() noexcept
+        {
+            return Evaluation{
+                .L   = make_float3(0.0f),
+                .pdf = 0.0f,
+                .p   = make_float3(0.0f),
+                .ng  = make_float3(0.0f),
+            };
+        }
+    };
+
 public:
     class Instance;
     class Closure;
@@ -116,6 +133,8 @@ public:
     }
 
     [[nodiscard]] auto time() const noexcept { return m_time; }
+
+    [[nodiscard]] virtual Evaluation evaluate(const Interaction& it_light, Expr<float3> p_from) const noexcept = 0;
 };
 
 } // namespace Yutrel

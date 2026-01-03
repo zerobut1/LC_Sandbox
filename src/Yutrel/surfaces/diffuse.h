@@ -50,8 +50,9 @@ public:
 public:
     using Surface::Closure::Closure;
 
-    [[nodiscard]] Bool scatter(Expr<float3> wo, Var<Ray>& scattered, Var<float3>& attenuation, Var<float>& pdf, Expr<float2> u, Expr<float> u_lobe) const noexcept override;
-    [[nodiscard]] Float scatter_pdf(Expr<float3> wo, Expr<float3> wi, Var<float3>& attenuation, Expr<float2> u, Expr<float> u_lobe) const noexcept override;
+    [[nodiscard]] virtual const Interaction& it() const noexcept override { return context<Context>().it; };
+
+    [[nodiscard]] Surface::Sample sample_impl(Expr<float3> wo, Expr<float> u_lobe, Expr<float2> u) const noexcept override;
 };
 
 } // namespace Yutrel

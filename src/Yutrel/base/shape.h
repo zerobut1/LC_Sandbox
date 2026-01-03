@@ -75,8 +75,10 @@ public:
 class Shape::Handle
 {
 public:
-    static constexpr auto vertex_buffer_id_offset   = 0u;
-    static constexpr auto triangle_buffer_id_offset = 1u;
+    static constexpr auto vertex_buffer_id_offset      = 0u;
+    static constexpr auto triangle_buffer_id_offset    = 1u;
+    static constexpr auto alias_table_buffer_id_offset = 2u;
+    static constexpr auto pdf_buffer_id_offset         = 3u;
 
 private:
     UInt m_buffer_base;
@@ -103,6 +105,8 @@ public:
     [[nodiscard]] auto light_tag() const noexcept { return m_light_tag; }
     [[nodiscard]] auto vertex_buffer_id() const noexcept { return geometry_buffer_base() + Yutrel::Shape::Handle::vertex_buffer_id_offset; }
     [[nodiscard]] auto triangle_buffer_id() const noexcept { return geometry_buffer_base() + Yutrel::Shape::Handle::triangle_buffer_id_offset; }
+    [[nodiscard]] auto alias_table_buffer_id() const noexcept { return geometry_buffer_base() + Yutrel::Shape::Handle::alias_table_buffer_id_offset; }
+    [[nodiscard]] auto pdf_buffer_id() const noexcept { return geometry_buffer_base() + Yutrel::Shape::Handle::pdf_buffer_id_offset; }
     [[nodiscard]] auto test_property_flag(luisa::uint flag) const noexcept { return (properties() & flag) != 0u; }
     [[nodiscard]] auto has_vertex_normal() const noexcept { return test_property_flag(Yutrel::Shape::property_flag_has_vertex_normal); }
     [[nodiscard]] auto has_vertex_uv() const noexcept { return test_property_flag(Yutrel::Shape::property_flag_has_vertex_uv); }

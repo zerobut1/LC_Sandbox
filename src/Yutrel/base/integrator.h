@@ -24,6 +24,10 @@ public:
 private:
     const Renderer& m_renderer;
 
+    uint m_max_depth{10u};
+    uint m_rr_depth{0u};
+    float m_rr_threshold{0.05f};
+
     luisa::unique_ptr<Sampler> m_sampler;
     luisa::unique_ptr<LightSampler> m_light_sampler;
 
@@ -39,7 +43,11 @@ public:
 
 public:
     [[nodiscard]] auto& renderer() const noexcept { return m_renderer; }
+    [[nodiscard]] auto max_depth() const noexcept { return m_max_depth; }
+    [[nodiscard]] auto rr_depth() const noexcept { return m_rr_depth; }
+    [[nodiscard]] auto rr_threshold() const noexcept { return m_rr_threshold; }
     [[nodiscard]] auto sampler() const noexcept { return m_sampler.get(); }
+    [[nodiscard]] auto light_sampler() const noexcept { return m_light_sampler.get(); }
 
     void render(Stream& stream);
 

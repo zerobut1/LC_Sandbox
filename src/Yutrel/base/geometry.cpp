@@ -2,6 +2,7 @@
 
 #include "base/interaction.h"
 #include "base/renderer.h"
+#include "utils/sampling.h"
 
 namespace Yutrel
 {
@@ -60,6 +61,26 @@ void Geometry::process_shape(CommandBuffer& command_buffer, const Shape* shape) 
                     << commit();
                 auto vertex_buffer_id   = m_renderer.register_bindless(vertex_buffer->view());
                 auto triangle_buffer_id = m_renderer.register_bindless(triangle_buffer->view());
+                // compute alisa table
+                luisa::vector<float> triangle_areas(triangles.size());
+                for (auto i = 0u; i < triangles.size(); i++)
+                {
+                    auto t            = triangles[i];
+                    auto v0           = vertices[t.i0].position();
+                    auto v1           = vertices[t.i1].position();
+                    auto v2           = vertices[t.i2].position();
+                    triangle_areas[i] = std::abs(length(cross(v1 - v0, v2 - v0)));
+                }
+                auto [alias_table, pdf]                         = create_alias_table(triangle_areas);
+                auto [alisa_table_buffer_view, alias_buffer_id] = m_renderer.bindless_arena_buffer<AliasEntry>(alias_table.size());
+                auto [pdf_buffer_view, pdf_buffer_id]           = m_renderer.bindless_arena_buffer<float>(pdf.size());
+                LUISA_ASSERT(triangle_buffer_id - vertex_buffer_id == Shape::Handle::triangle_buffer_id_offset, "Invalid.");
+                LUISA_ASSERT(alias_buffer_id - vertex_buffer_id == Shape::Handle::alias_table_buffer_id_offset, "Invalid.");
+                LUISA_ASSERT(pdf_buffer_id - vertex_buffer_id == Shape::Handle::pdf_buffer_id_offset, "Invalid.");
+                command_buffer
+                    << alisa_table_buffer_view.copy_from(alias_table.data())
+                    << pdf_buffer_view.copy_from(pdf.data())
+                    << commit();
 
                 auto geom = MeshGeometry{
                     .resource       = mesh,

@@ -3,7 +3,9 @@
 #include <luisa/dsl/syntax.h>
 #include <luisa/runtime/rtx/accel.h>
 
+#include "base/interaction.h"
 #include "base/light.h"
+#include "base/shape.h"
 #include "utils/command_buffer.h"
 
 namespace Yutrel
@@ -13,7 +15,6 @@ using namespace luisa::compute;
 
 class Renderer;
 class Shape;
-class Interaction;
 
 class Geometry
 {
@@ -50,10 +51,14 @@ public:
 
     [[nodiscard]] auto instances() const noexcept { return luisa::span{m_instances}; }
     [[nodiscard]] auto light_instances() const noexcept { return luisa::span{m_instanced_lights}; }
-
+    [[nodiscard]] Shape::Handle instance(Expr<uint> index) const noexcept;
+    [[nodiscard]] Float4x4 instance_to_world(Expr<uint> index) const noexcept;
+    [[nodiscard]] Var<Triangle> triangle(const Shape::Handle& instance, Expr<uint> index) const noexcept;
     [[nodiscard]] Var<TriangleHit> trace_closest(const Var<Ray>& ray_in) const noexcept;
     [[nodiscard]] luisa::shared_ptr<Interaction> interaction(const Var<Ray> ray, const Var<TriangleHit> hit) const noexcept;
     [[nodiscard]] luisa::shared_ptr<Interaction> intersect(const Var<Ray>& ray) const noexcept;
+    [[nodiscard]] Bool intersect_any(const Var<Ray>& ray_in) const noexcept;
+    [[nodiscard]] ShadingAttribute shading_point(const Shape::Handle& instance, const Var<Triangle>& triangle, const Var<float2>& bary, const Var<float4x4>& shape_to_world) const noexcept;
 
 private:
     void process_shape(CommandBuffer& command_buffer, const Shape* shape) noexcept;

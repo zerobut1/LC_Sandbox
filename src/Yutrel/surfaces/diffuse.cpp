@@ -52,4 +52,20 @@ Surface::Sample Diffuse::Closure::sample_impl(Expr<float3> wo, Expr<float> u_lob
         .event = Surface::event_reflect};
 }
 
+Surface::Evaluation Diffuse::Closure::evaluate_impl(Expr<float3> wo, Expr<float3> wi) const noexcept
+{
+    auto&& ctx = context<Context>();
+
+    auto wi_local = ctx.it.shading.world_to_local(wi);
+    auto f        = ctx.reflectance * inv_pi;
+    auto pdf      = abs_cos_theta(wi_local) * inv_pi;
+
+    return Surface::Evaluation{
+        .f           = f * abs_cos_theta(wi_local),
+        .pdf         = pdf,
+        .f_diffuse   = f * abs_cos_theta(wi_local),
+        .pdf_diffuse = pdf,
+    };
+}
+
 } // namespace Yutrel

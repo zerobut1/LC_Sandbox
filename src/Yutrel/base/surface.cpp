@@ -54,4 +54,17 @@ Surface::Sample Surface::Closure::sample(Expr<float3> wo, Expr<float> u_lobe, Ex
 
     return s;
 }
+
+Surface::Evaluation Surface::Closure::evaluate(Expr<float3> wo, Expr<float3> wi) const noexcept
+{
+    auto eval = Surface::Evaluation::zero();
+    $outline
+    {
+        eval       = evaluate_impl(wo, wi);
+        auto valid = validate_surface_sides(it().n_g, it().shading.n(), wo, wi);
+        eval.f     = ite(valid, eval.f, make_float3(0.0f));
+        eval.pdf   = ite(valid, eval.pdf, 0.0f);
+    };
+    return eval;
+}
 } // namespace Yutrel

@@ -44,7 +44,7 @@ public:
     Closure(const Light::Instance* instance, Expr<float> time) noexcept
         : Light::Closure(instance, time) {}
 
-    [[nodiscard]] Evaluation evaluate(const Interaction& it_light, Expr<float3> p_from) const noexcept;
+    [[nodiscard]] Evaluation evaluate(const Interaction& it_light, Expr<float3> p_from) const noexcept override;
 };
 
 } // namespace Yutrel

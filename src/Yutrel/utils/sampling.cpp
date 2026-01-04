@@ -2,6 +2,20 @@
 
 namespace Yutrel
 {
+
+Float3 sample_uniform_triangle(Expr<float2> u) noexcept
+{
+    static Callable impl = [](Float2 u) noexcept
+    {
+        auto uv = ite(
+            u.x < u.y,
+            make_float2(0.5f * u.x, -0.5f * u.x + u.y),
+            make_float2(-0.5f * u.y + u.x, 0.5f * u.y));
+        return make_float3(uv, 1.0f - uv.x - uv.y);
+    };
+    return impl(u);
+}
+
 Float2 sample_uniform_disk_concentric(Expr<float2> u) noexcept
 {
     static Callable impl = [](Float2 u_in) noexcept

@@ -53,6 +53,7 @@ public:
     [[nodiscard]] virtual const Interaction& it() const noexcept override { return context<Context>().it; };
 
     [[nodiscard]] Surface::Sample sample_impl(Expr<float3> wo, Expr<float> u_lobe, Expr<float2> u) const noexcept override;
+    [[nodiscard]] Surface::Evaluation evaluate_impl(Expr<float3> wo, Expr<float3> wi) const noexcept override;
 };
 
 } // namespace Yutrel

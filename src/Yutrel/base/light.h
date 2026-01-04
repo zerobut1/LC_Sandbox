@@ -39,6 +39,16 @@ public:
         }
     };
 
+    struct Sample
+    {
+        Evaluation eval;
+        Float3 p;
+        [[nodiscard]] static auto zero() noexcept
+        {
+            return Sample{.eval = Evaluation::zero(), .p = make_float3()};
+        }
+    };
+
 public:
     class Instance;
     class Closure;

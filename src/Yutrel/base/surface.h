@@ -143,8 +143,10 @@ public:
     [[nodiscard]] virtual const Interaction& it() const noexcept = 0;
 
     [[nodiscard]] Surface::Sample sample(Expr<float3> wo, Expr<float> u_lobe, Expr<float2> u) const noexcept;
+    [[nodiscard]] Surface::Evaluation evaluate(Expr<float3> wo, Expr<float3> wi) const noexcept;
 
 private:
     [[nodiscard]] virtual Surface::Sample sample_impl(Expr<float3> wo, Expr<float> u_lobe, Expr<float2> u) const noexcept = 0;
+    [[nodiscard]] virtual Surface::Evaluation evaluate_impl(Expr<float3> wo, Expr<float3> wi) const noexcept = 0;
 };
 } // namespace Yutrel

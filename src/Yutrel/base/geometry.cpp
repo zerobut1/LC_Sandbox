@@ -131,7 +131,11 @@ void Geometry::process_shape(CommandBuffer& command_buffer, const Shape* shape) 
                 mesh.geometry_buffer_id_base,
                 properties,
                 surface_tag,
-                light_tag));
+                light_tag,
+                0,
+                mesh.resource->triangle_count(),
+                0,
+                0));
 
         if (properties & Shape::property_flag_has_light)
         {
@@ -143,6 +147,21 @@ void Geometry::process_shape(CommandBuffer& command_buffer, const Shape* shape) 
 
         m_instanced_triangle_count += mesh.resource->triangle_count();
     }
+}
+
+Shape::Handle Geometry::instance(Expr<uint> index) const noexcept
+{
+    return Shape::Handle::decode(m_instance_buffer->read(index));
+}
+
+Float4x4 Geometry::instance_to_world(Expr<uint> index) const noexcept
+{
+    return m_accel->instance_transform(index);
+}
+
+Var<Triangle> Geometry::triangle(const Shape::Handle& instance, Expr<uint> index) const noexcept
+{
+    return m_renderer.buffer<Triangle>(instance.triangle_buffer_id()).read(index);
 }
 
 Var<TriangleHit> Geometry::trace_closest(const Var<Ray>& ray_in) const noexcept
@@ -157,65 +176,40 @@ luisa::shared_ptr<Interaction> Geometry::intersect(const Var<Ray>& ray) const no
     return interaction(ray, trace_closest(ray));
 }
 
+Bool Geometry::intersect_any(const Var<Ray>& ray_in) const noexcept
+{
+    return m_accel->intersect_any(ray_in, {});
+}
+
 luisa::shared_ptr<Interaction> Geometry::interaction(const Var<Ray> ray, const Var<TriangleHit> hit) const noexcept
 {
     auto encoded_shape = def(make_uint4(0u));
     auto p_g           = def(make_float3(0.0f));
     auto n_g           = def(make_float3(0.0f, 1.0f, 0.0f));
     auto uv            = def(make_float2(0.0f));
+    auto p_s           = def(make_float3(0.0f));
     auto area          = def(0.0f);
     auto front_face    = def(false);
-    auto valid         = def(false);
-    Frame shading;
+    auto inst_id       = def(~0u);
+    auto prim_id       = def(~0u);
+    Frame shading      = Frame::make(n_g);
 
     $if(!hit->miss())
     {
-        valid         = true;
-        encoded_shape = m_instance_buffer->read(hit.inst);
-        auto shape    = Shape::Handle::decode(encoded_shape);
-
+        encoded_shape       = m_instance_buffer->read(hit.inst);
+        auto shape_hit      = Shape::Handle::decode(encoded_shape);
         auto local_to_world = m_accel->instance_transform(hit.inst);
-        auto triangle       = m_renderer.buffer<Triangle>(shape.triangle_buffer_id()).read(hit.prim);
-        auto v_buffer       = shape.vertex_buffer_id();
-
-        auto v0 = m_renderer.buffer<Vertex>(v_buffer).read(triangle.i0);
-        auto v1 = m_renderer.buffer<Vertex>(v_buffer).read(triangle.i1);
-        auto v2 = m_renderer.buffer<Vertex>(v_buffer).read(triangle.i2);
-
-        // local space
-        auto p0_local = v0->position();
-        auto p1_local = v1->position();
-        auto p2_local = v2->position();
-        auto n_local  = triangle_interpolate(hit.bary, v0->normal(), v1->normal(), v2->normal());
-
-        auto uv0        = v0->uv();
-        auto uv1        = v1->uv();
-        auto uv2        = v2->uv();
-        auto duv0       = uv1 - uv0;
-        auto duv1       = uv2 - uv0;
-        auto det        = duv0.x * duv1.y - duv0.y * duv1.x;
-        auto inv_det    = 1.f / det;
-        auto dp0_local  = p1_local - p0_local;
-        auto dp1_local  = p2_local - p0_local;
-        auto dpdu_local = (dp0_local * duv1.y - dp1_local * duv0.y) * inv_det;
-        auto dpdv_local = (dp1_local * duv0.x - dp0_local * duv1.x) * inv_det;
-
-        // world space
-        auto m              = make_float3x3(local_to_world);
-        auto t              = make_float3(local_to_world[3]);
-        p_g                 = m * triangle_interpolate(hit.bary, p0_local, p1_local, p2_local) + t;
-        auto c              = cross(m * dp0_local, m * dp1_local);
-        area                = length(c) * 0.5f;
-        n_g                 = normalize(c);
-        auto fallback_frame = Frame::make(n_g);
-        auto dpdu           = ite(det == 0.f, fallback_frame.s(), m * dpdu_local);
-        auto dpdv           = ite(det == 0.f, fallback_frame.t(), m * dpdv_local);
-        auto mn             = transpose(inverse(m));
-        auto n_s            = ite(shape.has_vertex_normal(), normalize(mn * n_local), n_g);
-        n_s                 = ite(dot(n_s, n_g) < 0.f, -n_s, n_s);
-        shading             = Frame::make(n_s, dpdu);
-        uv                  = ite(shape.has_vertex_uv(), triangle_interpolate(hit.bary, uv0, uv1, uv2), hit.bary);
+        auto tri            = m_renderer.buffer<Triangle>(shape_hit.triangle_buffer_id()).read(hit.prim);
+        auto attr           = shading_point(shape_hit, tri, hit.bary, local_to_world);
+        p_g                 = attr.pg;
+        n_g                 = attr.ng;
+        uv                  = attr.uv;
+        p_s                 = attr.ps;
+        area                = attr.area;
+        shading             = Frame::make(attr.ns, attr.dpdu);
         front_face          = dot(-ray->direction(), n_g) > 0.0f;
+        inst_id             = hit.inst;
+        prim_id             = hit.prim;
     };
 
     auto shape = Shape::Handle::decode(encoded_shape);
@@ -224,14 +218,61 @@ luisa::shared_ptr<Interaction> Geometry::interaction(const Var<Ray> ray, const V
         .p_g        = p_g,
         .n_g        = n_g,
         .uv         = uv,
-        .p_s        = p_g, // TODO: apply normal offset
+        .p_s        = p_s, // TODO: apply normal offset
         .shading    = shading,
-        .inst_id    = hit.inst,
-        .prim_id    = hit.prim,
+        .inst_id    = inst_id,
+        .prim_id    = prim_id,
         .prim_area  = area,
         .front_face = front_face,
     };
     return luisa::make_shared<Interaction>(std::move(it));
+}
+
+ShadingAttribute Geometry::shading_point(const Shape::Handle& instance, const Var<Triangle>& triangle, const Var<float2>& bary, const Var<float4x4>& shape_to_world) const noexcept
+{
+    auto v_buffer = instance.vertex_buffer_id();
+    auto v0       = m_renderer.buffer<Vertex>(v_buffer).read(triangle.i0);
+    auto v1       = m_renderer.buffer<Vertex>(v_buffer).read(triangle.i1);
+    auto v2       = m_renderer.buffer<Vertex>(v_buffer).read(triangle.i2);
+    // object space
+    auto p0_local = v0->position();
+    auto p1_local = v1->position();
+    auto p2_local = v2->position();
+    auto ns_local = triangle_interpolate(bary, v0->normal(), v1->normal(), v2->normal());
+
+    // compute dpdu and dpdv
+    auto uv0        = v0->uv();
+    auto uv1        = v1->uv();
+    auto uv2        = v2->uv();
+    auto duv0       = uv1 - uv0;
+    auto duv1       = uv2 - uv0;
+    auto det        = duv0.x * duv1.y - duv0.y * duv1.x;
+    auto inv_det    = 1.f / det;
+    auto dp0_local  = p1_local - p0_local;
+    auto dp1_local  = p2_local - p0_local;
+    auto dpdu_local = (dp0_local * duv1.y - dp1_local * duv0.y) * inv_det;
+    auto dpdv_local = (dp1_local * duv0.x - dp0_local * duv1.x) * inv_det;
+    // world space
+    auto m              = make_float3x3(shape_to_world);
+    auto t              = make_float3(shape_to_world[3]);
+    auto p              = m * triangle_interpolate(bary, p0_local, p1_local, p2_local) + t;
+    auto c              = cross(m * dp0_local, m * dp1_local);
+    auto area           = length(c) * .5f;
+    auto ng             = normalize(c);
+    auto fallback_frame = Frame::make(ng);
+    auto dpdu           = ite(det == 0.f, fallback_frame.s(), m * dpdu_local);
+    auto dpdv           = ite(det == 0.f, fallback_frame.t(), m * dpdv_local);
+    auto mn             = transpose(inverse(m));
+    auto ns             = ite(instance.has_vertex_normal(), normalize(mn * ns_local), ng);
+    auto uv             = ite(instance.has_vertex_uv(), triangle_interpolate(bary, uv0, uv1, uv2), bary);
+    return {.pg   = p,
+            .ng   = ng,
+            .area = area,
+            .ps   = p,
+            .ns   = ite(dot(ns, ng) < 0.f, -ns, ns),
+            .dpdu = dpdu,
+            .dpdv = dpdv,
+            .uv   = uv};
 }
 
 } // namespace Yutrel

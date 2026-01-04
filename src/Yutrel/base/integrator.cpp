@@ -141,13 +141,25 @@ Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Ex
                 $if(it->shape.has_light())
                 {
                     auto eval = light_sampler()->evaluate_hit(*it, ray->origin(), time);
-                    Li += beta * eval.L;
+                    Li += beta * eval.L * balance_heuristic(pdf_bsdf, eval.pdf);
                 };
             };
         };
 
         // no surface
         $if(!it->shape.has_surface()) { $break; };
+
+        // sample light
+        auto u_light_selection = sampler()->generate_1d();
+        auto u_light_surface   = sampler()->generate_2d();
+        auto light_sample      = LightSampler::Sample::zero();
+        $outline
+        {
+            light_sample = light_sampler()->sample(*it, u_light_selection, u_light_surface, time);
+        };
+
+        // cast shadow ray
+        auto occluded = renderer().geometry()->intersect_any(light_sample.shadow_ray);
 
         auto u_lobe = sampler()->generate_1d();
         auto u_bsdf = sampler()->generate_2d();
@@ -167,6 +179,16 @@ Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Ex
             });
             call.execute([&](auto closure) noexcept
             {
+                // direct lighting
+                $if(light_sample.eval.pdf > 0.0f & !occluded)
+                {
+                    auto wi   = light_sample.shadow_ray->direction();
+                    auto eval = closure->evaluate(wo, wi);
+                    auto w    = balance_heuristic(light_sample.eval.pdf, eval.pdf) / light_sample.eval.pdf;
+                    Li += w * beta * eval.f * light_sample.eval.L;
+                };
+
+                // sample surface
                 auto surface_sample = closure->sample(wo, u_lobe, u_bsdf);
                 ray                 = it->spawn_ray(surface_sample.wi);
                 pdf_bsdf            = surface_sample.eval.pdf;
@@ -179,7 +201,7 @@ Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Ex
         q      = max(q, 0.05f);
         $if(depth + 1u >= rr_depth())
         {
-            $if(u_rr >= q & q <= rr_threshold())
+            $if(q < rr_threshold() & u_rr >= q)
             {
                 $break;
             };

@@ -1,15 +1,17 @@
+#include <array>
 #include <luisa/dsl/sugar.h>
 #include <luisa/luisa-compute.h>
-#include <array>
 #include <random>
 
 using namespace luisa;
 using namespace luisa::compute;
 
+const uint SEED = 20120712u;
+
 float random_float()
 {
     static std::uniform_real_distribution<float> distribution(0.0f, 1.0f);
-    static std::default_random_engine generator(std::random_device{}());
+    static std::default_random_engine generator(SEED);
     return distribution(generator);
 }
 
@@ -41,35 +43,7 @@ int main(int argc, char* argv[])
     Device device = context.create_device(argv[1]);
     Stream stream = device.create_stream(StreamTag::COMPUTE);
 
-    const uint INPUT_SIZE  = 2;
-    const uint HIDDEN_SIZE = 2;
-    const float LR         = 0.1f;
-
-    vector<float> _w1(INPUT_SIZE * HIDDEN_SIZE); // 2x2: 输入到隐藏
-    vector<float> _b1(HIDDEN_SIZE);              // 2: 隐藏层偏置
-    vector<float> _w2(HIDDEN_SIZE);              // 2: 隐藏到输出
-    vector<float> _b2(1);
-
-    for (auto& v : _w1)
-        v = random_weight();
-    for (auto& v : _b1)
-        v = random_weight();
-    for (auto& v : _w2)
-        v = random_weight();
-    _b2[0] = random_weight();
-
-    auto w1 = device.create_buffer<float>(INPUT_SIZE * HIDDEN_SIZE);
-    auto b1 = device.create_buffer<float>(HIDDEN_SIZE);
-    auto w2 = device.create_buffer<float>(HIDDEN_SIZE);
-    auto b2 = device.create_buffer<float>(1);
-
-    stream << w1.copy_from(_w1.data())
-           << b1.copy_from(_b1.data())
-           << w2.copy_from(_w2.data())
-           << b2.copy_from(_b2.data())
-           << synchronize();
-
-    // 训练数据（异或）：放到 GPU 上，避免每次 dispatch 都传参/同步
+    // 训练数据（异或）
     constexpr uint TRAIN_SIZE = 4u;
     std::array<float2, TRAIN_SIZE> host_x{
         make_float2(0.0f, 0.0f),
@@ -84,13 +58,43 @@ int main(int argc, char* argv[])
            << train_y.copy_from(host_y.data())
            << synchronize();
 
+    const uint INPUT_SIZE  = 2;
+    const uint HIDDEN_SIZE = 2;
+    const float LR         = 0.5f;
+
+    // 初始化权重和偏置
+    vector<float> host_w1(INPUT_SIZE * HIDDEN_SIZE); // 输入到隐藏
+    vector<float> host_b1(HIDDEN_SIZE);              // 隐藏层偏置
+    vector<float> host_w2(HIDDEN_SIZE);              // 隐藏到输出
+    vector<float> host_b2(1);
+
+    for (auto& v : host_w1)
+        v = random_weight();
+    for (auto& v : host_b1)
+        v = random_weight();
+    for (auto& v : host_w2)
+        v = random_weight();
+    host_b2[0] = random_weight();
+
+    auto w1 = device.create_buffer<float>(INPUT_SIZE * HIDDEN_SIZE);
+    auto b1 = device.create_buffer<float>(HIDDEN_SIZE);
+    auto w2 = device.create_buffer<float>(HIDDEN_SIZE);
+    auto b2 = device.create_buffer<float>(1);
+
+    stream << w1.copy_from(host_w1.data())
+           << b1.copy_from(host_b1.data())
+           << w2.copy_from(host_w2.data())
+           << b2.copy_from(host_b2.data())
+           << synchronize();
+
     // batch 梯度缓冲区（每个 epoch 清零一次）
     auto grad_w1 = device.create_buffer<float>(INPUT_SIZE * HIDDEN_SIZE);
     auto grad_b1 = device.create_buffer<float>(HIDDEN_SIZE);
     auto grad_w2 = device.create_buffer<float>(HIDDEN_SIZE);
     auto grad_b2 = device.create_buffer<float>(1);
 
-    auto loss = device.create_buffer<float>(1);
+    auto loss         = device.create_buffer<float>(1);
+    auto current_loss = 0.0f;
 
     constexpr uint BLOCK_SIZE = 32u;
 
@@ -100,7 +104,7 @@ int main(int argc, char* argv[])
         UInt tid = dispatch_id().x;
 
         // 清零（仅线程 0 执行），然后 block 内同步
-        $if (tid == 0u)
+        $if(tid == 0u)
         {
             $for(i, INPUT_SIZE * HIDDEN_SIZE) { grad_w1->write(i, 0.0f); };
             $for(i, HIDDEN_SIZE) { grad_b1->write(i, 0.0f); };
@@ -110,11 +114,12 @@ int main(int argc, char* argv[])
         };
         sync_block();
 
-        // 前 TRAIN_SIZE 个线程处理样本，其余线程空转（但必须参与 sync_block）
-        $if (tid < TRAIN_SIZE)
+        // 仅前 TRAIN_SIZE 个线程处理样本；其余线程必须空转但仍参与 sync_block()
+        $if(tid < TRAIN_SIZE)
         {
-            Float2 X = train_x->read(tid);
-            Float Y  = train_y->read(tid);
+            UInt data_id = tid;
+            Float2 X     = train_x->read(data_id);
+            Float Y      = train_y->read(data_id);
 
             // 1) 前向：隐藏层
             ArrayFloat<HIDDEN_SIZE> z1;
@@ -163,27 +168,27 @@ int main(int argc, char* argv[])
         sync_block();
 
         // 7) 单线程更新权重（避免对权重做 atomic）
-        $if (tid == 0u)
+        $if(tid == 0u)
         {
+            // 样本的平均梯度
             Float inv_n = 1.0f / static_cast<float>(TRAIN_SIZE);
 
             $for(j, HIDDEN_SIZE)
             {
-                // 用梯度和更新：更接近原始「每个样本一次 SGD 更新」的步长
-                Float g = grad_w2->read(j);
+                Float g = grad_w2->read(j) * inv_n;
                 w2->write(j, w2->read(j) - LR * g);
             };
-            b2->write(0u, b2->read(0u) - LR * grad_b2->read(0u));
+            b2->write(0u, b2->read(0u) - LR * grad_b2->read(0u) * inv_n);
 
             $for(j, HIDDEN_SIZE)
             {
                 $for(k, INPUT_SIZE)
                 {
                     UInt idx = j * INPUT_SIZE + k;
-                    Float g = grad_w1->read(idx);
+                    Float g  = grad_w1->read(idx) * inv_n;
                     w1->write(idx, w1->read(idx) - LR * g);
                 };
-                b1->write(j, b1->read(j) - LR * grad_b1->read(j));
+                b1->write(j, b1->read(j) - LR * grad_b1->read(j) * inv_n);
             };
 
             // 写回平均 loss，便于主机侧打印
@@ -193,19 +198,20 @@ int main(int argc, char* argv[])
 
     auto train_shader = device.compile(train_kernel);
 
-    const int epochs = 5000;
+    const uint EPOCH_COUNT = 5000u;
     Clock clock;
-    for (int epoch = 0; epoch < epochs; ++epoch)
+    for (auto epoch = 0u; epoch < EPOCH_COUNT; epoch++)
     {
         stream << train_shader().dispatch(BLOCK_SIZE);
         if (epoch % 500 == 0)
         {
-            float current_loss;
             stream << loss.copy_to(&current_loss) << synchronize();
             LUISA_INFO("Epoch {}: Loss = {}", epoch, current_loss);
         }
     }
-    stream << synchronize();
+    stream << loss.copy_to(&current_loss)
+           << synchronize();
+    LUISA_INFO("Epoch {}: Loss = {}", EPOCH_COUNT, current_loss);
     LUISA_INFO("Training completed in {:.2f} seconds.", clock.toc() * 1e-3);
 
     // 测试
@@ -227,13 +233,13 @@ int main(int argc, char* argv[])
     };
     auto test_shader = device.compile(test_kernel);
 
-    for (int i = 0; i < 4; ++i)
+    for (auto i = 0; i < 4; ++i)
     {
-        float2 input = host_x[static_cast<size_t>(i)];
+        float2 input = host_x[i];
         float output;
         stream << test_shader(input).dispatch(1);
         stream << result.copy_to(&output) << synchronize();
-        LUISA_INFO("Input: ({}, {}), Predicted: {:.4f}, Ground Truth: {}", input.x, input.y, output, host_y[static_cast<size_t>(i)]);
+        LUISA_INFO("Input: ({}, {}), Predicted: {:.4f}, Ground Truth: {}", input.x, input.y, output, host_y[i]);
     }
 
     return 0;

@@ -158,9 +158,11 @@ int main(int argc, char* argv[])
     const float LR         = 0.1f;
 
     // 初始化权重和偏置
-    vector<float> host_w1(INPUT_SIZE * HIDDEN_SIZE);  // 输入到隐藏
+    vector<float> host_w1(INPUT_SIZE * HIDDEN_SIZE); // 输入到隐藏
+    vector<float> host_m1(INPUT_SIZE * HIDDEN_SIZE, 0.0f);
     vector<float> host_b1(HIDDEN_SIZE);               // 隐藏层偏置
     vector<float> host_w2(HIDDEN_SIZE * OUTPUT_SIZE); // 隐藏到输出
+    vector<float> host_m2(HIDDEN_SIZE * OUTPUT_SIZE, 0.0f);
     vector<float> host_b2(OUTPUT_SIZE);
 
     // Xavier/Glorot Initialization
@@ -177,13 +179,17 @@ int main(int argc, char* argv[])
         v = 0.0f;
 
     auto w1 = device.create_buffer<float>(INPUT_SIZE * HIDDEN_SIZE);
+    auto m1 = device.create_buffer<float>(INPUT_SIZE * HIDDEN_SIZE);
     auto b1 = device.create_buffer<float>(HIDDEN_SIZE);
     auto w2 = device.create_buffer<float>(HIDDEN_SIZE * OUTPUT_SIZE);
+    auto m2 = device.create_buffer<float>(HIDDEN_SIZE * OUTPUT_SIZE);
     auto b2 = device.create_buffer<float>(OUTPUT_SIZE);
 
     stream << w1.copy_from(host_w1.data())
+           << m1.copy_from(host_m1.data())
            << b1.copy_from(host_b1.data())
            << w2.copy_from(host_w2.data())
+           << m2.copy_from(host_m2.data())
            << b2.copy_from(host_b2.data())
            << synchronize();
 
@@ -193,10 +199,12 @@ int main(int argc, char* argv[])
     auto grad_w2 = device.create_buffer<float>(HIDDEN_SIZE * OUTPUT_SIZE);
     auto grad_b2 = device.create_buffer<float>(OUTPUT_SIZE);
 
-    auto loss         = device.create_buffer<float>(1);
-    auto current_loss = 0.0f;
+    auto loss    = device.create_buffer<float>(1);
+    auto correct = device.create_buffer<float>(1);
 
-    constexpr uint BATCH_SIZE = 32u;
+    auto w = device.create_buffer<float>(INPUT_SIZE * HIDDEN_SIZE);
+
+    constexpr uint BATCH_SIZE = 64u;
 
     Kernel1D train_kernel = [&](UInt batch_start)
     {
@@ -210,7 +218,6 @@ int main(int argc, char* argv[])
             $for(i, HIDDEN_SIZE) { grad_b1->write(i, 0.0f); };
             $for(i, HIDDEN_SIZE * OUTPUT_SIZE) { grad_w2->write(i, 0.0f); };
             $for(i, OUTPUT_SIZE) { grad_b2->write(i, 0.0f); };
-            loss->write(0u, 0.0f);
         };
         sync_block();
 
@@ -255,14 +262,22 @@ int main(int argc, char* argv[])
                 a2[c] = sigmoid(z2[c]);
             };
 
-            // 3) loss
+            // 3) loss & acc
             Float sample_loss = 0.0f;
+            UInt pred         = 0u;
+            Float best        = a2[0u];
             $for(c, OUTPUT_SIZE)
             {
                 Float diff = a2[c] - Y[c];
                 sample_loss += diff * diff;
+                $if(a2[c] > best)
+                {
+                    best = a2[c];
+                    pred = c;
+                };
             };
             loss->atomic(0u).fetch_add(sample_loss);
+            $if(pred == label) { correct->atomic(0u).fetch_add(1.0f); };
 
             // 4) 反向：输出层（逐类 sigmoid'(z2)）
             ArrayFloat<OUTPUT_SIZE> delta2;
@@ -311,7 +326,8 @@ int main(int argc, char* argv[])
         $if(tid == 0u)
         {
             // 样本的平均梯度
-            Float inv_n = 1.0f / static_cast<float>(BATCH_SIZE);
+            UInt actual_batch_size = min(BATCH_SIZE, TRAIN_SIZE - batch_start);
+            Float inv_n            = 1.0f / cast<float>(actual_batch_size);
 
             $for(c, OUTPUT_SIZE)
             {
@@ -319,7 +335,9 @@ int main(int argc, char* argv[])
                 {
                     UInt idx = c * HIDDEN_SIZE + j;
                     Float g  = grad_w2->read(idx) * inv_n;
-                    w2->write(idx, w2->read(idx) - LR * g);
+                    auto m   = m2->read(idx) * 0.9f + g;
+                    w2->write(idx, w2->read(idx) - LR * m);
+                    m2->write(idx, m);
                 };
                 b2->write(c, b2->read(c) - LR * grad_b2->read(c) * inv_n);
             };
@@ -330,38 +348,46 @@ int main(int argc, char* argv[])
                 {
                     UInt idx = j * INPUT_SIZE + k;
                     Float g  = grad_w1->read(idx) * inv_n;
-                    w1->write(idx, w1->read(idx) - LR * g);
+                    auto m   = m1->read(idx) * 0.9f + g;
+                    w1->write(idx, w1->read(idx) - LR * m);
+                    m1->write(idx, m);
                 };
                 b1->write(j, b1->read(j) - LR * grad_b1->read(j) * inv_n);
             };
-
-            // 写回平均 loss，便于主机侧打印
-            loss->write(0u, loss->read(0u) * inv_n);
         };
     };
 
     auto train_shader = device.compile(train_kernel);
 
     // 训练
-    const uint EPOCH_COUNT = 50u;
+    const uint EPOCH_COUNT = 10u;
     LUISA_INFO("Start Traning!");
     Clock clock;
     for (auto epoch = 0u; epoch < EPOCH_COUNT; epoch++)
     {
         Clock epoch_clock;
+        auto zero = 0.0f;
+        stream
+            << loss.copy_from(&zero)
+            << correct.copy_from(&zero);
+
         for (auto batch_start = 0u; batch_start < TRAIN_SIZE; batch_start += BATCH_SIZE)
         {
             stream << train_shader(batch_start).dispatch(BATCH_SIZE);
         }
         if (epoch % 1 == 0)
         {
-            stream << loss.copy_to(&current_loss) << synchronize();
-            LUISA_INFO("Epoch {}: Loss = {}, time = {:.2f}s", epoch, current_loss, epoch_clock.toc() * 1e-3);
+            auto current_loss = 0.0f;
+            auto current_acc  = 0.0f;
+            stream
+                << loss.copy_to(&current_loss)
+                << correct.copy_to(&current_acc)
+                << synchronize();
+            current_loss /= static_cast<float>(TRAIN_SIZE);
+            current_acc /= static_cast<float>(TRAIN_SIZE);
+            LUISA_INFO("Epoch {}: Loss = {:.8f}, Acc = {:.2f}% time = {:.2f}s", epoch + 1, current_loss, 100.0f * current_acc, epoch_clock.toc() * 1e-3);
         }
     }
-    stream << loss.copy_to(&current_loss)
-           << synchronize();
-    LUISA_INFO("Final Loss = {}", current_loss);
     LUISA_INFO("Training {} epoches completed in {:.2f} seconds.", EPOCH_COUNT, clock.toc() * 1e-3);
 
     // 测试

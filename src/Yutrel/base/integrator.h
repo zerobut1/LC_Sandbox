@@ -50,6 +50,7 @@ public:
     [[nodiscard]] auto light_sampler() const noexcept { return m_light_sampler.get(); }
 
     void render(Stream& stream);
+    void render_interactive(Stream& stream);
 
 private:
     void render_one_camera(CommandBuffer& command_buffer, Camera::Instance* camera);

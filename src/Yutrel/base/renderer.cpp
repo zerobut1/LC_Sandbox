@@ -73,6 +73,11 @@ void Renderer::render(Stream& stream)
     m_integrator->render(stream);
 }
 
+void Renderer::render_interactive(Stream& stream)
+{
+    m_integrator->render_interactive(stream);
+}
+
 const Texture::Instance* Renderer::build_texture(CommandBuffer& command_buffer, const Texture* texture) noexcept
 {
     if (texture == nullptr)

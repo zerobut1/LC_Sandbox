@@ -11,6 +11,8 @@ namespace Yutrel
 Application::Application(const CreateInfo& info)
     : m_context(info.bin)
 {
+    m_interactive = info.interactive;
+
     m_device = m_context.create_device(info.backend);
     m_stream = m_device.create_stream(StreamTag::GRAPHICS);
 
@@ -22,7 +24,14 @@ Application::~Application() noexcept = default;
 
 void Application::run()
 {
-    m_renderer->render(m_stream);
+    if (m_interactive)
+    {
+        m_renderer->render_interactive(m_stream);
+    }
+    else
+    {
+        m_renderer->render(m_stream);
+    }
     m_stream << synchronize();
 }
 

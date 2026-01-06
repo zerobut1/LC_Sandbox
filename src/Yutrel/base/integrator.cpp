@@ -3,6 +3,7 @@
 #include <luisa/luisa-compute.h>
 
 #include "base/camera.h"
+#include "base/camera_controller.h"
 #include "base/film.h"
 #include "base/geometry.h"
 #include "base/interaction.h"
@@ -39,12 +40,70 @@ void Integrator::render(Stream& stream)
     camera->film()->prepare(command_buffer);
     {
         render_one_camera(command_buffer, camera);
+        if (camera->film()->should_close())
+        {
+            camera->film()->release();
+            return;
+        }
         luisa::vector<float4> pixels(pixel_count);
         camera->film()->download(command_buffer, pixels.data());
         command_buffer << synchronize();
         auto output_path = std::filesystem::canonical(std::filesystem::current_path()) / "render.exr";
         save_image(output_path, reinterpret_cast<const float*>(pixels.data()), resolution);
     }
+    camera->film()->release();
+}
+
+void Integrator::render_interactive(Stream& stream)
+{
+    CommandBuffer command_buffer{stream};
+
+    auto camera     = m_renderer.camera();
+    auto resolution = camera->film()->base()->resolution();
+
+    camera->film()->prepare(command_buffer);
+    sampler()->reset(command_buffer, resolution.x * resolution.y);
+    command_buffer << synchronize();
+
+    FpsCameraController controller{camera->transform(), camera->base()->up(), FpsCameraController::Config{}};
+
+    Kernel2D render_kernel = [&](UInt frame_index, Float time) noexcept
+    {
+        set_block_size(16u, 16u, 1u);
+        Var pixel_id = dispatch_id().xy();
+        Var L        = Li(camera, frame_index, pixel_id, time);
+        camera->film()->accumulate(pixel_id, L, 1.0f);
+    };
+    auto render = renderer().device().compile(render_kernel);
+
+    uint global_sample_index = 0u;
+
+    while (true)
+    {
+        // Process window events & draw current accumulation.
+        camera->film()->show(command_buffer, true);
+        if (camera->film()->should_close())
+        {
+            break;
+        }
+
+        // Update camera from input; reset accumulation if changed.
+        if (controller.update())
+        {
+            auto c2w = controller.camera_to_world();
+            camera->set_transform(command_buffer, c2w);
+            camera->film()->prepare(command_buffer);
+            sampler()->reset(command_buffer, resolution.x * resolution.y);
+            global_sample_index = 0u;
+            command_buffer << synchronize();
+        }
+
+        command_buffer
+            << render(global_sample_index++, 0.0f).dispatch(resolution)
+            << commit();
+    }
+
+    command_buffer << synchronize();
     camera->film()->release();
 }
 
@@ -98,6 +157,12 @@ void Integrator::render_one_camera(CommandBuffer& command_buffer, Camera::Instan
                 {
                     progress_bar.update(p);
                 };
+            }
+            if (camera->film()->should_close()) [[unlikely]]
+            {
+                command_buffer << synchronize();
+                progress_bar.done();
+                return;
             }
         }
     }

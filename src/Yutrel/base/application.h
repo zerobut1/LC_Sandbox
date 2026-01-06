@@ -23,12 +23,15 @@ public:
         luisa::string_view bin;
         luisa::string_view backend;
         Scene::CreateInfo scene_info;
+        bool interactive{false};
     };
 
 private:
     Context m_context;
     Device m_device;
     Stream m_stream;
+
+    bool m_interactive{false};
 
     luisa::unique_ptr<Scene> m_scene;
     luisa::unique_ptr<Renderer> m_renderer;

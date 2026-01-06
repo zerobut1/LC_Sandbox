@@ -8,13 +8,24 @@ int main(int argc, char* argv[])
 {
     if (argc <= 1)
     {
-        LUISA_ERROR("Usage: {} <backend>. <backend>: cuda, dx, vk", argv[0]);
+        LUISA_ERROR("Usage: {} <backend> [--interactive|-i]. <backend>: cuda, dx, vk", argv[0]);
         exit(1);
+    }
+
+    bool interactive = false;
+    for (int i = 2; i < argc; i++)
+    {
+        auto arg = luisa::string_view{argv[i]};
+        if (arg == "--interactive" || arg == "-i" || arg == "interactive")
+        {
+            interactive = true;
+        }
     }
 
     Application::CreateInfo app_info{
         .bin     = argv[0],
         .backend = argv[1],
+        .interactive = interactive,
     };
 
     auto& scene_info = app_info.scene_info;

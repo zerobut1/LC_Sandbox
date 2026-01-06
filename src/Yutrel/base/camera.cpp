@@ -27,6 +27,7 @@ luisa::unique_ptr<Camera> Camera::create(Scene& scene, const CreateInfo& info) n
 
 Camera::Camera(Scene& scene, const CreateInfo& info) noexcept
     : m_spp(info.spp),
+      m_up(info.up),
       m_shutter_span(info.shutter_span),
       m_shutter_samples_count(info.shutter_samples_count)
 {
@@ -36,10 +37,10 @@ Camera::Camera(Scene& scene, const CreateInfo& info) noexcept
     auto u = normalize(cross(info.up, w));
     auto v = cross(w, u);
 
-    m_transform = make_float4x4(make_float4(u, 0.0f),
-                                make_float4(v, 0.0f),
-                                make_float4(w, 0.0f),
-                                make_float4(info.position, 1.0f));
+    m_init_transform = make_float4x4(make_float4(u, 0.0f),
+                                     make_float4(v, 0.0f),
+                                     make_float4(w, 0.0f),
+                                     make_float4(info.position, 1.0f));
 
     if (m_shutter_span.y < m_shutter_span.x) [[unlikely]]
     {
@@ -135,10 +136,25 @@ luisa::vector<Camera::ShutterSample> Camera::shutter_samples() const noexcept
     return buckets;
 }
 
-Camera::Instance::Instance(const Renderer& renderer, CommandBuffer& command_buffer, const Camera* camera) noexcept
+Camera::Instance::Instance(Renderer& renderer, CommandBuffer& command_buffer, const Camera* camera) noexcept
     : m_renderer(renderer),
       m_camera(camera),
-      m_film(camera->film()->build(renderer, command_buffer)) {}
+      m_film(camera->film()->build(renderer, command_buffer)),
+      m_host_transform(camera->init_transform()),
+      m_device_transform(renderer.arena_buffer<float4x4>(1u))
+{
+    command_buffer
+        << m_device_transform.copy_from(&m_host_transform)
+        << commit();
+}
+
+void Camera::Instance::set_transform(CommandBuffer& command_buffer, const float4x4& c2w) noexcept
+{
+    m_host_transform = c2w;
+    command_buffer
+        << m_device_transform.copy_from(&c2w)
+        << commit();
+}
 
 Camera::Sample Camera::Instance::generate_ray(Expr<uint2> pixel_coord, Expr<float> time, Expr<float2> u_filter, Expr<float2> u_lens) const noexcept
 {
@@ -147,7 +163,7 @@ Camera::Sample Camera::Instance::generate_ray(Expr<uint2> pixel_coord, Expr<floa
 
     auto ray_cs = generate_ray_in_camera_space(pixel, time, u_lens);
 
-    auto c2w    = base()->transform();
+    auto c2w    = m_device_transform->read(0u);
     auto origin = make_float3(c2w * make_float4(ray_cs->origin(), 1.0f));
 
     auto d_camera  = make_float3x3(c2w) * ray_cs->direction();

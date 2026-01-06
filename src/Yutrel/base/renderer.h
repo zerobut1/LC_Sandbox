@@ -99,6 +99,7 @@ public:
     [[nodiscard]] static luisa::unique_ptr<Renderer> create(Device& device, Stream& stream, const Scene& scene) noexcept;
 
     void render(Stream& stream);
+    void render_interactive(Stream& stream);
 
     [[nodiscard]] auto& device() const noexcept { return m_device; }
     [[nodiscard]] auto camera() const noexcept { return m_camera.get(); }

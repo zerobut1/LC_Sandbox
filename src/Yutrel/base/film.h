@@ -73,12 +73,14 @@ public:
     public:
         [[nodiscard]] auto& renderer() const noexcept { return m_renderer; }
 
+        [[nodiscard]] bool should_close() const noexcept;
+
         void accumulate(Expr<uint2> pixel, Expr<float3> rgb, Expr<float> effective_spp) const noexcept;
 
         void prepare(CommandBuffer& command_buffer) noexcept;
         void download(CommandBuffer& command_buffer, float4* buffer) const noexcept;
         void release() noexcept;
-        bool show(CommandBuffer& command_buffer) const noexcept;
+        bool show(CommandBuffer& command_buffer, bool force = false) const noexcept;
 
     private:
         void display() const noexcept;

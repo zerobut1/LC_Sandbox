@@ -70,9 +70,11 @@ public:
         const Renderer& m_renderer;
         const Camera* m_camera;
         luisa::unique_ptr<Film::Instance> m_film;
+        float4x4 m_host_transform;
+        BufferView<float4x4> m_device_transform;
 
     public:
-        explicit Instance(const Renderer& renderer, CommandBuffer& command_buffer, const Camera* camera) noexcept;
+        explicit Instance(Renderer& renderer, CommandBuffer& command_buffer, const Camera* camera) noexcept;
         virtual ~Instance() noexcept = default;
 
         Instance()                           = delete;
@@ -90,6 +92,10 @@ public:
         }
         [[nodiscard]] auto film() const noexcept { return m_film.get(); }
 
+        [[nodiscard]] auto transform() const noexcept { return m_host_transform; }
+
+        void set_transform(CommandBuffer& command_buffer, const float4x4& c2w) noexcept;
+
         [[nodiscard]] Sample generate_ray(Expr<uint2> pixel_coord, Expr<float> time, Expr<float2> u_filter, Expr<float2> u_lens) const noexcept;
 
     private:
@@ -98,7 +104,8 @@ public:
 
 private:
     const Film* m_film;
-    float4x4 m_transform;
+    float4x4 m_init_transform;
+    float3 m_up;
     uint m_spp;
     float2 m_shutter_span;
     uint m_shutter_samples_count;
@@ -118,7 +125,8 @@ public:
 
     [[nodiscard]] auto film() const noexcept { return m_film; }
     [[nodiscard]] auto spp() const noexcept { return m_spp; }
-    [[nodiscard]] auto transform() const noexcept { return m_transform; }
+    [[nodiscard]] auto init_transform() const noexcept { return m_init_transform; }
+    [[nodiscard]] auto up() const noexcept { return m_up; }
     [[nodiscard]] luisa::vector<ShutterSample> shutter_samples() const noexcept;
     [[nodiscard]] virtual bool requires_lens_sampling() const noexcept { return false; }
 };

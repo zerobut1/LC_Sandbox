@@ -89,7 +89,7 @@ void Film::Instance::prepare(CommandBuffer& command_buffer) noexcept
             "Yutrel",
             ImGuiWindow::Config{
                 .size         = window_resolution,
-                .vsync        = false,
+                .vsync        = true,
                 .hdr          = base()->hdr(),
                 .back_buffers = 3,
             });
@@ -150,21 +150,27 @@ void Film::Instance::release() noexcept
     m_framebuffer = {};
 }
 
-bool Film::Instance::show(CommandBuffer& command_buffer) const noexcept
+bool Film::Instance::should_close() const noexcept
+{
+    return m_window && m_window->should_close();
+}
+
+bool Film::Instance::show(CommandBuffer& command_buffer, bool force) const noexcept
 {
     LUISA_ASSERT(command_buffer.stream() == m_stream, "Command buffer stream mismatch.");
 
     static const auto target_fps = 60.0;
 
-    if (m_framerate.duration() < 1.0 / target_fps)
+    if (!force && m_framerate.duration() < 1.0 / target_fps)
     {
         return false;
     }
 
-    if (!m_rendering_finished && m_window->should_close())
+    if (!m_rendering_finished && this->should_close())
     {
+        // Let the caller decide how to exit (interactive loop wants to break gracefully).
         command_buffer << synchronize();
-        exit(0);
+        return true;
     }
     m_framerate.record();
 

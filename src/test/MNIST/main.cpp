@@ -34,6 +34,16 @@ Float sigmoid_deriv(Float x)
     return fx * (1 - fx);
 }
 
+Float ReLU(Float x)
+{
+    return max(0.0f, x);
+}
+
+Float ReLU_deriv(Float x)
+{
+    return ite(x > 0.0f, 1.0f, 0.0f);
+}
+
 const uint IMAGE_SIZE = 28u;
 
 inline int32_t read_int32_be(std::ifstream& ifs)
@@ -155,7 +165,7 @@ int main(int argc, char* argv[])
     const uint INPUT_SIZE  = IMAGE_SIZE * IMAGE_SIZE;
     const uint HIDDEN_SIZE = 16u;
     const uint OUTPUT_SIZE = 10u;
-    const float LR         = 0.1f;
+    const float LR         = 0.01f;
 
     // 初始化权重和偏置
     vector<float> host_w1(INPUT_SIZE * HIDDEN_SIZE); // 输入到隐藏
@@ -246,7 +256,7 @@ int main(int argc, char* argv[])
                 {
                     z1[j] += X[k] * w1->read(j * INPUT_SIZE + k);
                 };
-                a1[j] = sigmoid(z1[j]);
+                a1[j] = ReLU(z1[j]);
             };
 
             // 2) 前向：输出层
@@ -291,13 +301,13 @@ int main(int argc, char* argv[])
             ArrayFloat<HIDDEN_SIZE> delta1;
             $for(j, HIDDEN_SIZE)
             {
-                Float d_sigmoid_z1 = a1[j] * (1.0f - a1[j]);
-                Float sum_delta    = 0.0f;
+                Float d_relu_z1 = ReLU_deriv(z1[j]);
+                Float sum_delta = 0.0f;
                 $for(c, OUTPUT_SIZE)
                 {
                     sum_delta += delta2[c] * w2->read(c * HIDDEN_SIZE + j);
                 };
-                delta1[j] = sum_delta * d_sigmoid_z1;
+                delta1[j] = sum_delta * d_relu_z1;
             };
 
             // 6) 累计 batch 梯度（用 atomic 做归约）
@@ -425,7 +435,7 @@ int main(int argc, char* argv[])
                     z1[j] += X[k] * w1->read(j * INPUT_SIZE + k);
                 };
                 z1[j] += b1->read(j);
-                a1[j] = sigmoid(z1[j]);
+                a1[j] = ReLU(z1[j]);
             };
 
             ArrayFloat<OUTPUT_SIZE> z2;

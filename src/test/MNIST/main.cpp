@@ -3,6 +3,7 @@
 #include <luisa/dsl/sugar.h>
 #include <luisa/gui/window.h>
 #include <luisa/luisa-compute.h>
+#include <numeric>
 #include <random>
 #include <stb/stb_image_write.h>
 
@@ -101,6 +102,7 @@ int main(int argc, char* argv[])
     Device device = context.create_device(argv[1]);
     Stream stream = device.create_stream(StreamTag::COMPUTE);
 
+    // ------------- 数据集 --------------
     // 读取数据集
     vector<unsigned char> origin_train_images;
     vector<unsigned char> origin_train_labels;
@@ -160,74 +162,94 @@ int main(int argc, char* argv[])
         << device_test_labels.copy_from(host_test_labels.data())
         << synchronize();
 
-    const uint TRAIN_SIZE  = n_train_labels;
-    const uint TEST_SIZE   = n_test_labels;
-    const uint INPUT_SIZE  = IMAGE_SIZE * IMAGE_SIZE;
-    const uint HIDDEN_SIZE = 16u;
-    const uint OUTPUT_SIZE = 10u;
-    const float LR         = 0.01f;
+    const uint TRAIN_SIZE = n_train_labels;
+    const uint TEST_SIZE  = n_test_labels;
+
+    // ------------- 网络结构 --------------
+    // 网络结构定义
+    static constexpr uint MAX_TOTAL_NODES = 4096;
+    constexpr uint INPUT_SIZE             = IMAGE_SIZE * IMAGE_SIZE;
+    constexpr uint OUTPUT_SIZE            = 10;
+    constexpr std::array<uint, 4> LAYERS{INPUT_SIZE, 16, 16, OUTPUT_SIZE};
+    constexpr uint NUM_NODES = std::accumulate(LAYERS.begin(), LAYERS.end(), 0u);
+
+    std::vector<uint> layer_offsets(LAYERS.size());
+    auto node_count = 0u;
+    for (auto i = 0u; i < LAYERS.size(); i++)
+    {
+        layer_offsets[i] = node_count;
+        node_count += LAYERS[i];
+    }
+    LUISA_ASSERT(node_count <= MAX_TOTAL_NODES, "Too many nodes in the network.");
+    const uint NUM_WEIGHT_LAYERS = static_cast<uint>(LAYERS.size() - 1);
+
+    // 容器
+    vector<Buffer<float>> weights;
+    vector<Buffer<float>> biases;
+    vector<Buffer<float>> momentums;
+    vector<Buffer<float>> grad_weights;
+    vector<Buffer<float>> grad_biases;
 
     // 初始化权重和偏置
-    vector<float> host_w1(INPUT_SIZE * HIDDEN_SIZE); // 输入到隐藏
-    vector<float> host_m1(INPUT_SIZE * HIDDEN_SIZE, 0.0f);
-    vector<float> host_b1(HIDDEN_SIZE);               // 隐藏层偏置
-    vector<float> host_w2(HIDDEN_SIZE * OUTPUT_SIZE); // 隐藏到输出
-    vector<float> host_m2(HIDDEN_SIZE * OUTPUT_SIZE, 0.0f);
-    vector<float> host_b2(OUTPUT_SIZE);
+    for (auto i = 0u; i < NUM_WEIGHT_LAYERS; i++)
+    {
+        auto in_size  = LAYERS[i];
+        auto out_size = LAYERS[i + 1];
 
-    // Xavier/Glorot Initialization
-    float limit_1 = std::sqrt(6.0f / (static_cast<float>(INPUT_SIZE + HIDDEN_SIZE)));
-    float limit_2 = std::sqrt(6.0f / (static_cast<float>(HIDDEN_SIZE + OUTPUT_SIZE)));
+        std::vector<float> host_w(in_size * out_size);
+        std::vector<float> host_m(in_size * out_size, 0.0f);
+        std::vector<float> host_b(out_size, 0.0f);
 
-    for (auto& v : host_w1)
-        v = random_weight(limit_1);
-    for (auto& v : host_b1)
-        v = 0.0f; // 偏置初始化为 0 通常更好
-    for (auto& v : host_w2)
-        v = random_weight(limit_2);
-    for (auto& v : host_b2)
-        v = 0.0f;
+        auto limit = i < NUM_WEIGHT_LAYERS - 1
+                         ? std::sqrt(6.0f / static_cast<float>(in_size))
+                         : std::sqrt(6.0f / static_cast<float>(in_size + out_size));
 
-    auto w1 = device.create_buffer<float>(INPUT_SIZE * HIDDEN_SIZE);
-    auto m1 = device.create_buffer<float>(INPUT_SIZE * HIDDEN_SIZE);
-    auto b1 = device.create_buffer<float>(HIDDEN_SIZE);
-    auto w2 = device.create_buffer<float>(HIDDEN_SIZE * OUTPUT_SIZE);
-    auto m2 = device.create_buffer<float>(HIDDEN_SIZE * OUTPUT_SIZE);
-    auto b2 = device.create_buffer<float>(OUTPUT_SIZE);
+        for (auto& v : host_w)
+        {
+            v = random_weight(limit);
+        }
 
-    stream << w1.copy_from(host_w1.data())
-           << m1.copy_from(host_m1.data())
-           << b1.copy_from(host_b1.data())
-           << w2.copy_from(host_w2.data())
-           << m2.copy_from(host_m2.data())
-           << b2.copy_from(host_b2.data())
-           << synchronize();
+        auto device_w = device.create_buffer<float>(host_w.size());
+        auto device_b = device.create_buffer<float>(host_b.size());
+        auto device_m = device.create_buffer<float>(host_m.size());
 
-    // batch 梯度缓冲区（每个 epoch 清零一次）
-    auto grad_w1 = device.create_buffer<float>(INPUT_SIZE * HIDDEN_SIZE);
-    auto grad_b1 = device.create_buffer<float>(HIDDEN_SIZE);
-    auto grad_w2 = device.create_buffer<float>(HIDDEN_SIZE * OUTPUT_SIZE);
-    auto grad_b2 = device.create_buffer<float>(OUTPUT_SIZE);
+        stream
+            << device_w.copy_from(host_w.data())
+            << device_b.copy_from(host_b.data())
+            << device_m.copy_from(host_m.data());
+
+        weights.push_back(std::move(device_w));
+        biases.push_back(std::move(device_b));
+        momentums.push_back(std::move(device_m));
+        grad_weights.push_back(device.create_buffer<float>(host_w.size()));
+        grad_biases.push_back(device.create_buffer<float>(host_b.size()));
+    }
+    stream << synchronize();
+
+    // ------------- Train Kernel --------------
+    constexpr uint BATCH_SIZE = 64u;
+    constexpr float LR        = 0.1f;
 
     auto loss    = device.create_buffer<float>(1);
     auto correct = device.create_buffer<float>(1);
-
-    auto w = device.create_buffer<float>(INPUT_SIZE * HIDDEN_SIZE);
-
-    constexpr uint BATCH_SIZE = 64u;
 
     Kernel1D train_kernel = [&](UInt batch_start)
     {
         set_block_size(BATCH_SIZE, 1u, 1u);
         auto tid = dispatch_id().x;
 
-        // 清零（仅线程 0 执行），然后 block 内同步
+        // 1. 初始化梯度为0
+        // 仅线程 0 执行 , block 内同步
         $if(tid == 0u)
         {
-            $for(i, INPUT_SIZE * HIDDEN_SIZE) { grad_w1->write(i, 0.0f); };
-            $for(i, HIDDEN_SIZE) { grad_b1->write(i, 0.0f); };
-            $for(i, HIDDEN_SIZE * OUTPUT_SIZE) { grad_w2->write(i, 0.0f); };
-            $for(i, OUTPUT_SIZE) { grad_b2->write(i, 0.0f); };
+            for (auto i = 0u; i < NUM_WEIGHT_LAYERS; i++)
+            {
+                auto in_size  = LAYERS[i];
+                auto out_size = LAYERS[i + 1];
+                auto w_size   = in_size * out_size;
+                $for(j, w_size) { grad_weights[i]->write(j, 0.0f); };
+                $for(j, out_size) { grad_biases[i]->write(j, 0.0f); };
+            }
         };
         sync_block();
 
@@ -240,130 +262,137 @@ int main(int argc, char* argv[])
             {
                 X[k] = device_train_images->read(data_id * INPUT_SIZE + k);
             };
-
             UInt label = device_train_labels->read(data_id);
-            ArrayFloat<OUTPUT_SIZE> Y;
-            $for(c, OUTPUT_SIZE) { Y[c] = 0.0f; };
-            Y[label] = 1.0f;
 
-            // 1) 前向：隐藏层
-            ArrayFloat<HIDDEN_SIZE> z1;
-            ArrayFloat<HIDDEN_SIZE> a1;
-            $for(j, HIDDEN_SIZE)
+            ArrayFloat<NUM_NODES> acts;
+            ArrayFloat<NUM_NODES> zs;
+            ArrayFloat<NUM_NODES> deltas;
+
+            $for(k, INPUT_SIZE)
             {
-                z1[j] = b1->read(j);
-                $for(k, INPUT_SIZE)
-                {
-                    z1[j] += X[k] * w1->read(j * INPUT_SIZE + k);
-                };
-                a1[j] = ReLU(z1[j]);
+                acts[k] = X[k];
             };
 
-            // 2) 前向：输出层
-            ArrayFloat<OUTPUT_SIZE> z2;
-            ArrayFloat<OUTPUT_SIZE> a2;
-            $for(c, OUTPUT_SIZE)
+            // 2. 前向传播
+            for (auto i = 0; i < NUM_WEIGHT_LAYERS; i++)
             {
-                z2[c] = b2->read(c);
-                $for(j, HIDDEN_SIZE)
-                {
-                    z2[c] += a1[j] * w2->read(c * HIDDEN_SIZE + j);
-                };
-                a2[c] = sigmoid(z2[c]);
-            };
+                auto in_start  = layer_offsets[i];
+                auto out_start = layer_offsets[i + 1];
+                auto in_size   = LAYERS[i];
+                auto out_size  = LAYERS[i + 1];
 
-            // 3) loss & acc
-            Float sample_loss = 0.0f;
-            UInt pred         = 0u;
-            Float best        = a2[0u];
+                $for(j, out_size)
+                {
+                    Float z = biases[i]->read(j);
+                    $for(k, in_size)
+                    {
+                        auto act_in = acts[in_start + k];
+                        auto w      = weights[i]->read(j * in_size + k);
+                        z += act_in * w;
+                    };
+                    // store pre-activation for backprop (ReLU derivative needs z)
+                    zs[out_start + j] = z;
+                    acts[out_start + j] = i == NUM_WEIGHT_LAYERS - 1 ? sigmoid(z) : ReLU(z);
+                };
+            }
+
+            // 3. 计算loss & accuracy
+            const uint OUTPUT_START = layer_offsets.back();
+            Float sample_loss       = 0.0f;
+            UInt pred               = 0u;
+            Float best              = acts[OUTPUT_START + 0u];
             $for(c, OUTPUT_SIZE)
             {
-                Float diff = a2[c] - Y[c];
+                auto output_val = acts[OUTPUT_START + c];
+                Float diff      = output_val - ite(c == label, 1.0f, 0.0f);
                 sample_loss += diff * diff;
-                $if(a2[c] > best)
+                $if(output_val > best)
                 {
-                    best = a2[c];
+                    best = output_val;
                     pred = c;
                 };
+
+                // 计算输出层delta
+                // 激活函数 sigmoid
+                // 误差 均方误差
+                auto d_sigmoid           = output_val * (1.0f - output_val);
+                deltas[OUTPUT_START + c] = 2.0f * diff * d_sigmoid;
             };
             loss->atomic(0u).fetch_add(sample_loss);
             $if(pred == label) { correct->atomic(0u).fetch_add(1.0f); };
 
-            // 4) 反向：输出层（逐类 sigmoid'(z2)）
-            ArrayFloat<OUTPUT_SIZE> delta2;
-            $for(c, OUTPUT_SIZE)
+            // 4. 反向传播
+            for (auto i = NUM_WEIGHT_LAYERS - 1; i > 0u; i--)
             {
-                Float d_sigmoid_z2 = a2[c] * (1.0f - a2[c]);
-                delta2[c]          = 2.0f * (a2[c] - Y[c]) * d_sigmoid_z2;
-            };
+                auto in_start  = layer_offsets[i];
+                auto out_start = layer_offsets[i + 1];
+                auto in_size   = LAYERS[i];
+                auto out_size  = LAYERS[i + 1];
 
-            // 5) 反向：隐藏层
-            ArrayFloat<HIDDEN_SIZE> delta1;
-            $for(j, HIDDEN_SIZE)
-            {
-                Float d_relu_z1 = ReLU_deriv(z1[j]);
-                Float sum_delta = 0.0f;
-                $for(c, OUTPUT_SIZE)
+                $for(j, in_size)
                 {
-                    sum_delta += delta2[c] * w2->read(c * HIDDEN_SIZE + j);
-                };
-                delta1[j] = sum_delta * d_relu_z1;
-            };
+                    Float sum_weighted_delta = 0.0f;
+                    $for(k, out_size)
+                    {
+                        sum_weighted_delta += deltas[out_start + k] * weights[i]->read(k * in_size + j);
+                    };
 
-            // 6) 累计 batch 梯度（用 atomic 做归约）
-            $for(c, OUTPUT_SIZE)
-            {
-                $for(j, HIDDEN_SIZE)
-                {
-                    grad_w2->atomic(c * HIDDEN_SIZE + j).fetch_add(a1[j] * delta2[c]);
+                    Float d_activation   = i == 0 ? 1.0f : ReLU_deriv(zs[in_start + j]);
+                    deltas[in_start + j] = sum_weighted_delta * d_activation;
                 };
-                grad_b2->atomic(c).fetch_add(delta2[c]);
-            };
+            }
 
-            $for(j, HIDDEN_SIZE)
+            // 5. 累计 batch 梯度
+            for (auto i = 0u; i < NUM_WEIGHT_LAYERS; i++)
             {
-                $for(k, INPUT_SIZE)
+                auto in_start  = layer_offsets[i];
+                auto out_start = layer_offsets[i + 1];
+                auto in_size   = LAYERS[i];
+                auto out_size  = LAYERS[i + 1];
+
+                $for(c, out_size)
                 {
-                    grad_w1->atomic(j * INPUT_SIZE + k).fetch_add(X[k] * delta1[j]);
+                    auto d = deltas[out_start + c];
+                    $for(j, in_size)
+                    {
+                        auto input_val = acts[in_start + j];
+                        grad_weights[i]->atomic(c * in_size + j).fetch_add(input_val * d);
+                    };
+                    grad_biases[i]->atomic(c).fetch_add(d);
                 };
-                grad_b1->atomic(j).fetch_add(delta1[j]);
-            };
+            }
         };
 
         sync_block();
 
-        // 7) 单线程更新权重（避免对权重做 atomic）
+        // 6. 单线程更新权重（避免对权重做 atomic）
         $if(tid == 0u)
         {
             // 样本的平均梯度
             UInt actual_batch_size = min(BATCH_SIZE, TRAIN_SIZE - batch_start);
             Float inv_n            = 1.0f / cast<float>(actual_batch_size);
 
-            $for(c, OUTPUT_SIZE)
+            for (auto i = 0u; i < NUM_WEIGHT_LAYERS; i++)
             {
-                $for(j, HIDDEN_SIZE)
-                {
-                    UInt idx = c * HIDDEN_SIZE + j;
-                    Float g  = grad_w2->read(idx) * inv_n;
-                    auto m   = m2->read(idx) * 0.9f + g;
-                    w2->write(idx, w2->read(idx) - LR * m);
-                    m2->write(idx, m);
-                };
-                b2->write(c, b2->read(c) - LR * grad_b2->read(c) * inv_n);
-            };
+                auto in_size  = LAYERS[i];
+                auto out_size = LAYERS[i + 1];
+                auto w_size   = in_size * out_size;
+                auto b_size   = out_size;
 
-            $for(j, HIDDEN_SIZE)
-            {
-                $for(k, INPUT_SIZE)
+                $for(k, w_size)
                 {
-                    UInt idx = j * INPUT_SIZE + k;
-                    Float g  = grad_w1->read(idx) * inv_n;
-                    auto m   = m1->read(idx) * 0.9f + g;
-                    w1->write(idx, w1->read(idx) - LR * m);
-                    m1->write(idx, m);
+                    Float g = grad_weights[i]->read(k) * inv_n;
+                    auto m  = momentums[i]->read(k) * 0.9f + g;
+                    weights[i]->write(k, weights[i]->read(k) - LR * m);
+                    momentums[i]->write(k, m);
                 };
-                b1->write(j, b1->read(j) - LR * grad_b1->read(j) * inv_n);
-            };
+
+                $for(k, b_size)
+                {
+                    Float g = grad_biases[i]->read(k) * inv_n;
+                    biases[i]->write(k, biases[i]->read(k) - LR * g);
+                };
+            }
         };
     };
 
@@ -414,62 +443,55 @@ int main(int argc, char* argv[])
 
         $if(data_id < TEST_SIZE)
         {
-            ArrayFloat<INPUT_SIZE> X;
+            ArrayFloat<NUM_NODES> acts;
+
+            // Input
             $for(k, INPUT_SIZE)
             {
-                X[k] = device_test_images->read(data_id * INPUT_SIZE + k);
+                acts[k] = device_test_images->read(data_id * INPUT_SIZE + k);
             };
-
             UInt label = clamp(device_test_labels->read(data_id), 0u, OUTPUT_SIZE - 1u);
-            ArrayFloat<OUTPUT_SIZE> Y;
-            $for(c, OUTPUT_SIZE) { Y[c] = 0.0f; };
-            Y[label] = 1.0f;
 
-            ArrayFloat<HIDDEN_SIZE> z1;
-            ArrayFloat<HIDDEN_SIZE> a1;
-            $for(j, HIDDEN_SIZE)
+            // 前向传播
+            for (auto i = 0; i < NUM_WEIGHT_LAYERS; i++)
             {
-                z1[j] = 0.0f;
-                $for(k, INPUT_SIZE)
-                {
-                    z1[j] += X[k] * w1->read(j * INPUT_SIZE + k);
-                };
-                z1[j] += b1->read(j);
-                a1[j] = ReLU(z1[j]);
-            };
+                auto in_start  = layer_offsets[i];
+                auto out_start = layer_offsets[i + 1];
+                auto in_size   = LAYERS[i];
+                auto out_size  = LAYERS[i + 1];
 
-            ArrayFloat<OUTPUT_SIZE> z2;
-            ArrayFloat<OUTPUT_SIZE> a2;
+                $for(j, out_size)
+                {
+                    Float z = biases[i]->read(j);
+                    $for(k, in_size)
+                    {
+                        auto act_in = acts[in_start + k];
+                        auto w      = weights[i]->read(j * in_size + k);
+                        z += act_in * w;
+                    };
+                    acts[out_start + j] = i == NUM_WEIGHT_LAYERS - 1 ? sigmoid(z) : ReLU(z);
+                };
+            }
+
+            // loss & accuracy
+            const uint OUTPUT_START = layer_offsets.back();
+            UInt pred               = 0u;
+            Float best              = acts[OUTPUT_START + 0u];
             $for(c, OUTPUT_SIZE)
             {
-                z2[c] = b2->read(c);
-                $for(j, HIDDEN_SIZE)
-                {
-                    z2[c] += a1[j] * w2->read(c * HIDDEN_SIZE + j);
-                };
-                a2[c] = sigmoid(z2[c]);
-            };
+                auto val = acts[OUTPUT_START + c];
 
-            // accuracy (argmax)
-            UInt pred  = 0u;
-            Float best = a2[0u];
-            $for(c, OUTPUT_SIZE)
-            {
-                $if(a2[c] > best)
+                $if(val > best)
                 {
-                    best = a2[c];
+                    best = val;
                     pred = c;
                 };
+
+                Float target = ite(c == label, 1.0f, 0.0f);
+                Float diff   = val - target;
+                test_loss->atomic(0u).fetch_add(diff * diff);
             };
             $if(pred == label) { test_correct->atomic(0u).fetch_add(1u); };
-
-            Float sample_loss = 0.0f;
-            $for(c, OUTPUT_SIZE)
-            {
-                Float diff = a2[c] - Y[c];
-                sample_loss += diff * diff;
-            };
-            test_loss->atomic(0u).fetch_add(sample_loss);
         };
     };
     auto test_shader = device.compile(test_kernel);

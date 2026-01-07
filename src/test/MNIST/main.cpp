@@ -170,7 +170,7 @@ int main(int argc, char* argv[])
     static constexpr uint MAX_TOTAL_NODES = 4096;
     constexpr uint INPUT_SIZE             = IMAGE_SIZE * IMAGE_SIZE;
     constexpr uint OUTPUT_SIZE            = 10;
-    constexpr std::array<uint, 4> LAYERS{INPUT_SIZE, 16, 16, OUTPUT_SIZE};
+    constexpr std::array<uint, 4> LAYERS{INPUT_SIZE, 24, 24, OUTPUT_SIZE};
     constexpr uint NUM_NODES = std::accumulate(LAYERS.begin(), LAYERS.end(), 0u);
 
     std::vector<uint> layer_offsets(LAYERS.size());
@@ -187,8 +187,8 @@ int main(int argc, char* argv[])
     vector<Buffer<float>> weights;
     vector<Buffer<float>> biases;
     vector<Buffer<float>> momentums;
-    vector<Buffer<float>> grad_weights;
-    vector<Buffer<float>> grad_biases;
+    vector<Buffer<int>> grad_weights;
+    vector<Buffer<int>> grad_biases;
 
     // 初始化权重和偏置
     for (auto i = 0u; i < NUM_WEIGHT_LAYERS; i++)
@@ -221,17 +221,20 @@ int main(int argc, char* argv[])
         weights.push_back(std::move(device_w));
         biases.push_back(std::move(device_b));
         momentums.push_back(std::move(device_m));
-        grad_weights.push_back(device.create_buffer<float>(host_w.size()));
-        grad_biases.push_back(device.create_buffer<float>(host_b.size()));
+        grad_weights.push_back(device.create_buffer<int>(host_w.size()));
+        grad_biases.push_back(device.create_buffer<int>(host_b.size()));
     }
     stream << synchronize();
 
     // ------------- Train Kernel --------------
-    constexpr uint BATCH_SIZE = 64u;
-    constexpr float LR        = 0.1f;
+    constexpr uint EPOCH_COUNT = 20u;
+    constexpr uint BATCH_SIZE  = 64u;
+    constexpr float LR         = 0.01f;
+    // 使用缩放整数进行梯度累加，消除浮点原子加法的不确定性
+    constexpr float GRAD_SCALE = 1048576.0f;
 
     auto loss    = device.create_buffer<float>(1);
-    auto correct = device.create_buffer<float>(1);
+    auto correct = device.create_buffer<uint>(1);
 
     Kernel1D train_kernel = [&](UInt batch_start)
     {
@@ -247,8 +250,8 @@ int main(int argc, char* argv[])
                 auto in_size  = LAYERS[i];
                 auto out_size = LAYERS[i + 1];
                 auto w_size   = in_size * out_size;
-                $for(j, w_size) { grad_weights[i]->write(j, 0.0f); };
-                $for(j, out_size) { grad_biases[i]->write(j, 0.0f); };
+                $for(j, w_size) { grad_weights[i]->write(j, 0); };
+                $for(j, out_size) { grad_biases[i]->write(j, 0); };
             }
         };
         sync_block();
@@ -291,7 +294,7 @@ int main(int argc, char* argv[])
                         z += act_in * w;
                     };
                     // store pre-activation for backprop (ReLU derivative needs z)
-                    zs[out_start + j] = z;
+                    zs[out_start + j]   = z;
                     acts[out_start + j] = i == NUM_WEIGHT_LAYERS - 1 ? sigmoid(z) : ReLU(z);
                 };
             }
@@ -319,7 +322,7 @@ int main(int argc, char* argv[])
                 deltas[OUTPUT_START + c] = 2.0f * diff * d_sigmoid;
             };
             loss->atomic(0u).fetch_add(sample_loss);
-            $if(pred == label) { correct->atomic(0u).fetch_add(1.0f); };
+            $if(pred == label) { correct->atomic(0u).fetch_add(1u); };
 
             // 4. 反向传播
             for (auto i = NUM_WEIGHT_LAYERS - 1; i > 0u; i--)
@@ -356,9 +359,9 @@ int main(int argc, char* argv[])
                     $for(j, in_size)
                     {
                         auto input_val = acts[in_start + j];
-                        grad_weights[i]->atomic(c * in_size + j).fetch_add(input_val * d);
+                        grad_weights[i]->atomic(c * in_size + j).fetch_add(cast<int>(input_val * d * GRAD_SCALE));
                     };
-                    grad_biases[i]->atomic(c).fetch_add(d);
+                    grad_biases[i]->atomic(c).fetch_add(cast<int>(d * GRAD_SCALE));
                 };
             }
         };
@@ -381,7 +384,7 @@ int main(int argc, char* argv[])
 
                 $for(k, w_size)
                 {
-                    Float g = grad_weights[i]->read(k) * inv_n;
+                    Float g = cast<float>(grad_weights[i]->read(k)) / GRAD_SCALE * inv_n;
                     auto m  = momentums[i]->read(k) * 0.9f + g;
                     weights[i]->write(k, weights[i]->read(k) - LR * m);
                     momentums[i]->write(k, m);
@@ -389,7 +392,7 @@ int main(int argc, char* argv[])
 
                 $for(k, b_size)
                 {
-                    Float g = grad_biases[i]->read(k) * inv_n;
+                    Float g = cast<float>(grad_biases[i]->read(k)) / GRAD_SCALE * inv_n;
                     biases[i]->write(k, biases[i]->read(k) - LR * g);
                 };
             }
@@ -399,16 +402,16 @@ int main(int argc, char* argv[])
     auto train_shader = device.compile(train_kernel);
 
     // 训练
-    const uint EPOCH_COUNT = 10u;
     LUISA_INFO("Start Traning!");
     Clock clock;
     for (auto epoch = 0u; epoch < EPOCH_COUNT; epoch++)
     {
         Clock epoch_clock;
-        auto zero = 0.0f;
+        auto zero   = 0.0f;
+        auto zero_u = 0u;
         stream
             << loss.copy_from(&zero)
-            << correct.copy_from(&zero);
+            << correct.copy_from(&zero_u);
 
         for (auto batch_start = 0u; batch_start < TRAIN_SIZE; batch_start += BATCH_SIZE)
         {
@@ -416,14 +419,15 @@ int main(int argc, char* argv[])
         }
         if (epoch % 1 == 0)
         {
-            auto current_loss = 0.0f;
-            auto current_acc  = 0.0f;
+            auto current_loss  = 0.0f;
+            auto current_acc   = 0.0f;
+            auto current_acc_u = 0u;
             stream
                 << loss.copy_to(&current_loss)
-                << correct.copy_to(&current_acc)
+                << correct.copy_to(&current_acc_u)
                 << synchronize();
             current_loss /= static_cast<float>(TRAIN_SIZE);
-            current_acc /= static_cast<float>(TRAIN_SIZE);
+            current_acc = static_cast<float>(current_acc_u) / static_cast<float>(TRAIN_SIZE);
             LUISA_INFO("Epoch {}: Loss = {:.8f}, Acc = {:.2f}% time = {:.2f}s", epoch + 1, current_loss, 100.0f * current_acc, epoch_clock.toc() * 1e-3);
         }
     }

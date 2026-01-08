@@ -167,10 +167,10 @@ int main(int argc, char* argv[])
 
     // ------------- 网络结构 --------------
     // 网络结构定义
-    static constexpr uint MAX_TOTAL_NODES = 4096;
-    constexpr uint INPUT_SIZE             = IMAGE_SIZE * IMAGE_SIZE;
-    constexpr uint OUTPUT_SIZE            = 10;
-    constexpr std::array<uint, 4> LAYERS{INPUT_SIZE, 24, 24, OUTPUT_SIZE};
+    constexpr uint MAX_TOTAL_NODES = 4096;
+    constexpr uint INPUT_SIZE      = IMAGE_SIZE * IMAGE_SIZE;
+    constexpr uint OUTPUT_SIZE     = 10;
+    constexpr std::array<uint, 4> LAYERS{INPUT_SIZE, 256, 128, OUTPUT_SIZE};
     constexpr uint NUM_NODES = std::accumulate(LAYERS.begin(), LAYERS.end(), 0u);
 
     std::vector<uint> layer_offsets(LAYERS.size());
@@ -182,6 +182,7 @@ int main(int argc, char* argv[])
     }
     LUISA_ASSERT(node_count <= MAX_TOTAL_NODES, "Too many nodes in the network.");
     const uint NUM_WEIGHT_LAYERS = static_cast<uint>(LAYERS.size() - 1);
+    const uint OUTPUT_START      = layer_offsets.back();
 
     // 容器
     vector<Buffer<float>> weights;
@@ -295,9 +296,31 @@ int main(int argc, char* argv[])
                     };
                     // store pre-activation for backprop (ReLU derivative needs z)
                     zs[out_start + j]   = z;
-                    acts[out_start + j] = i == NUM_WEIGHT_LAYERS - 1 ? sigmoid(z) : ReLU(z);
+                    acts[out_start + j] = i == NUM_WEIGHT_LAYERS - 1 ? 0.0f : ReLU(z);
                 };
             }
+
+            // 输出节点用softmax作为激活函数
+            auto z_max = zs[OUTPUT_START + 0u];
+            $for(c, OUTPUT_SIZE)
+            {
+                z_max = max(z_max, zs[OUTPUT_START + c]);
+            };
+
+            auto sum_exp = def(0.0f);
+            $for(c, OUTPUT_SIZE)
+            {
+                auto z     = zs[OUTPUT_START + c];
+                auto exp_z = exp(z - z_max);
+
+                acts[OUTPUT_START + c] = exp_z;
+                sum_exp += exp_z;
+            };
+
+            $for(c, OUTPUT_SIZE)
+            {
+                acts[OUTPUT_START + c] = acts[OUTPUT_START + c] / sum_exp;
+            };
 
             // 3. 计算loss & accuracy
             const uint OUTPUT_START = layer_offsets.back();
@@ -307,8 +330,6 @@ int main(int argc, char* argv[])
             $for(c, OUTPUT_SIZE)
             {
                 auto output_val = acts[OUTPUT_START + c];
-                Float diff      = output_val - ite(c == label, 1.0f, 0.0f);
-                sample_loss += diff * diff;
                 $if(output_val > best)
                 {
                     best = output_val;
@@ -316,12 +337,12 @@ int main(int argc, char* argv[])
                 };
 
                 // 计算输出层delta
-                // 激活函数 sigmoid
-                // 误差 均方误差
-                auto d_sigmoid           = output_val * (1.0f - output_val);
-                deltas[OUTPUT_START + c] = 2.0f * diff * d_sigmoid;
+                // 激活函数 softmax
+                // loss 交叉熵
+                deltas[OUTPUT_START + c] = acts[OUTPUT_START + c] - ite(c == label, 1.0f, 0.0f);
             };
-            loss->atomic(0u).fetch_add(sample_loss);
+            auto target = acts[OUTPUT_START + label];
+            loss->atomic(0u).fetch_add(-log(target));
             $if(pred == label) { correct->atomic(0u).fetch_add(1u); };
 
             // 4. 反向传播
@@ -473,14 +494,35 @@ int main(int argc, char* argv[])
                         auto w      = weights[i]->read(j * in_size + k);
                         z += act_in * w;
                     };
-                    acts[out_start + j] = i == NUM_WEIGHT_LAYERS - 1 ? sigmoid(z) : ReLU(z);
+                    acts[out_start + j] = i == NUM_WEIGHT_LAYERS - 1 ? z : ReLU(z);
                 };
             }
 
+            // 输出节点用softmax作为激活函数
+            auto z_max = acts[OUTPUT_START + 0u];
+            $for(c, OUTPUT_SIZE)
+            {
+                z_max = max(z_max, acts[OUTPUT_START + c]);
+            };
+
+            auto sum_exp = def(0.0f);
+            $for(c, OUTPUT_SIZE)
+            {
+                auto z     = acts[OUTPUT_START + c];
+                auto exp_z = exp(z - z_max);
+
+                acts[OUTPUT_START + c] = exp_z;
+                sum_exp += exp_z;
+            };
+
+            $for(c, OUTPUT_SIZE)
+            {
+                acts[OUTPUT_START + c] = acts[OUTPUT_START + c] / sum_exp;
+            };
+
             // loss & accuracy
-            const uint OUTPUT_START = layer_offsets.back();
-            UInt pred               = 0u;
-            Float best              = acts[OUTPUT_START + 0u];
+            UInt pred  = 0u;
+            Float best = acts[OUTPUT_START + 0u];
             $for(c, OUTPUT_SIZE)
             {
                 auto val = acts[OUTPUT_START + c];
@@ -490,11 +532,8 @@ int main(int argc, char* argv[])
                     best = val;
                     pred = c;
                 };
-
-                Float target = ite(c == label, 1.0f, 0.0f);
-                Float diff   = val - target;
-                test_loss->atomic(0u).fetch_add(diff * diff);
             };
+            test_loss->atomic(0u).fetch_add(-log(acts[OUTPUT_START + label]));
             $if(pred == label) { test_correct->atomic(0u).fetch_add(1u); };
         };
     };

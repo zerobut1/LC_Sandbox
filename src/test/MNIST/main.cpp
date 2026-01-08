@@ -124,7 +124,7 @@ int main(int argc, char* argv[])
     std::vector<uint> host_test_labels(n_test_labels);
     std::transform(origin_train_images.begin(), origin_train_images.end(), host_train_images.begin(), [](unsigned char v)
     {
-        return static_cast<float>(v) / 255.0f;
+        return (static_cast<float>(v) / 255.0f - 0.1307f) / 0.3081f;
     });
     std::transform(origin_train_labels.begin(), origin_train_labels.end(), host_train_labels.begin(), [](unsigned char v)
     {
@@ -132,7 +132,7 @@ int main(int argc, char* argv[])
     });
     std::transform(origin_test_images.begin(), origin_test_images.end(), host_test_images.begin(), [](unsigned char v)
     {
-        return static_cast<float>(v) / 255.0f;
+        return (static_cast<float>(v) / 255.0f - 0.1307f) / 0.3081f;
     });
     std::transform(origin_test_labels.begin(), origin_test_labels.end(), host_test_labels.begin(), [](unsigned char v)
     {
@@ -170,7 +170,7 @@ int main(int argc, char* argv[])
     constexpr uint MAX_TOTAL_NODES = 4096;
     constexpr uint INPUT_SIZE      = IMAGE_SIZE * IMAGE_SIZE;
     constexpr uint OUTPUT_SIZE     = 10;
-    constexpr std::array<uint, 4> LAYERS{INPUT_SIZE, 256, 128, OUTPUT_SIZE};
+    constexpr std::array<uint, 6> LAYERS{INPUT_SIZE, 128, 128, 64, 64, OUTPUT_SIZE};
     constexpr uint NUM_NODES = std::accumulate(LAYERS.begin(), LAYERS.end(), 0u);
 
     std::vector<uint> layer_offsets(LAYERS.size());
@@ -407,7 +407,9 @@ int main(int argc, char* argv[])
                 {
                     Float g = cast<float>(grad_weights[i]->read(k)) / GRAD_SCALE * inv_n;
                     auto m  = momentums[i]->read(k) * 0.9f + g;
-                    weights[i]->write(k, weights[i]->read(k) - LR * m);
+                    auto w  = weights[i]->read(k);
+                    w       = w - LR * m - 5e-4f * w * LR;
+                    weights[i]->write(k, w);
                     momentums[i]->write(k, m);
                 };
 
@@ -453,6 +455,8 @@ int main(int argc, char* argv[])
         }
     }
     LUISA_INFO("Training {} epoches completed in {:.2f} seconds.", EPOCH_COUNT, clock.toc() * 1e-3);
+
+    stream << synchronize();
 
     // 测试
     auto device_result        = device.create_buffer<float>(OUTPUT_SIZE);

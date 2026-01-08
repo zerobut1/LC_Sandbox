@@ -1,10 +1,7 @@
+#include <luisa/luisa-compute.h>
+
 #include <numeric>
 #include <random>
-
-#include <luisa/dsl/sugar.h>
-#include <luisa/gui/window.h>
-#include <luisa/luisa-compute.h>
-#include <stb/stb_image_write.h>
 
 using namespace luisa;
 using namespace luisa::compute;
@@ -12,12 +9,12 @@ using namespace luisa::compute;
 constexpr uint SEED       = 20120712u;
 constexpr uint IMAGE_SIZE = 28u;
 
-[[nodiscard]] int32_t read_int32_be(std::ifstream& ifs) noexcept
+[[nodiscard]] uint read_uint_be(std::ifstream& ifs) noexcept
 {
-    int32_t val = 0;
-    ifs.read(reinterpret_cast<char*>(&val), 4);
-    val = ((val & 0xff) << 24) | ((val & 0xff00) << 8) | ((val & 0xff0000) >> 8) | ((val >> 24) & 0xff);
-    return val;
+    std::array<unsigned char, 4> buf{};
+    ifs.read(reinterpret_cast<char*>(buf.data()), 4);
+    LUISA_ASSERT(ifs, "Failed to read 4 bytes from file.");
+    return (uint32_t(buf[0]) << 24) | (uint32_t(buf[1]) << 16) | (uint32_t(buf[2]) << 8) | uint32_t(buf[3]);
 }
 
 void read_mnist_images(string_view filename, vector<unsigned char>& images, uint& n_images) noexcept
@@ -25,12 +22,10 @@ void read_mnist_images(string_view filename, vector<unsigned char>& images, uint
     std::ifstream ifs(filename.data(), std::ios::binary);
     LUISA_ASSERT(ifs, "Cannot open file: {}", filename);
 
-    uint temp, rows, cols;
-
-    temp     = read_int32_be(ifs);
-    n_images = read_int32_be(ifs);
-    rows     = read_int32_be(ifs);
-    cols     = read_int32_be(ifs);
+    [[maybe_unused]] auto temp = read_uint_be(ifs);
+    n_images                   = read_uint_be(ifs);
+    auto rows                  = read_uint_be(ifs);
+    auto cols                  = read_uint_be(ifs);
 
     images.resize(n_images * rows * cols);
     ifs.read(reinterpret_cast<char*>(images.data()), images.size());
@@ -42,9 +37,8 @@ void read_mnist_labels(string_view filename, vector<unsigned char>& labels, uint
     std::ifstream ifs(filename.data(), std::ios::binary);
     LUISA_ASSERT(ifs, "Cannot open file: {}", filename);
 
-    uint temp;
-    temp     = read_int32_be(ifs);
-    n_labels = read_int32_be(ifs);
+    [[maybe_unused]] auto temp = read_uint_be(ifs);
+    n_labels                   = read_uint_be(ifs);
 
     labels.resize(n_labels);
     ifs.read(reinterpret_cast<char*>(labels.data()), n_labels);

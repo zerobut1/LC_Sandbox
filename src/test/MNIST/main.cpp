@@ -1,42 +1,18 @@
-#include <cstdint>
-#include <fstream>
+#include <numeric>
+#include <random>
+
 #include <luisa/dsl/sugar.h>
 #include <luisa/gui/window.h>
 #include <luisa/luisa-compute.h>
-#include <numeric>
-#include <random>
 #include <stb/stb_image_write.h>
 
 using namespace luisa;
 using namespace luisa::compute;
 
-const uint SEED = 20120712u;
+constexpr uint SEED       = 20120712u;
+constexpr uint IMAGE_SIZE = 28u;
 
-float random_float()
-{
-    static std::uniform_real_distribution<float> distribution(0.0f, 1.0f);
-    static std::default_random_engine generator(SEED);
-    return distribution(generator);
-}
-
-float random_weight(float limit)
-{
-    return random_float() * 2.0f * limit - limit;
-}
-
-Float ReLU(Float x)
-{
-    return max(0.0f, x);
-}
-
-Float ReLU_deriv(Float x)
-{
-    return ite(x > 0.0f, 1.0f, 0.0f);
-}
-
-const uint IMAGE_SIZE = 28u;
-
-inline int32_t read_int32_be(std::ifstream& ifs)
+[[nodiscard]] int32_t read_int32_be(std::ifstream& ifs) noexcept
 {
     int32_t val = 0;
     ifs.read(reinterpret_cast<char*>(&val), 4);
@@ -44,11 +20,10 @@ inline int32_t read_int32_be(std::ifstream& ifs)
     return val;
 }
 
-void read_mnist_images(string_view filename, vector<unsigned char>& images, uint& n_images)
+void read_mnist_images(string_view filename, vector<unsigned char>& images, uint& n_images) noexcept
 {
     std::ifstream ifs(filename.data(), std::ios::binary);
-    if (!ifs)
-        LUISA_ERROR("Cannot open file: {}", filename);
+    LUISA_ASSERT(ifs, "Cannot open file: {}", filename);
 
     uint temp, rows, cols;
 
@@ -59,15 +34,13 @@ void read_mnist_images(string_view filename, vector<unsigned char>& images, uint
 
     images.resize(n_images * rows * cols);
     ifs.read(reinterpret_cast<char*>(images.data()), images.size());
-    if (!ifs)
-        LUISA_ERROR("Failed to read image data");
+    LUISA_ASSERT(ifs, "Failed to read image data");
 }
 
-void read_mnist_labels(string_view filename, vector<unsigned char>& labels, uint& n_labels)
+void read_mnist_labels(string_view filename, vector<unsigned char>& labels, uint& n_labels) noexcept
 {
     std::ifstream ifs(filename.data(), std::ios::binary);
-    if (!ifs)
-        LUISA_ERROR("Cannot open file: {}", filename);
+    LUISA_ASSERT(ifs, "Cannot open file: {}", filename);
 
     uint temp;
     temp     = read_int32_be(ifs);
@@ -75,8 +48,29 @@ void read_mnist_labels(string_view filename, vector<unsigned char>& labels, uint
 
     labels.resize(n_labels);
     ifs.read(reinterpret_cast<char*>(labels.data()), n_labels);
-    if (!ifs)
-        LUISA_ERROR("Failed to read label data");
+    LUISA_ASSERT(ifs, "Failed to read label data");
+}
+
+[[nodiscard]] float random_float() noexcept
+{
+    static std::uniform_real_distribution<float> distribution(0.0f, 1.0f);
+    static std::default_random_engine generator(SEED);
+    return distribution(generator);
+}
+
+[[nodiscard]] float random_weight(float limit) noexcept
+{
+    return random_float() * 2.0f * limit - limit;
+}
+
+[[nodiscard]] Float ReLU(Float x) noexcept
+{
+    return max(0.0f, x);
+}
+
+[[nodiscard]] Float ReLU_deriv(Float x) noexcept
+{
+    return ite(x > 0.0f, 1.0f, 0.0f);
 }
 
 int main(int argc, char* argv[])
@@ -107,10 +101,11 @@ int main(int argc, char* argv[])
     LUISA_INFO("MNIST dataset: {} training samples, {} testing samples.", n_train_labels, n_test_labels);
 
     // 处理为需要的格式
-    std::vector<float> host_train_images(origin_train_images.size());
-    std::vector<uint> host_train_labels(n_train_labels);
-    std::vector<float> host_test_images(origin_test_images.size());
-    std::vector<uint> host_test_labels(n_test_labels);
+    vector<float> host_train_images(origin_train_images.size());
+    vector<uint> host_train_labels(n_train_labels);
+    vector<float> host_test_images(origin_test_images.size());
+    vector<uint> host_test_labels(n_test_labels);
+    // 归一化处理
     std::transform(origin_train_images.begin(), origin_train_images.end(), host_train_images.begin(), [](unsigned char v)
     {
         return (static_cast<float>(v) / 255.0f - 0.1307f) / 0.3081f;
@@ -156,22 +151,24 @@ int main(int argc, char* argv[])
 
     // ------------- 网络结构 --------------
     // 网络结构定义
-    constexpr uint MAX_TOTAL_NODES = 4096;
-    constexpr uint INPUT_SIZE      = IMAGE_SIZE * IMAGE_SIZE;
-    constexpr uint OUTPUT_SIZE     = 10;
+    constexpr uint INPUT_SIZE  = IMAGE_SIZE * IMAGE_SIZE;
+    constexpr uint OUTPUT_SIZE = 10;
     constexpr std::array<uint, 4> LAYERS{INPUT_SIZE, 128, 64, OUTPUT_SIZE};
     constexpr uint NUM_NODES = std::accumulate(LAYERS.begin(), LAYERS.end(), 0u);
 
-    std::vector<uint> layer_offsets(LAYERS.size());
-    auto node_count = 0u;
-    for (auto i = 0u; i < LAYERS.size(); i++)
+    constexpr auto LAYER_OFFSETS = [&]() noexcept
     {
-        layer_offsets[i] = node_count;
-        node_count += LAYERS[i];
-    }
-    LUISA_ASSERT(node_count <= MAX_TOTAL_NODES, "Too many nodes in the network.");
-    const uint NUM_WEIGHT_LAYERS = static_cast<uint>(LAYERS.size() - 1);
-    const uint OUTPUT_START      = layer_offsets.back();
+        std::array<uint, LAYERS.size()> offsets{};
+        uint count = 0u;
+        for (auto i = 0u; i < LAYERS.size(); i++)
+        {
+            offsets[i] = count;
+            count += LAYERS[i];
+        }
+        return offsets;
+    }();
+    constexpr uint NUM_WEIGHT_LAYERS = static_cast<uint>(LAYERS.size() - 1);
+    constexpr uint OUTPUT_START      = LAYER_OFFSETS.back();
 
     // 容器
     vector<Buffer<float>> weights;
@@ -186,13 +183,13 @@ int main(int argc, char* argv[])
         auto in_size  = LAYERS[i];
         auto out_size = LAYERS[i + 1];
 
-        std::vector<float> host_w(in_size * out_size);
-        std::vector<float> host_m(in_size * out_size, 0.0f);
-        std::vector<float> host_b(out_size, 0.0f);
+        vector<float> host_w(in_size * out_size);
+        vector<float> host_m(in_size * out_size, 0.0f);
+        vector<float> host_b(out_size, 0.0f);
 
-        auto limit = i < NUM_WEIGHT_LAYERS - 1
-                         ? std::sqrt(2.0f / static_cast<float>(in_size))
-                         : std::sqrt(6.0f / static_cast<float>(in_size + out_size));
+        auto limit = i == NUM_WEIGHT_LAYERS - 1
+                         ? sqrt(6.0f / static_cast<float>(in_size + out_size))
+                         : sqrt(2.0f / static_cast<float>(in_size));
 
         for (auto& v : host_w)
         {
@@ -219,69 +216,50 @@ int main(int argc, char* argv[])
     // ------------- Train Kernel --------------
     constexpr uint EPOCH_COUNT = 20u;
     constexpr uint BATCH_SIZE  = 256u;
-    constexpr float BASE_LR    = 0.05f; // 初始学习率稍微调大，配合衰减
+    constexpr float BASE_LR    = 0.05f;
     // 使用缩放整数进行梯度累加，消除浮点原子加法的不确定性
-    constexpr float GRAD_SCALE = 1048576.0f;
+    constexpr float GRAD_SCALE = static_cast<float>(1 << 20);
 
-    auto loss    = device.create_buffer<float>(1);
-    auto correct = device.create_buffer<uint>(1);
+    auto loss    = device.create_buffer<float>(1u);
+    auto correct = device.create_buffer<int>(1u);
 
-    Kernel1D train_kernel = [&](UInt batch_start, Float current_lr)
+    Kernel1D clear_int_buffer_kernel = [](BufferVar<int> buf) noexcept
+    {
+        buf.write(dispatch_id().x, 0);
+    };
+
+    Kernel1D clear_float_buffer_kernel = [](BufferVar<float> buf) noexcept
+    {
+        buf.write(dispatch_id().x, 0.0f);
+    };
+
+    auto clear_int_buffer_shader   = device.compile(clear_int_buffer_kernel);
+    auto clear_float_buffer_shader = device.compile(clear_float_buffer_kernel);
+
+    Kernel1D train_kernel = [&](UInt batch_start, Float current_lr) noexcept
     {
         set_block_size(BATCH_SIZE, 1u, 1u);
-        auto tid = dispatch_id().x;
-
-        // 1. 初始化梯度为0
-        // 利用所有线程并行清零
-        for (auto i = 0u; i < NUM_WEIGHT_LAYERS; i++)
-        {
-            auto in_size  = LAYERS[i];
-            auto out_size = LAYERS[i + 1];
-            auto w_size   = in_size * out_size;
-
-            // 并行清零权重梯度
-            UInt k = tid;
-            $while(k < w_size)
-            {
-                grad_weights[i]->write(k, 0);
-                k += BATCH_SIZE;
-            };
-
-            // 并行清零偏置梯度
-            k = tid;
-            $while(k < out_size)
-            {
-                grad_biases[i]->write(k, 0);
-                k += BATCH_SIZE;
-            };
-        }
-        sync_block();
-
+        auto tid     = dispatch_id().x;
         UInt data_id = batch_start + tid;
 
         $if(data_id < TRAIN_SIZE)
         {
-            ArrayFloat<INPUT_SIZE> X;
-            $for(k, INPUT_SIZE)
-            {
-                X[k] = device_train_images->read(data_id * INPUT_SIZE + k);
-            };
-            UInt label = device_train_labels->read(data_id);
-
+            // 1. 准备数据
             ArrayFloat<NUM_NODES> acts;
             ArrayFloat<NUM_NODES> zs;
             ArrayFloat<NUM_NODES> deltas;
 
+            UInt label = device_train_labels->read(data_id);
             $for(k, INPUT_SIZE)
             {
-                acts[k] = X[k];
+                acts[k] = device_train_images->read(data_id * INPUT_SIZE + k);
             };
 
             // 2. 前向传播
             for (auto i = 0; i < NUM_WEIGHT_LAYERS; i++)
             {
-                auto in_start  = layer_offsets[i];
-                auto out_start = layer_offsets[i + 1];
+                auto in_start  = LAYER_OFFSETS[i];
+                auto out_start = LAYER_OFFSETS[i + 1];
                 auto in_size   = LAYERS[i];
                 auto out_size  = LAYERS[i + 1];
 
@@ -323,10 +301,9 @@ int main(int argc, char* argv[])
             };
 
             // 3. 计算loss & accuracy
-            const uint OUTPUT_START = layer_offsets.back();
-            Float sample_loss       = 0.0f;
-            UInt pred               = 0u;
-            Float best              = acts[OUTPUT_START + 0u];
+            Float sample_loss = 0.0f;
+            UInt pred         = 0u;
+            Float best        = acts[OUTPUT_START + 0u];
             $for(c, OUTPUT_SIZE)
             {
                 auto output_val = acts[OUTPUT_START + c];
@@ -343,13 +320,13 @@ int main(int argc, char* argv[])
             };
             auto target = acts[OUTPUT_START + label];
             loss->atomic(0u).fetch_add(-log(target));
-            $if(pred == label) { correct->atomic(0u).fetch_add(1u); };
+            $if(pred == label) { correct->atomic(0u).fetch_add(1); };
 
             // 4. 反向传播
             for (auto i = NUM_WEIGHT_LAYERS - 1; i > 0u; i--)
             {
-                auto in_start  = layer_offsets[i];
-                auto out_start = layer_offsets[i + 1];
+                auto in_start  = LAYER_OFFSETS[i];
+                auto out_start = LAYER_OFFSETS[i + 1];
                 auto in_size   = LAYERS[i];
                 auto out_size  = LAYERS[i + 1];
 
@@ -369,8 +346,8 @@ int main(int argc, char* argv[])
             // 5. 累计 batch 梯度
             for (auto i = 0u; i < NUM_WEIGHT_LAYERS; i++)
             {
-                auto in_start  = layer_offsets[i];
-                auto out_start = layer_offsets[i + 1];
+                auto in_start  = LAYER_OFFSETS[i];
+                auto out_start = LAYER_OFFSETS[i + 1];
                 auto in_size   = LAYERS[i];
                 auto out_size  = LAYERS[i + 1];
 
@@ -408,7 +385,7 @@ int main(int argc, char* argv[])
                 Float g = cast<float>(grad_weights[i]->read(k)) / GRAD_SCALE * inv_n;
                 auto m  = momentums[i]->read(k) * 0.9f + g;
                 auto w  = weights[i]->read(k);
-                // 使用传入的 current_lr
+
                 w = w - current_lr * m - 5e-4f * w * current_lr;
                 weights[i]->write(k, w);
                 momentums[i]->write(k, m);
@@ -430,52 +407,53 @@ int main(int argc, char* argv[])
 
     // 训练
     LUISA_INFO("Start Traning!");
-    Clock clock;
+    Clock train_clock;
     for (auto epoch = 0u; epoch < EPOCH_COUNT; epoch++)
     {
+        Clock epoch_clock;
+
         // Cosine Annealing Learning Rate Schedule
         // LR 从 BASE_LR 随 epoch 按照余弦曲线逐渐衰减到 0
         float current_lr = BASE_LR * 0.5f * (1.0f + cos(static_cast<float>(epoch) * pi / static_cast<float>(EPOCH_COUNT)));
 
-        Clock epoch_clock;
-        auto zero   = 0.0f;
-        auto zero_u = 0u;
         stream
-            << loss.copy_from(&zero)
-            << correct.copy_from(&zero_u);
-
+            << clear_float_buffer_shader(loss).dispatch(1u)
+            << clear_int_buffer_shader(correct).dispatch(1u);
         for (auto batch_start = 0u; batch_start < TRAIN_SIZE; batch_start += BATCH_SIZE)
         {
+            for (auto layer_idx = 0u; layer_idx < NUM_WEIGHT_LAYERS; layer_idx++)
+            {
+                stream
+                    << clear_int_buffer_shader(grad_weights[layer_idx]).dispatch(grad_weights[layer_idx].size())
+                    << clear_int_buffer_shader(grad_biases[layer_idx]).dispatch(grad_biases[layer_idx].size());
+            }
             stream << train_shader(batch_start, current_lr).dispatch(BATCH_SIZE);
         }
-        if (epoch % 1 == 0)
-        {
-            auto current_loss  = 0.0f;
-            auto current_acc   = 0.0f;
-            auto current_acc_u = 0u;
-            stream
-                << loss.copy_to(&current_loss)
-                << correct.copy_to(&current_acc_u)
-                << synchronize();
-            current_loss /= static_cast<float>(TRAIN_SIZE);
-            current_acc = static_cast<float>(current_acc_u) / static_cast<float>(TRAIN_SIZE);
-            LUISA_INFO("Epoch {}: Loss = {:.8f}, Acc = {:.2f}% time = {:.2f}s", epoch + 1, current_loss, 100.0f * current_acc, epoch_clock.toc() * 1e-3);
-        }
+
+        auto current_loss    = 0.0f;
+        auto current_correct = 0;
+        stream
+            << loss.copy_to(&current_loss)
+            << correct.copy_to(&current_correct)
+            << synchronize();
+
+        auto current_acc = static_cast<float>(current_correct) / static_cast<float>(TRAIN_SIZE);
+        LUISA_INFO("Epoch {}: Loss = {:.8f}, Acc = {:.2f}%, time = {:.2f}s",
+                   epoch + 1,
+                   current_loss / static_cast<float>(TRAIN_SIZE),
+                   100.0f * current_acc,
+                   epoch_clock.toc() * 1e-3);
     }
-    LUISA_INFO("Training {} epoches completed in {:.2f} seconds.", EPOCH_COUNT, clock.toc() * 1e-3);
+    LUISA_INFO("Training {} epoches completed in {:.2f} seconds.", EPOCH_COUNT, train_clock.toc() * 1e-3);
 
     stream << synchronize();
 
     // 测试
-    auto device_result        = device.create_buffer<float>(OUTPUT_SIZE);
-    auto test_loss            = device.create_buffer<float>(1u);
-    auto current_test_loss    = 0.0f;
-    auto test_correct         = device.create_buffer<uint>(1u);
-    auto current_test_correct = 0u;
+    auto test_loss    = device.create_buffer<float>(1u);
+    auto test_correct = device.create_buffer<int>(1u);
 
-    Kernel1D test_kernel = [&]()
+    Kernel1D test_kernel = [&]() noexcept
     {
-        set_block_size(256u, 1u, 1u);
         auto data_id = dispatch_id().x;
 
         $if(data_id < TEST_SIZE)
@@ -492,8 +470,8 @@ int main(int argc, char* argv[])
             // 前向传播
             for (auto i = 0; i < NUM_WEIGHT_LAYERS; i++)
             {
-                auto in_start  = layer_offsets[i];
-                auto out_start = layer_offsets[i + 1];
+                auto in_start  = LAYER_OFFSETS[i];
+                auto out_start = LAYER_OFFSETS[i + 1];
                 auto in_size   = LAYERS[i];
                 auto out_size  = LAYERS[i + 1];
 
@@ -546,23 +524,28 @@ int main(int argc, char* argv[])
                 };
             };
             test_loss->atomic(0u).fetch_add(-log(acts[OUTPUT_START + label]));
-            $if(pred == label) { test_correct->atomic(0u).fetch_add(1u); };
+            $if(pred == label) { test_correct->atomic(0u).fetch_add(1); };
         };
     };
     auto test_shader = device.compile(test_kernel);
 
-    float zero  = 0.0f;
-    uint zero_u = 0u;
-    stream << test_loss.copy_from(&zero)
-           << test_correct.copy_from(&zero_u)
-           << synchronize();
-    stream << test_shader().dispatch(TEST_SIZE)
-           << test_loss.copy_to(&current_test_loss)
-           << test_correct.copy_to(&current_test_correct)
-           << synchronize();
+    auto current_test_loss    = 0.0f;
+    auto current_test_correct = 0;
+
+    LUISA_INFO("Start Testing!");
+    Clock test_clock;
+    stream
+        << clear_float_buffer_shader(test_loss).dispatch(1u)
+        << clear_int_buffer_shader(test_correct).dispatch(1u)
+        << test_shader().dispatch(TEST_SIZE)
+        << test_loss.copy_to(&current_test_loss)
+        << test_correct.copy_to(&current_test_correct)
+        << synchronize();
+
     current_test_loss /= static_cast<float>(TEST_SIZE);
-    LUISA_INFO("Test Average Loss = {}", current_test_loss);
-    LUISA_INFO("Test Accuracy = {:.2f}% ({}/{})",
+    LUISA_INFO("Testing completed in {:.2f} seconds", test_clock.toc() * 1e-3);
+    LUISA_INFO("Test Average Loss = {}, Accuracy = {:.2f}% ({}/{})",
+               current_test_loss,
                100.0f * static_cast<float>(current_test_correct) / static_cast<float>(TEST_SIZE),
                current_test_correct,
                TEST_SIZE);

@@ -24,17 +24,6 @@ float random_weight(float limit)
     return random_float() * 2.0f * limit - limit;
 }
 
-Float sigmoid(Float x)
-{
-    return 1.0f / (1.0f + exp(-x));
-}
-
-Float sigmoid_deriv(Float x)
-{
-    Float fx = sigmoid(x);
-    return fx * (1 - fx);
-}
-
 Float ReLU(Float x)
 {
     return max(0.0f, x);
@@ -170,7 +159,7 @@ int main(int argc, char* argv[])
     constexpr uint MAX_TOTAL_NODES = 4096;
     constexpr uint INPUT_SIZE      = IMAGE_SIZE * IMAGE_SIZE;
     constexpr uint OUTPUT_SIZE     = 10;
-    constexpr std::array<uint, 6> LAYERS{INPUT_SIZE, 128, 128, 64, 64, OUTPUT_SIZE};
+    constexpr std::array<uint, 4> LAYERS{INPUT_SIZE, 128, 64, OUTPUT_SIZE};
     constexpr uint NUM_NODES = std::accumulate(LAYERS.begin(), LAYERS.end(), 0u);
 
     std::vector<uint> layer_offsets(LAYERS.size());
@@ -202,7 +191,7 @@ int main(int argc, char* argv[])
         std::vector<float> host_b(out_size, 0.0f);
 
         auto limit = i < NUM_WEIGHT_LAYERS - 1
-                         ? std::sqrt(6.0f / static_cast<float>(in_size))
+                         ? std::sqrt(2.0f / static_cast<float>(in_size))
                          : std::sqrt(6.0f / static_cast<float>(in_size + out_size));
 
         for (auto& v : host_w)
@@ -229,32 +218,43 @@ int main(int argc, char* argv[])
 
     // ------------- Train Kernel --------------
     constexpr uint EPOCH_COUNT = 20u;
-    constexpr uint BATCH_SIZE  = 64u;
-    constexpr float LR         = 0.01f;
+    constexpr uint BATCH_SIZE  = 256u;
+    constexpr float BASE_LR    = 0.05f; // 初始学习率稍微调大，配合衰减
     // 使用缩放整数进行梯度累加，消除浮点原子加法的不确定性
     constexpr float GRAD_SCALE = 1048576.0f;
 
     auto loss    = device.create_buffer<float>(1);
     auto correct = device.create_buffer<uint>(1);
 
-    Kernel1D train_kernel = [&](UInt batch_start)
+    Kernel1D train_kernel = [&](UInt batch_start, Float current_lr)
     {
         set_block_size(BATCH_SIZE, 1u, 1u);
         auto tid = dispatch_id().x;
 
         // 1. 初始化梯度为0
-        // 仅线程 0 执行 , block 内同步
-        $if(tid == 0u)
+        // 利用所有线程并行清零
+        for (auto i = 0u; i < NUM_WEIGHT_LAYERS; i++)
         {
-            for (auto i = 0u; i < NUM_WEIGHT_LAYERS; i++)
+            auto in_size  = LAYERS[i];
+            auto out_size = LAYERS[i + 1];
+            auto w_size   = in_size * out_size;
+
+            // 并行清零权重梯度
+            UInt k = tid;
+            $while(k < w_size)
             {
-                auto in_size  = LAYERS[i];
-                auto out_size = LAYERS[i + 1];
-                auto w_size   = in_size * out_size;
-                $for(j, w_size) { grad_weights[i]->write(j, 0); };
-                $for(j, out_size) { grad_biases[i]->write(j, 0); };
-            }
-        };
+                grad_weights[i]->write(k, 0);
+                k += BATCH_SIZE;
+            };
+
+            // 并行清零偏置梯度
+            k = tid;
+            $while(k < out_size)
+            {
+                grad_biases[i]->write(k, 0);
+                k += BATCH_SIZE;
+            };
+        }
         sync_block();
 
         UInt data_id = batch_start + tid;
@@ -389,37 +389,41 @@ int main(int argc, char* argv[])
 
         sync_block();
 
-        // 6. 单线程更新权重（避免对权重做 atomic）
-        $if(tid == 0u)
+        // 6. 并行更新权重
+        // 样本的平均梯度常数
+        UInt actual_batch_size = min(BATCH_SIZE, TRAIN_SIZE - batch_start);
+        Float inv_n            = 1.0f / cast<float>(actual_batch_size);
+
+        for (auto i = 0u; i < NUM_WEIGHT_LAYERS; i++)
         {
-            // 样本的平均梯度
-            UInt actual_batch_size = min(BATCH_SIZE, TRAIN_SIZE - batch_start);
-            Float inv_n            = 1.0f / cast<float>(actual_batch_size);
+            auto in_size  = LAYERS[i];
+            auto out_size = LAYERS[i + 1];
+            auto w_size   = in_size * out_size;
+            auto b_size   = out_size;
 
-            for (auto i = 0u; i < NUM_WEIGHT_LAYERS; i++)
+            // 并行更新权重
+            UInt k = tid;
+            $while(k < w_size)
             {
-                auto in_size  = LAYERS[i];
-                auto out_size = LAYERS[i + 1];
-                auto w_size   = in_size * out_size;
-                auto b_size   = out_size;
+                Float g = cast<float>(grad_weights[i]->read(k)) / GRAD_SCALE * inv_n;
+                auto m  = momentums[i]->read(k) * 0.9f + g;
+                auto w  = weights[i]->read(k);
+                // 使用传入的 current_lr
+                w = w - current_lr * m - 5e-4f * w * current_lr;
+                weights[i]->write(k, w);
+                momentums[i]->write(k, m);
+                k += BATCH_SIZE;
+            };
 
-                $for(k, w_size)
-                {
-                    Float g = cast<float>(grad_weights[i]->read(k)) / GRAD_SCALE * inv_n;
-                    auto m  = momentums[i]->read(k) * 0.9f + g;
-                    auto w  = weights[i]->read(k);
-                    w       = w - LR * m - 5e-4f * w * LR;
-                    weights[i]->write(k, w);
-                    momentums[i]->write(k, m);
-                };
-
-                $for(k, b_size)
-                {
-                    Float g = cast<float>(grad_biases[i]->read(k)) / GRAD_SCALE * inv_n;
-                    biases[i]->write(k, biases[i]->read(k) - LR * g);
-                };
-            }
-        };
+            // 并行更新偏置
+            k = tid;
+            $while(k < b_size)
+            {
+                Float g = cast<float>(grad_biases[i]->read(k)) / GRAD_SCALE * inv_n;
+                biases[i]->write(k, biases[i]->read(k) - current_lr * g);
+                k += BATCH_SIZE;
+            };
+        }
     };
 
     auto train_shader = device.compile(train_kernel);
@@ -429,6 +433,10 @@ int main(int argc, char* argv[])
     Clock clock;
     for (auto epoch = 0u; epoch < EPOCH_COUNT; epoch++)
     {
+        // Cosine Annealing Learning Rate Schedule
+        // LR 从 BASE_LR 随 epoch 按照余弦曲线逐渐衰减到 0
+        float current_lr = BASE_LR * 0.5f * (1.0f + cos(static_cast<float>(epoch) * pi / static_cast<float>(EPOCH_COUNT)));
+
         Clock epoch_clock;
         auto zero   = 0.0f;
         auto zero_u = 0u;
@@ -438,7 +446,7 @@ int main(int argc, char* argv[])
 
         for (auto batch_start = 0u; batch_start < TRAIN_SIZE; batch_start += BATCH_SIZE)
         {
-            stream << train_shader(batch_start).dispatch(BATCH_SIZE);
+            stream << train_shader(batch_start, current_lr).dispatch(BATCH_SIZE);
         }
         if (epoch % 1 == 0)
         {

@@ -229,6 +229,9 @@ int main(int argc, char* argv[])
     auto clear_int_buffer_shader   = device.compile(clear_int_buffer_kernel);
     auto clear_float_buffer_shader = device.compile(clear_float_buffer_kernel);
 
+    auto acts_buffer = device.create_buffer<float>(NUM_DIMS * BATCH_SIZE);
+    auto zs_buffer   = device.create_buffer<float>(NUM_DIMS * BATCH_SIZE);
+
     Kernel1D train_kernel = [&](UInt batch_start, Float current_lr) noexcept
     {
         set_block_size(BATCH_SIZE, 1u, 1u);
@@ -238,14 +241,15 @@ int main(int argc, char* argv[])
         $if(data_id < TRAIN_SIZE)
         {
             // 1. 准备数据
-            ArrayFloat<NUM_DIMS> acts;
-            ArrayFloat<NUM_DIMS> zs;
+            // ArrayFloat<NUM_DIMS> acts;
+            // ArrayFloat<NUM_DIMS> zs;
             ArrayFloat<NUM_DIMS> deltas;
 
             UInt label = device_train_labels->read(data_id);
             $for(k, INPUT_SIZE)
             {
-                acts[k] = device_train_images->read(data_id * INPUT_SIZE + k);
+                auto input = device_train_images->read(data_id * INPUT_SIZE + k);
+                acts_buffer->write(k * BATCH_SIZE + tid, input);
             };
 
             // 2. 前向传播
@@ -256,50 +260,58 @@ int main(int argc, char* argv[])
                 auto in_dim    = LAYER_DIMS[i];
                 auto out_dim   = LAYER_DIMS[i + 1];
 
+                // 重排循环：对每个输入维度只读一次激活，然后更新所有输出的 z
+                // 这里用固定上限的局部数组（最大隐藏层 128），避免为 NUM_DIMS 分配大数组
+                ArrayFloat<128u> z_acc;
+                $for(j, out_dim) { z_acc[j] = biases[i]->read(j); };
+                $for(k, in_dim)
+                {
+                    auto act_in = acts_buffer->read((in_start + k) * BATCH_SIZE + tid);
+                    $for(j, out_dim)
+                    {
+                        auto w = weights[i]->read(j * in_dim + k);
+                        z_acc[j] += act_in * w;
+                    };
+                };
                 $for(j, out_dim)
                 {
-                    Float z = biases[i]->read(j);
-                    $for(k, in_dim)
-                    {
-                        auto act_in = acts[in_start + k];
-                        auto w      = weights[i]->read(j * in_dim + k);
-                        z += act_in * w;
-                    };
-                    // store pre-activation for backprop (ReLU derivative needs z)
-                    zs[out_start + j]   = z;
-                    acts[out_start + j] = i == NUM_WEIGHT_LAYERS - 1 ? 0.0f : ReLU(z);
+                    auto z = z_acc[j];
+                    zs_buffer->write((out_start + j) * BATCH_SIZE + tid, z);
+                    acts_buffer->write((out_start + j) * BATCH_SIZE + tid,
+                                       i == NUM_WEIGHT_LAYERS - 1 ? 0.0f : ReLU(z));
                 };
             }
 
             // 输出节点用softmax作为激活函数
-            auto z_max = zs[OUTPUT_START + 0u];
+            auto z_max = zs_buffer->read((OUTPUT_START + 0u) * BATCH_SIZE + tid);
             $for(c, OUTPUT_SIZE)
             {
-                z_max = max(z_max, zs[OUTPUT_START + c]);
+                z_max = max(z_max, zs_buffer->read((OUTPUT_START + c) * BATCH_SIZE + tid));
             };
 
             auto sum_exp = def(0.0f);
             $for(c, OUTPUT_SIZE)
             {
-                auto z     = zs[OUTPUT_START + c];
+                auto z     = zs_buffer->read((OUTPUT_START + c) * BATCH_SIZE + tid);
                 auto exp_z = exp(z - z_max);
 
-                acts[OUTPUT_START + c] = exp_z;
+                acts_buffer->write((OUTPUT_START + c) * BATCH_SIZE + tid, exp_z);
                 sum_exp += exp_z;
             };
 
             $for(c, OUTPUT_SIZE)
             {
-                acts[OUTPUT_START + c] = acts[OUTPUT_START + c] / sum_exp;
+                auto act = acts_buffer->read((OUTPUT_START + c) * BATCH_SIZE + tid);
+                acts_buffer->write((OUTPUT_START + c) * BATCH_SIZE + tid, act / sum_exp);
             };
 
             // 3. 计算loss & accuracy
             Float sample_loss = 0.0f;
             UInt pred         = 0u;
-            Float best        = acts[OUTPUT_START + 0u];
+            Float best        = acts_buffer->read((OUTPUT_START + 0u) * BATCH_SIZE + tid);
             $for(c, OUTPUT_SIZE)
             {
-                auto output_val = acts[OUTPUT_START + c];
+                auto output_val = acts_buffer->read((OUTPUT_START + c) * BATCH_SIZE + tid);
                 $if(output_val > best)
                 {
                     best = output_val;
@@ -309,9 +321,9 @@ int main(int argc, char* argv[])
                 // 计算输出层delta
                 // 激活函数 softmax
                 // loss 交叉熵
-                deltas[OUTPUT_START + c] = acts[OUTPUT_START + c] - ite(c == label, 1.0f, 0.0f);
+                deltas[OUTPUT_START + c] = acts_buffer->read((OUTPUT_START + c) * BATCH_SIZE + tid) - ite(c == label, 1.0f, 0.0f);
             };
-            auto target = acts[OUTPUT_START + label];
+            auto target = acts_buffer->read((OUTPUT_START + label) * BATCH_SIZE + tid);
             loss->atomic(0u).fetch_add(-log(target));
             $if(pred == label) { correct->atomic(0u).fetch_add(1); };
 
@@ -331,7 +343,7 @@ int main(int argc, char* argv[])
                         sum_weighted_delta += deltas[out_start + k] * weights[i]->read(k * in_dim + j);
                     };
 
-                    Float d_activation   = i == 0 ? 1.0f : ReLU_deriv(zs[in_start + j]);
+                    Float d_activation   = i == 0 ? 1.0f : ReLU_deriv(zs_buffer->read((in_start + j) * BATCH_SIZE + tid));
                     deltas[in_start + j] = sum_weighted_delta * d_activation;
                 };
             }
@@ -344,14 +356,20 @@ int main(int argc, char* argv[])
                 auto in_dim    = LAYER_DIMS[i];
                 auto out_dim   = LAYER_DIMS[i + 1];
 
+                // 重排循环：每个输入激活只读一次，更新所有输出的权重梯度
+                $for(j, in_dim)
+                {
+                    auto input_val = acts_buffer->read((in_start + j) * BATCH_SIZE + tid);
+                    $for(c, out_dim)
+                    {
+                        auto d = deltas[out_start + c];
+                        grad_weights[i]->atomic(c * in_dim + j).fetch_add(cast<int>(input_val * d * GRAD_SCALE));
+                    };
+                };
+                // bias 梯度仍然按输出维度累计一次即可
                 $for(c, out_dim)
                 {
                     auto d = deltas[out_start + c];
-                    $for(j, in_dim)
-                    {
-                        auto input_val = acts[in_start + j];
-                        grad_weights[i]->atomic(c * in_dim + j).fetch_add(cast<int>(input_val * d * GRAD_SCALE));
-                    };
                     grad_biases[i]->atomic(c).fetch_add(cast<int>(d * GRAD_SCALE));
                 };
             }

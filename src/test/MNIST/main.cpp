@@ -8,6 +8,7 @@ using namespace luisa::compute;
 
 constexpr uint SEED       = 20120712u;
 constexpr uint IMAGE_SIZE = 28u;
+constexpr uint INPUT_SIZE = IMAGE_SIZE * IMAGE_SIZE;
 
 [[nodiscard]] uint read_uint_be(std::ifstream& ifs) noexcept
 {
@@ -94,6 +95,9 @@ int main(int argc, char* argv[])
     LUISA_ASSERT(n_test_images == n_test_labels, "Test Image and label count mismatch.");
     LUISA_INFO("MNIST dataset: {} training samples, {} testing samples.", n_train_labels, n_test_labels);
 
+    const uint TRAIN_SIZE = n_train_labels;
+    const uint TEST_SIZE  = n_test_labels;
+
     // 处理为需要的格式
     vector<float> host_train_images(origin_train_images.size());
     vector<uint> host_train_labels(n_train_labels);
@@ -140,12 +144,8 @@ int main(int argc, char* argv[])
         << device_test_labels.copy_from(host_test_labels.data())
         << synchronize();
 
-    const uint TRAIN_SIZE = n_train_labels;
-    const uint TEST_SIZE  = n_test_labels;
-
     // ------------- 网络结构 --------------
     // 网络结构定义
-    constexpr uint INPUT_SIZE  = IMAGE_SIZE * IMAGE_SIZE;
     constexpr uint OUTPUT_SIZE = 10u;
     constexpr std::array<uint, 4> LAYER_DIMS{INPUT_SIZE, 128, 64, OUTPUT_SIZE};
     constexpr uint NUM_DIMS      = std::accumulate(LAYER_DIMS.begin(), LAYER_DIMS.end(), 0u);

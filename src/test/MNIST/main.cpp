@@ -230,7 +230,6 @@ int main(int argc, char* argv[])
     auto clear_float_buffer_shader = device.compile(clear_float_buffer_kernel);
 
     auto acts_buffer = device.create_buffer<float>(NUM_DIMS * BATCH_SIZE);
-    auto zs_buffer   = device.create_buffer<float>(NUM_DIMS * BATCH_SIZE);
 
     Kernel1D train_forward_kernel = [&](UInt batch_start) noexcept
     {
@@ -271,22 +270,21 @@ int main(int argc, char* argv[])
                 $for(j, out_dim)
                 {
                     auto z = z_acc[j];
-                    zs_buffer->write((out_start + j) * BATCH_SIZE + tid, z);
                     acts_buffer->write((out_start + j) * BATCH_SIZE + tid,
-                                       i == NUM_WEIGHT_LAYERS - 1 ? 0.0f : ReLU(z));
+                                       i == NUM_WEIGHT_LAYERS - 1 ? z : ReLU(z));
                 };
             }
 
-            auto z_max = zs_buffer->read((OUTPUT_START + 0u) * BATCH_SIZE + tid);
+            auto z_max = acts_buffer->read((OUTPUT_START + 0u) * BATCH_SIZE + tid);
             $for(c, OUTPUT_SIZE)
             {
-                z_max = max(z_max, zs_buffer->read((OUTPUT_START + c) * BATCH_SIZE + tid));
+                z_max = max(z_max, acts_buffer->read((OUTPUT_START + c) * BATCH_SIZE + tid));
             };
 
             auto sum_exp = def(0.0f);
             $for(c, OUTPUT_SIZE)
             {
-                auto z     = zs_buffer->read((OUTPUT_START + c) * BATCH_SIZE + tid);
+                auto z     = acts_buffer->read((OUTPUT_START + c) * BATCH_SIZE + tid);
                 auto exp_z = exp(z - z_max);
 
                 acts_buffer->write((OUTPUT_START + c) * BATCH_SIZE + tid, exp_z);
@@ -353,7 +351,7 @@ int main(int argc, char* argv[])
                         sum_weighted_delta += deltas[out_start + k] * weights[i]->read(k * in_dim + j);
                     };
 
-                    Float d_activation   = i == 0 ? 1.0f : ReLU_deriv(zs_buffer->read((in_start + j) * BATCH_SIZE + tid));
+                    Float d_activation   = i == 0 ? 1.0f : ReLU_deriv(acts_buffer->read((in_start + j) * BATCH_SIZE + tid));
                     deltas[in_start + j] = sum_weighted_delta * d_activation;
                 };
             }

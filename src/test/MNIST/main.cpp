@@ -146,22 +146,21 @@ int main(int argc, char* argv[])
     // ------------- 网络结构 --------------
     // 网络结构定义
     constexpr uint INPUT_SIZE  = IMAGE_SIZE * IMAGE_SIZE;
-    constexpr uint OUTPUT_SIZE = 10;
-    constexpr std::array<uint, 4> LAYERS{INPUT_SIZE, 128, 64, OUTPUT_SIZE};
-    constexpr uint NUM_NODES = std::accumulate(LAYERS.begin(), LAYERS.end(), 0u);
-
+    constexpr uint OUTPUT_SIZE = 10u;
+    constexpr std::array<uint, 4> LAYER_DIMS{INPUT_SIZE, 128, 64, OUTPUT_SIZE};
+    constexpr uint NUM_DIMS      = std::accumulate(LAYER_DIMS.begin(), LAYER_DIMS.end(), 0u);
     constexpr auto LAYER_OFFSETS = [&]() noexcept
     {
-        std::array<uint, LAYERS.size()> offsets{};
+        std::array<uint, LAYER_DIMS.size()> offsets{};
         uint count = 0u;
-        for (auto i = 0u; i < LAYERS.size(); i++)
+        for (auto i = 0u; i < LAYER_DIMS.size(); i++)
         {
             offsets[i] = count;
-            count += LAYERS[i];
+            count += LAYER_DIMS[i];
         }
         return offsets;
     }();
-    constexpr uint NUM_WEIGHT_LAYERS = static_cast<uint>(LAYERS.size() - 1);
+    constexpr uint NUM_WEIGHT_LAYERS = static_cast<uint>(LAYER_DIMS.size() - 1);
     constexpr uint OUTPUT_START      = LAYER_OFFSETS.back();
 
     // 容器
@@ -174,16 +173,16 @@ int main(int argc, char* argv[])
     // 初始化权重和偏置
     for (auto i = 0u; i < NUM_WEIGHT_LAYERS; i++)
     {
-        auto in_size  = LAYERS[i];
-        auto out_size = LAYERS[i + 1];
+        auto in_dim  = LAYER_DIMS[i];
+        auto out_dim = LAYER_DIMS[i + 1];
 
-        vector<float> host_w(in_size * out_size);
-        vector<float> host_m(in_size * out_size, 0.0f);
-        vector<float> host_b(out_size, 0.0f);
+        vector<float> host_w(in_dim * out_dim);
+        vector<float> host_m(in_dim * out_dim, 0.0f);
+        vector<float> host_b(out_dim, 0.0f);
 
         auto limit = i == NUM_WEIGHT_LAYERS - 1
-                         ? sqrt(6.0f / static_cast<float>(in_size + out_size))
-                         : sqrt(2.0f / static_cast<float>(in_size));
+                         ? sqrt(6.0f / static_cast<float>(in_dim + out_dim))
+                         : sqrt(2.0f / static_cast<float>(in_dim));
 
         for (auto& v : host_w)
         {
@@ -239,9 +238,9 @@ int main(int argc, char* argv[])
         $if(data_id < TRAIN_SIZE)
         {
             // 1. 准备数据
-            ArrayFloat<NUM_NODES> acts;
-            ArrayFloat<NUM_NODES> zs;
-            ArrayFloat<NUM_NODES> deltas;
+            ArrayFloat<NUM_DIMS> acts;
+            ArrayFloat<NUM_DIMS> zs;
+            ArrayFloat<NUM_DIMS> deltas;
 
             UInt label = device_train_labels->read(data_id);
             $for(k, INPUT_SIZE)
@@ -254,16 +253,16 @@ int main(int argc, char* argv[])
             {
                 auto in_start  = LAYER_OFFSETS[i];
                 auto out_start = LAYER_OFFSETS[i + 1];
-                auto in_size   = LAYERS[i];
-                auto out_size  = LAYERS[i + 1];
+                auto in_dim    = LAYER_DIMS[i];
+                auto out_dim   = LAYER_DIMS[i + 1];
 
-                $for(j, out_size)
+                $for(j, out_dim)
                 {
                     Float z = biases[i]->read(j);
-                    $for(k, in_size)
+                    $for(k, in_dim)
                     {
                         auto act_in = acts[in_start + k];
-                        auto w      = weights[i]->read(j * in_size + k);
+                        auto w      = weights[i]->read(j * in_dim + k);
                         z += act_in * w;
                     };
                     // store pre-activation for backprop (ReLU derivative needs z)
@@ -321,15 +320,15 @@ int main(int argc, char* argv[])
             {
                 auto in_start  = LAYER_OFFSETS[i];
                 auto out_start = LAYER_OFFSETS[i + 1];
-                auto in_size   = LAYERS[i];
-                auto out_size  = LAYERS[i + 1];
+                auto in_dim    = LAYER_DIMS[i];
+                auto out_dim   = LAYER_DIMS[i + 1];
 
-                $for(j, in_size)
+                $for(j, in_dim)
                 {
                     Float sum_weighted_delta = 0.0f;
-                    $for(k, out_size)
+                    $for(k, out_dim)
                     {
-                        sum_weighted_delta += deltas[out_start + k] * weights[i]->read(k * in_size + j);
+                        sum_weighted_delta += deltas[out_start + k] * weights[i]->read(k * in_dim + j);
                     };
 
                     Float d_activation   = i == 0 ? 1.0f : ReLU_deriv(zs[in_start + j]);
@@ -342,16 +341,16 @@ int main(int argc, char* argv[])
             {
                 auto in_start  = LAYER_OFFSETS[i];
                 auto out_start = LAYER_OFFSETS[i + 1];
-                auto in_size   = LAYERS[i];
-                auto out_size  = LAYERS[i + 1];
+                auto in_dim    = LAYER_DIMS[i];
+                auto out_dim   = LAYER_DIMS[i + 1];
 
-                $for(c, out_size)
+                $for(c, out_dim)
                 {
                     auto d = deltas[out_start + c];
-                    $for(j, in_size)
+                    $for(j, in_dim)
                     {
                         auto input_val = acts[in_start + j];
-                        grad_weights[i]->atomic(c * in_size + j).fetch_add(cast<int>(input_val * d * GRAD_SCALE));
+                        grad_weights[i]->atomic(c * in_dim + j).fetch_add(cast<int>(input_val * d * GRAD_SCALE));
                     };
                     grad_biases[i]->atomic(c).fetch_add(cast<int>(d * GRAD_SCALE));
                 };
@@ -367,14 +366,14 @@ int main(int argc, char* argv[])
 
         for (auto i = 0u; i < NUM_WEIGHT_LAYERS; i++)
         {
-            auto in_size  = LAYERS[i];
-            auto out_size = LAYERS[i + 1];
-            auto w_size   = in_size * out_size;
-            auto b_size   = out_size;
+            auto in_dim  = LAYER_DIMS[i];
+            auto out_dim = LAYER_DIMS[i + 1];
+            auto w_num   = in_dim * out_dim;
+            auto b_num   = out_dim;
 
             // 并行更新权重
             UInt k = tid;
-            $while(k < w_size)
+            $while(k < w_num)
             {
                 Float g = cast<float>(grad_weights[i]->read(k)) / GRAD_SCALE * inv_n;
                 auto m  = momentums[i]->read(k) * 0.9f + g;
@@ -388,7 +387,7 @@ int main(int argc, char* argv[])
 
             // 并行更新偏置
             k = tid;
-            $while(k < b_size)
+            $while(k < b_num)
             {
                 Float g = cast<float>(grad_biases[i]->read(k)) / GRAD_SCALE * inv_n;
                 biases[i]->write(k, biases[i]->read(k) - current_lr * g);
@@ -452,7 +451,7 @@ int main(int argc, char* argv[])
 
         $if(data_id < TEST_SIZE)
         {
-            ArrayFloat<NUM_NODES> acts;
+            ArrayFloat<NUM_DIMS> acts;
 
             // Input
             $for(k, INPUT_SIZE)
@@ -466,16 +465,16 @@ int main(int argc, char* argv[])
             {
                 auto in_start  = LAYER_OFFSETS[i];
                 auto out_start = LAYER_OFFSETS[i + 1];
-                auto in_size   = LAYERS[i];
-                auto out_size  = LAYERS[i + 1];
+                auto in_dim    = LAYER_DIMS[i];
+                auto out_dim   = LAYER_DIMS[i + 1];
 
-                $for(j, out_size)
+                $for(j, out_dim)
                 {
                     Float z = biases[i]->read(j);
-                    $for(k, in_size)
+                    $for(k, in_dim)
                     {
                         auto act_in = acts[in_start + k];
-                        auto w      = weights[i]->read(j * in_size + k);
+                        auto w      = weights[i]->read(j * in_dim + k);
                         z += act_in * w;
                     };
                     acts[out_start + j] = i == NUM_WEIGHT_LAYERS - 1 ? z : ReLU(z);

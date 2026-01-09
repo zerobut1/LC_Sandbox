@@ -232,7 +232,7 @@ int main(int argc, char* argv[])
     auto acts_buffer = device.create_buffer<float>(NUM_DIMS * BATCH_SIZE);
     auto zs_buffer   = device.create_buffer<float>(NUM_DIMS * BATCH_SIZE);
 
-    Kernel1D train_kernel = [&](UInt batch_start, Float current_lr) noexcept
+    Kernel1D train_forward_kernel = [&](UInt batch_start) noexcept
     {
         set_block_size(BATCH_SIZE, 1u, 1u);
         auto tid     = dispatch_id().x;
@@ -241,11 +241,6 @@ int main(int argc, char* argv[])
         $if(data_id < TRAIN_SIZE)
         {
             // 1. 准备数据
-            // ArrayFloat<NUM_DIMS> acts;
-            // ArrayFloat<NUM_DIMS> zs;
-            ArrayFloat<NUM_DIMS> deltas;
-
-            UInt label = device_train_labels->read(data_id);
             $for(k, INPUT_SIZE)
             {
                 auto input = device_train_images->read(data_id * INPUT_SIZE + k);
@@ -282,7 +277,6 @@ int main(int argc, char* argv[])
                 };
             }
 
-            // 输出节点用softmax作为激活函数
             auto z_max = zs_buffer->read((OUTPUT_START + 0u) * BATCH_SIZE + tid);
             $for(c, OUTPUT_SIZE)
             {
@@ -304,8 +298,24 @@ int main(int argc, char* argv[])
                 auto act = acts_buffer->read((OUTPUT_START + c) * BATCH_SIZE + tid);
                 acts_buffer->write((OUTPUT_START + c) * BATCH_SIZE + tid, act / sum_exp);
             };
+        };
+    };
+
+    Kernel1D train_backward_kernel = [&](UInt batch_start, Float current_lr) noexcept
+    {
+        set_block_size(BATCH_SIZE, 1u, 1u);
+        auto tid     = dispatch_id().x;
+        UInt data_id = batch_start + tid;
+
+        $if(data_id < TRAIN_SIZE)
+        {
+            // 输出节点用softmax作为激活函数
 
             // 3. 计算loss & accuracy
+            UInt label = device_train_labels->read(data_id);
+
+            ArrayFloat<NUM_DIMS> deltas;
+
             Float sample_loss = 0.0f;
             UInt pred         = 0u;
             Float best        = acts_buffer->read((OUTPUT_START + 0u) * BATCH_SIZE + tid);
@@ -414,7 +424,8 @@ int main(int argc, char* argv[])
         }
     };
 
-    auto train_shader = device.compile(train_kernel);
+    auto train_forward_shader  = device.compile(train_forward_kernel);
+    auto train_backward_shader = device.compile(train_backward_kernel);
 
     // 训练
     LUISA_INFO("Start Traning!");
@@ -438,7 +449,9 @@ int main(int argc, char* argv[])
                     << clear_int_buffer_shader(grad_weights[layer_idx]).dispatch(grad_weights[layer_idx].size())
                     << clear_int_buffer_shader(grad_biases[layer_idx]).dispatch(grad_biases[layer_idx].size());
             }
-            stream << train_shader(batch_start, current_lr).dispatch(BATCH_SIZE);
+            stream
+                << train_forward_shader(batch_start).dispatch(BATCH_SIZE)
+                << train_backward_shader(batch_start, current_lr).dispatch(BATCH_SIZE);
         }
 
         auto current_loss    = 0.0f;

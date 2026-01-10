@@ -1,0 +1,14 @@
+[workspace]
+authors = ["zerobut1 <1181948754@qq.com>"]
+channels = ["conda-forge"]
+name = "LC_Sandbox"
+platforms = ["win-64"]
+version = "0.1.0"
+
+[tasks]
+
+[system-requirements]
+cuda = "13"
+
+[dependencies]
+cuda = ">=13.1.0,<14"

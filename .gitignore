@@ -13,3 +13,6 @@ imgui.ini
 scene
 render.exr
 data
+# pixi environments
+.pixi/*
+!.pixi/config.toml

@@ -2,6 +2,7 @@
 
 #include <numeric>
 #include <random>
+#include <ranges>
 
 using namespace luisa;
 using namespace luisa::compute;
@@ -148,16 +149,12 @@ int main(int argc, char* argv[])
     // 网络结构定义
     constexpr uint OUTPUT_SIZE = 10u;
     constexpr std::array<uint, 4> LAYER_DIMS{INPUT_SIZE, 128, 64, OUTPUT_SIZE};
-    constexpr uint NUM_DIMS      = std::accumulate(LAYER_DIMS.begin(), LAYER_DIMS.end(), 0u);
-    constexpr auto LAYER_OFFSETS = [&]() noexcept
+    constexpr uint NUM_DIMS       = std::accumulate(LAYER_DIMS.begin(), LAYER_DIMS.end(), 0u);
+    constexpr uint MAX_HIDDEN_DIM = *std::ranges::max_element(LAYER_DIMS | std::views::drop(1));
+    constexpr auto LAYER_OFFSETS  = [&]() noexcept
     {
         std::array<uint, LAYER_DIMS.size()> offsets{};
-        uint count = 0u;
-        for (auto i = 0u; i < LAYER_DIMS.size(); i++)
-        {
-            offsets[i] = count;
-            count += LAYER_DIMS[i];
-        }
+        std::partial_sum(LAYER_DIMS.begin(), LAYER_DIMS.end() - 1, offsets.begin() + 1);
         return offsets;
     }();
     constexpr uint NUM_WEIGHT_LAYERS = static_cast<uint>(LAYER_DIMS.size() - 1);
@@ -256,7 +253,7 @@ int main(int argc, char* argv[])
 
                 // 重排循环：对每个输入维度只读一次激活，然后更新所有输出的 z
                 // 这里用固定上限的局部数组（最大隐藏层 128），避免为 NUM_DIMS 分配大数组
-                ArrayFloat<128u> z_acc;
+                ArrayFloat<MAX_HIDDEN_DIM> z_acc;
                 $for(j, out_dim) { z_acc[j] = biases[i]->read(j); };
                 $for(k, in_dim)
                 {

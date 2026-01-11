@@ -206,6 +206,7 @@ int main(int argc, char* argv[])
     // ------------- Train Kernel --------------
     constexpr uint EPOCH_COUNT = 20u;
     constexpr uint BATCH_SIZE  = 256u;
+    constexpr uint BLOCK_SIZE  = 64u;
     constexpr float BASE_LR    = 0.05f;
     // 使用缩放整数进行梯度累加，消除浮点原子加法的不确定性
     constexpr float GRAD_SCALE = static_cast<float>(1 << 20);
@@ -230,162 +231,154 @@ int main(int argc, char* argv[])
 
     Kernel1D train_forward_kernel = [&](UInt batch_start) noexcept
     {
-        set_block_size(BATCH_SIZE, 1u, 1u);
+        set_block_size(BLOCK_SIZE, 1u, 1u);
         auto tid     = dispatch_id().x;
         UInt data_id = batch_start + tid;
 
-        $if(data_id < TRAIN_SIZE)
+        // 1. 准备数据
+        $for(k, INPUT_SIZE)
         {
-            // 1. 准备数据
-            $for(k, INPUT_SIZE)
-            {
-                auto input = device_train_images->read(data_id * INPUT_SIZE + k);
-                acts_buffer->write(k * BATCH_SIZE + tid, input);
-            };
+            auto input = device_train_images->read(data_id * INPUT_SIZE + k);
+            acts_buffer->write(k * BATCH_SIZE + tid, input);
+        };
 
-            // 2. 前向传播
-            for (auto i = 0; i < NUM_WEIGHT_LAYERS; i++)
-            {
-                auto in_start  = LAYER_OFFSETS[i];
-                auto out_start = LAYER_OFFSETS[i + 1];
-                auto in_dim    = LAYER_DIMS[i];
-                auto out_dim   = LAYER_DIMS[i + 1];
+        // 2. 前向传播
+        for (auto i = 0; i < NUM_WEIGHT_LAYERS; i++)
+        {
+            auto in_start  = LAYER_OFFSETS[i];
+            auto out_start = LAYER_OFFSETS[i + 1];
+            auto in_dim    = LAYER_DIMS[i];
+            auto out_dim   = LAYER_DIMS[i + 1];
 
-                // 重排循环：对每个输入维度只读一次激活，然后更新所有输出的 z
-                // 这里用固定上限的局部数组（最大隐藏层 128），避免为 NUM_DIMS 分配大数组
-                ArrayFloat<MAX_HIDDEN_DIM> z_acc;
-                $for(j, out_dim) { z_acc[j] = biases[i]->read(j); };
-                $for(k, in_dim)
-                {
-                    auto act_in = acts_buffer->read((in_start + k) * BATCH_SIZE + tid);
-                    $for(j, out_dim)
-                    {
-                        auto w = weights[i]->read(j * in_dim + k);
-                        z_acc[j] += act_in * w;
-                    };
-                };
+            // 重排循环：对每个输入维度只读一次激活，然后更新所有输出的 z
+            // 这里用固定上限的局部数组（最大隐藏层 128），避免为 NUM_DIMS 分配大数组
+            ArrayFloat<MAX_HIDDEN_DIM> z_acc;
+            $for(j, out_dim) { z_acc[j] = biases[i]->read(j); };
+            $for(k, in_dim)
+            {
+                auto act_in = acts_buffer->read((in_start + k) * BATCH_SIZE + tid);
                 $for(j, out_dim)
                 {
-                    auto z = z_acc[j];
-                    acts_buffer->write((out_start + j) * BATCH_SIZE + tid,
-                                       i == NUM_WEIGHT_LAYERS - 1 ? z : ReLU(z));
+                    auto w = weights[i]->read(j * in_dim + k);
+                    z_acc[j] += act_in * w;
                 };
-            }
-
-            auto z_max = acts_buffer->read((OUTPUT_START + 0u) * BATCH_SIZE + tid);
-            $for(c, OUTPUT_SIZE)
-            {
-                z_max = max(z_max, acts_buffer->read((OUTPUT_START + c) * BATCH_SIZE + tid));
             };
-
-            auto sum_exp = def(0.0f);
-            $for(c, OUTPUT_SIZE)
+            $for(j, out_dim)
             {
-                auto z     = acts_buffer->read((OUTPUT_START + c) * BATCH_SIZE + tid);
-                auto exp_z = exp(z - z_max);
-
-                acts_buffer->write((OUTPUT_START + c) * BATCH_SIZE + tid, exp_z);
-                sum_exp += exp_z;
+                auto z = z_acc[j];
+                acts_buffer->write((out_start + j) * BATCH_SIZE + tid,
+                                   i == NUM_WEIGHT_LAYERS - 1 ? z : ReLU(z));
             };
+        }
 
-            $for(c, OUTPUT_SIZE)
-            {
-                auto act = acts_buffer->read((OUTPUT_START + c) * BATCH_SIZE + tid);
-                acts_buffer->write((OUTPUT_START + c) * BATCH_SIZE + tid, act / sum_exp);
-            };
+        auto z_max = acts_buffer->read((OUTPUT_START + 0u) * BATCH_SIZE + tid);
+        $for(c, OUTPUT_SIZE)
+        {
+            z_max = max(z_max, acts_buffer->read((OUTPUT_START + c) * BATCH_SIZE + tid));
+        };
+
+        auto sum_exp = def(0.0f);
+        $for(c, OUTPUT_SIZE)
+        {
+            auto z     = acts_buffer->read((OUTPUT_START + c) * BATCH_SIZE + tid);
+            auto exp_z = exp(z - z_max);
+
+            acts_buffer->write((OUTPUT_START + c) * BATCH_SIZE + tid, exp_z);
+            sum_exp += exp_z;
+        };
+
+        $for(c, OUTPUT_SIZE)
+        {
+            auto act = acts_buffer->read((OUTPUT_START + c) * BATCH_SIZE + tid);
+            acts_buffer->write((OUTPUT_START + c) * BATCH_SIZE + tid, act / sum_exp);
         };
     };
 
     Kernel1D train_backward_kernel = [&](UInt batch_start, Float current_lr) noexcept
     {
-        set_block_size(BATCH_SIZE, 1u, 1u);
+        set_block_size(BLOCK_SIZE, 1u, 1u);
         auto tid     = dispatch_id().x;
         UInt data_id = batch_start + tid;
 
-        $if(data_id < TRAIN_SIZE)
+        // 1. 计算loss & accuracy
+        UInt label = device_train_labels->read(data_id);
+
+        ArrayFloat<NUM_DIMS> deltas;
+
+        Float sample_loss = 0.0f;
+        UInt pred         = 0u;
+        Float best        = acts_buffer->read((OUTPUT_START + 0u) * BATCH_SIZE + tid);
+        $for(c, OUTPUT_SIZE)
         {
-            // 输出节点用softmax作为激活函数
-
-            // 3. 计算loss & accuracy
-            UInt label = device_train_labels->read(data_id);
-
-            ArrayFloat<NUM_DIMS> deltas;
-
-            Float sample_loss = 0.0f;
-            UInt pred         = 0u;
-            Float best        = acts_buffer->read((OUTPUT_START + 0u) * BATCH_SIZE + tid);
-            $for(c, OUTPUT_SIZE)
+            auto output_val = acts_buffer->read((OUTPUT_START + c) * BATCH_SIZE + tid);
+            $if(output_val > best)
             {
-                auto output_val = acts_buffer->read((OUTPUT_START + c) * BATCH_SIZE + tid);
-                $if(output_val > best)
-                {
-                    best = output_val;
-                    pred = c;
-                };
-
-                // 计算输出层delta
-                // 激活函数 softmax
-                // loss 交叉熵
-                deltas[OUTPUT_START + c] = acts_buffer->read((OUTPUT_START + c) * BATCH_SIZE + tid) - ite(c == label, 1.0f, 0.0f);
+                best = output_val;
+                pred = c;
             };
-            auto target = acts_buffer->read((OUTPUT_START + label) * BATCH_SIZE + tid);
-            loss->atomic(0u).fetch_add(-log(target));
-            $if(pred == label) { correct->atomic(0u).fetch_add(1); };
 
-            // 4. 反向传播
-            for (auto i = NUM_WEIGHT_LAYERS - 1; i > 0u; i--)
+            // 计算输出层delta
+            // 激活函数 softmax
+            // loss 交叉熵
+            deltas[OUTPUT_START + c] = acts_buffer->read((OUTPUT_START + c) * BATCH_SIZE + tid) - ite(c == label, 1.0f, 0.0f);
+        };
+        auto target = acts_buffer->read((OUTPUT_START + label) * BATCH_SIZE + tid);
+        loss->atomic(0u).fetch_add(-log(target));
+        $if(pred == label) { correct->atomic(0u).fetch_add(1); };
+
+        // . 反向传播
+        for (auto i = NUM_WEIGHT_LAYERS - 1; i > 0u; i--)
+        {
+            auto in_start  = LAYER_OFFSETS[i];
+            auto out_start = LAYER_OFFSETS[i + 1];
+            auto in_dim    = LAYER_DIMS[i];
+            auto out_dim   = LAYER_DIMS[i + 1];
+
+            $for(j, in_dim)
             {
-                auto in_start  = LAYER_OFFSETS[i];
-                auto out_start = LAYER_OFFSETS[i + 1];
-                auto in_dim    = LAYER_DIMS[i];
-                auto out_dim   = LAYER_DIMS[i + 1];
-
-                $for(j, in_dim)
+                Float sum_weighted_delta = 0.0f;
+                $for(k, out_dim)
                 {
-                    Float sum_weighted_delta = 0.0f;
-                    $for(k, out_dim)
-                    {
-                        sum_weighted_delta += deltas[out_start + k] * weights[i]->read(k * in_dim + j);
-                    };
-
-                    Float d_activation   = i == 0 ? 1.0f : ReLU_deriv(acts_buffer->read((in_start + j) * BATCH_SIZE + tid));
-                    deltas[in_start + j] = sum_weighted_delta * d_activation;
+                    sum_weighted_delta += deltas[out_start + k] * weights[i]->read(k * in_dim + j);
                 };
-            }
 
-            // 5. 累计 batch 梯度
-            for (auto i = 0u; i < NUM_WEIGHT_LAYERS; i++)
+                Float d_activation   = i == 0 ? 1.0f : ReLU_deriv(acts_buffer->read((in_start + j) * BATCH_SIZE + tid));
+                deltas[in_start + j] = sum_weighted_delta * d_activation;
+            };
+        }
+
+        // 3. 累计 batch 梯度
+        for (auto i = 0u; i < NUM_WEIGHT_LAYERS; i++)
+        {
+            auto in_start  = LAYER_OFFSETS[i];
+            auto out_start = LAYER_OFFSETS[i + 1];
+            auto in_dim    = LAYER_DIMS[i];
+            auto out_dim   = LAYER_DIMS[i + 1];
+
+            // 重排循环：每个输入激活只读一次，更新所有输出的权重梯度
+            $for(j, in_dim)
             {
-                auto in_start  = LAYER_OFFSETS[i];
-                auto out_start = LAYER_OFFSETS[i + 1];
-                auto in_dim    = LAYER_DIMS[i];
-                auto out_dim   = LAYER_DIMS[i + 1];
-
-                // 重排循环：每个输入激活只读一次，更新所有输出的权重梯度
-                $for(j, in_dim)
-                {
-                    auto input_val = acts_buffer->read((in_start + j) * BATCH_SIZE + tid);
-                    $for(c, out_dim)
-                    {
-                        auto d = deltas[out_start + c];
-                        grad_weights[i]->atomic(c * in_dim + j).fetch_add(cast<int>(input_val * d * GRAD_SCALE));
-                    };
-                };
-                // bias 梯度仍然按输出维度累计一次即可
+                auto input_val = acts_buffer->read((in_start + j) * BATCH_SIZE + tid);
                 $for(c, out_dim)
                 {
                     auto d = deltas[out_start + c];
-                    grad_biases[i]->atomic(c).fetch_add(cast<int>(d * GRAD_SCALE));
+                    grad_weights[i]->atomic(c * in_dim + j).fetch_add(cast<int>(input_val * d * GRAD_SCALE));
                 };
-            }
-        };
+            };
+            // bias 梯度仍然按输出维度累计一次即可
+            $for(c, out_dim)
+            {
+                auto d = deltas[out_start + c];
+                grad_biases[i]->atomic(c).fetch_add(cast<int>(d * GRAD_SCALE));
+            };
+        }
+    };
 
-        sync_block();
-
-        // 6. 并行更新权重
-        // 样本的平均梯度常数
-        UInt actual_batch_size = min(BATCH_SIZE, TRAIN_SIZE - batch_start);
-        Float inv_n            = 1.0f / cast<float>(actual_batch_size);
+    Kernel1D update_kernel = [&](Float current_lr, UInt batch_size)
+    {
+        auto tid    = dispatch_id().x;
+        auto size   = dispatch_size().x;
+        Float inv_n = 1.0f / cast<float>(batch_size);
 
         for (auto i = 0u; i < NUM_WEIGHT_LAYERS; i++)
         {
@@ -394,7 +387,7 @@ int main(int argc, char* argv[])
             auto w_num   = in_dim * out_dim;
             auto b_num   = out_dim;
 
-            // 并行更新权重
+            // 并行更新权重 (Grid-Stride Loop)
             UInt k = tid;
             $while(k < w_num)
             {
@@ -405,7 +398,9 @@ int main(int argc, char* argv[])
                 w = w - current_lr * m - 5e-4f * w * current_lr;
                 weights[i]->write(k, w);
                 momentums[i]->write(k, m);
-                k += BATCH_SIZE;
+                // 重置梯度，准备下一轮
+                grad_weights[i]->write(k, 0);
+                k += size;
             };
 
             // 并行更新偏置
@@ -414,13 +409,23 @@ int main(int argc, char* argv[])
             {
                 Float g = cast<float>(grad_biases[i]->read(k)) / GRAD_SCALE * inv_n;
                 biases[i]->write(k, biases[i]->read(k) - current_lr * g);
-                k += BATCH_SIZE;
+                grad_biases[i]->write(k, 0);
+                k += size;
             };
         }
     };
 
     auto train_forward_shader  = device.compile(train_forward_kernel);
     auto train_backward_shader = device.compile(train_backward_kernel);
+    auto update_shader         = device.compile(update_kernel);
+
+    // 初始清空梯度
+    for (auto layer_idx = 0u; layer_idx < NUM_WEIGHT_LAYERS; layer_idx++)
+    {
+        stream
+            << clear_int_buffer_shader(grad_weights[layer_idx]).dispatch(grad_weights[layer_idx].size())
+            << clear_int_buffer_shader(grad_biases[layer_idx]).dispatch(grad_biases[layer_idx].size());
+    }
 
     // 训练
     LUISA_INFO("Start Traning!");
@@ -438,15 +443,12 @@ int main(int argc, char* argv[])
             << clear_int_buffer_shader(correct).dispatch(1u);
         for (auto batch_start = 0u; batch_start < TRAIN_SIZE; batch_start += BATCH_SIZE)
         {
-            for (auto layer_idx = 0u; layer_idx < NUM_WEIGHT_LAYERS; layer_idx++)
-            {
-                stream
-                    << clear_int_buffer_shader(grad_weights[layer_idx]).dispatch(grad_weights[layer_idx].size())
-                    << clear_int_buffer_shader(grad_biases[layer_idx]).dispatch(grad_biases[layer_idx].size());
-            }
+            // 不能整除的时候，调整最后一个batch dispatch的大小
+            auto dispatch_size = min(BATCH_SIZE, TRAIN_SIZE - batch_start);
             stream
-                << train_forward_shader(batch_start).dispatch(BATCH_SIZE)
-                << train_backward_shader(batch_start, current_lr).dispatch(BATCH_SIZE);
+                << train_forward_shader(batch_start).dispatch(dispatch_size)
+                << train_backward_shader(batch_start, current_lr).dispatch(dispatch_size)
+                << update_shader(current_lr, dispatch_size).dispatch(NUM_DIMS);
         }
 
         auto current_loss    = 0.0f;

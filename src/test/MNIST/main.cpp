@@ -206,7 +206,6 @@ int main(int argc, char* argv[])
     // ------------- Train Kernel --------------
     constexpr uint EPOCH_COUNT = 20u;
     constexpr uint BATCH_SIZE  = 256u;
-    constexpr uint BLOCK_SIZE  = 64u;
     constexpr float BASE_LR    = 0.05f;
     // 使用缩放整数进行梯度累加，消除浮点原子加法的不确定性
     constexpr float GRAD_SCALE = static_cast<float>(1 << 20);
@@ -229,74 +228,69 @@ int main(int argc, char* argv[])
 
     auto acts_buffer = device.create_buffer<float>(NUM_DIMS * BATCH_SIZE);
 
-    Kernel1D train_forward_kernel = [&](UInt batch_start) noexcept
+    Kernel2D transpose_kernel = [&](BufferVar<float> in, BufferVar<float> out)
     {
-        set_block_size(BLOCK_SIZE, 1u, 1u);
-        auto tid     = dispatch_id().x;
-        UInt data_id = batch_start + tid;
+        // in: [batch, datas]
+        // out: [datas, batch]
+        UInt c = dispatch_id().x; // Data Index
+        UInt r = dispatch_id().y; // Batch Index
 
-        // 1. 准备数据
-        $for(k, INPUT_SIZE)
+        out.write(c * BATCH_SIZE + r, in.read(r * INPUT_SIZE + c));
+    };
+    auto transpose_shader = device.compile(transpose_kernel);
+
+    Kernel2D gemm_kernel = [&](BufferVar<float> W, BufferVar<float> X, BufferVar<float> Bias, BufferVar<float> Y, UInt K, UInt activation)
+    {
+        set_block_size(16, 16, 1);
+        UInt n = dispatch_id().x; // Batch Index
+        UInt m = dispatch_id().y; // Output Feature Index
+
+        Float sum = Bias.read(m);
+        $for(k, K)
         {
-            auto input = device_train_images->read(data_id * INPUT_SIZE + k);
-            acts_buffer->write(k * BATCH_SIZE + tid, input);
+            sum += W.read(m * K + k) * X.read(k * BATCH_SIZE + n);
         };
 
-        // 2. 前向传播
-        for (auto i = 0; i < NUM_WEIGHT_LAYERS; i++)
+        $if(activation == 1)
         {
-            auto in_start  = LAYER_OFFSETS[i];
-            auto out_start = LAYER_OFFSETS[i + 1];
-            auto in_dim    = LAYER_DIMS[i];
-            auto out_dim   = LAYER_DIMS[i + 1];
+            sum = ReLU(sum);
+        };
+        Y.write(m * BATCH_SIZE + n, sum);
+    };
 
-            // 重排循环：对每个输入维度只读一次激活，然后更新所有输出的 z
-            // 这里用固定上限的局部数组（最大隐藏层 128），避免为 NUM_DIMS 分配大数组
-            ArrayFloat<MAX_HIDDEN_DIM> z_acc;
-            $for(j, out_dim) { z_acc[j] = biases[i]->read(j); };
-            $for(k, in_dim)
-            {
-                auto act_in = acts_buffer->read((in_start + k) * BATCH_SIZE + tid);
-                $for(j, out_dim)
-                {
-                    auto w = weights[i]->read(j * in_dim + k);
-                    z_acc[j] += act_in * w;
-                };
-            };
-            $for(j, out_dim)
-            {
-                auto z = z_acc[j];
-                acts_buffer->write((out_start + j) * BATCH_SIZE + tid,
-                                   i == NUM_WEIGHT_LAYERS - 1 ? z : ReLU(z));
-            };
-        }
+    auto gemm_shader = device.compile(gemm_kernel);
 
-        auto z_max = acts_buffer->read((OUTPUT_START + 0u) * BATCH_SIZE + tid);
-        $for(c, OUTPUT_SIZE)
+    Kernel1D softmax_kernel = [&]()
+    {
+        UInt tid = dispatch_id().x;
+
+        Float max_z = -1e30f;
+        $for(i, OUTPUT_SIZE)
         {
-            z_max = max(z_max, acts_buffer->read((OUTPUT_START + c) * BATCH_SIZE + tid));
+            auto z = acts_buffer->read((OUTPUT_START + i) * BATCH_SIZE + tid);
+            max_z  = max(max_z, z);
         };
 
-        auto sum_exp = def(0.0f);
-        $for(c, OUTPUT_SIZE)
+        Float sum = 0.0f;
+        $for(i, OUTPUT_SIZE)
         {
-            auto z     = acts_buffer->read((OUTPUT_START + c) * BATCH_SIZE + tid);
-            auto exp_z = exp(z - z_max);
-
-            acts_buffer->write((OUTPUT_START + c) * BATCH_SIZE + tid, exp_z);
-            sum_exp += exp_z;
+            auto z  = acts_buffer->read((OUTPUT_START + i) * BATCH_SIZE + tid);
+            Float e = exp(z - max_z);
+            sum += e;
+            acts_buffer->write((OUTPUT_START + i) * BATCH_SIZE + tid, e);
         };
 
-        $for(c, OUTPUT_SIZE)
+        $for(i, OUTPUT_SIZE)
         {
-            auto act = acts_buffer->read((OUTPUT_START + c) * BATCH_SIZE + tid);
-            acts_buffer->write((OUTPUT_START + c) * BATCH_SIZE + tid, act / sum_exp);
+            auto idx = (OUTPUT_START + i) * BATCH_SIZE + tid;
+            acts_buffer->write(idx, acts_buffer->read(idx) / sum);
         };
     };
+    auto softmax_shader = device.compile(softmax_kernel);
 
     Kernel1D train_backward_kernel = [&](UInt batch_start, Float current_lr) noexcept
     {
-        set_block_size(BLOCK_SIZE, 1u, 1u);
+        set_block_size(32u, 1u, 1u);
         auto tid     = dispatch_id().x;
         UInt data_id = batch_start + tid;
 
@@ -326,7 +320,7 @@ int main(int argc, char* argv[])
         loss->atomic(0u).fetch_add(-log(target));
         $if(pred == label) { correct->atomic(0u).fetch_add(1); };
 
-        // . 反向传播
+        // 2. 反向传播
         for (auto i = NUM_WEIGHT_LAYERS - 1; i > 0u; i--)
         {
             auto in_start  = LAYER_OFFSETS[i];
@@ -374,6 +368,8 @@ int main(int argc, char* argv[])
         }
     };
 
+    auto train_backward_shader = device.compile(train_backward_kernel);
+
     Kernel1D update_kernel = [&](Float current_lr, UInt batch_size)
     {
         auto tid    = dispatch_id().x;
@@ -415,9 +411,7 @@ int main(int argc, char* argv[])
         }
     };
 
-    auto train_forward_shader  = device.compile(train_forward_kernel);
-    auto train_backward_shader = device.compile(train_backward_kernel);
-    auto update_shader         = device.compile(update_kernel);
+    auto update_shader = device.compile(update_kernel);
 
     // 初始清空梯度
     for (auto layer_idx = 0u; layer_idx < NUM_WEIGHT_LAYERS; layer_idx++)
@@ -445,8 +439,30 @@ int main(int argc, char* argv[])
         {
             // 不能整除的时候，调整最后一个batch dispatch的大小
             auto dispatch_size = min(BATCH_SIZE, TRAIN_SIZE - batch_start);
+
+            stream << transpose_shader(device_train_images.view(batch_start * INPUT_SIZE, dispatch_size * INPUT_SIZE),
+                                       acts_buffer.view(0, INPUT_SIZE * BATCH_SIZE))
+                          .dispatch(INPUT_SIZE, dispatch_size);
+
+            for (auto i = 0u; i < NUM_WEIGHT_LAYERS; i++)
+            {
+                auto in_start   = LAYER_OFFSETS[i];
+                auto out_start  = LAYER_OFFSETS[i + 1];
+                auto in_dim     = LAYER_DIMS[i];
+                auto out_dim    = LAYER_DIMS[i + 1];
+                auto activation = (i == NUM_WEIGHT_LAYERS - 1) ? 0u : 1u;
+
+                stream << gemm_shader(weights[i],
+                                      acts_buffer.view(in_start * BATCH_SIZE, in_dim * BATCH_SIZE),
+                                      biases[i],
+                                      acts_buffer.view(out_start * BATCH_SIZE, out_dim * BATCH_SIZE),
+                                      in_dim,
+                                      activation)
+                              .dispatch(dispatch_size, out_dim);
+            }
+
             stream
-                << train_forward_shader(batch_start).dispatch(dispatch_size)
+                << softmax_shader().dispatch(dispatch_size)
                 << train_backward_shader(batch_start, current_lr).dispatch(dispatch_size)
                 << update_shader(current_lr, dispatch_size).dispatch(NUM_DIMS);
         }

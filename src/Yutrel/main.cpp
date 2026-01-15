@@ -23,8 +23,8 @@ int main(int argc, char* argv[])
     }
 
     Application::CreateInfo app_info{
-        .bin     = argv[0],
-        .backend = argv[1],
+        .bin         = argv[0],
+        .backend     = argv[1],
         .interactive = interactive,
     };
 
@@ -35,10 +35,11 @@ int main(int argc, char* argv[])
         .film_info = {
             .resolution = make_uint2(1024u),
             .hdr        = false},
-        .spp      = 65536u,
-        .position = make_float3(0.0f, -6.8f, 1.0f),
-        .lookat   = make_float3(0.0f, 0.0f, 1.0f),
-        .up       = make_float3(0.0f, 0.0f, 1.0f),
+        .filter_info = {.type = Filter::Type::Gaussian, .radius = 1.0f},
+        .spp         = 65536u,
+        .position    = make_float3(0.0f, -6.8f, 1.0f),
+        .lookat      = make_float3(0.0f, 0.0f, 1.0f),
+        .up          = make_float3(0.0f, 0.0f, 1.0f),
         // pinhole
         .fov = 19.5f,
     };

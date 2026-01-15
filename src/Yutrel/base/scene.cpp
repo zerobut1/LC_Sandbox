@@ -6,6 +6,7 @@ struct Scene::Config
 {
     luisa::unique_ptr<Camera> camera;
     luisa::unique_ptr<Film> film;
+    luisa::unique_ptr<Filter> filter;
     luisa::vector<luisa::unique_ptr<Shape>> shapes;
     luisa::vector<luisa::unique_ptr<Surface>> surfaces;
     luisa::vector<luisa::unique_ptr<Light>> lights;
@@ -52,6 +53,11 @@ const Film* Scene::load_film(const Film::CreateInfo& info) noexcept
         return nullptr;
     }
     return (m_config->film = Film::create(info)).get();
+}
+
+const Filter* Scene::load_filter(const Filter::CreateInfo& info) noexcept
+{
+    return (m_config->filter = Filter::create(*this, info)).get();
 }
 
 const Shape* Scene::load_shape(const Shape::CreateInfo& info) noexcept

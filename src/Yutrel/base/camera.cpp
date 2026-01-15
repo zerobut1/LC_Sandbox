@@ -33,6 +33,8 @@ Camera::Camera(Scene& scene, const CreateInfo& info) noexcept
 {
     m_film = scene.load_film(info.film_info);
 
+    m_filter = scene.load_filter(info.filter_info);
+
     auto w = normalize(info.position - info.lookat);
     auto u = normalize(cross(info.up, w));
     auto v = cross(w, u);
@@ -140,6 +142,7 @@ Camera::Instance::Instance(Renderer& renderer, CommandBuffer& command_buffer, co
     : m_renderer(renderer),
       m_camera(camera),
       m_film(camera->film()->build(renderer, command_buffer)),
+      m_filter(camera->filter()->build(renderer)),
       m_host_transform(camera->init_transform()),
       m_device_transform(renderer.arena_buffer<float4x4>(1u))
 {
@@ -158,8 +161,9 @@ void Camera::Instance::set_transform(CommandBuffer& command_buffer, const float4
 
 Camera::Sample Camera::Instance::generate_ray(Expr<uint2> pixel_coord, Expr<float> time, Expr<float2> u_filter, Expr<float2> u_lens) const noexcept
 {
-    auto filter_offset = lerp(-0.5f, 0.5f, u_filter);
-    auto pixel         = make_float2(pixel_coord) + 0.5f + filter_offset;
+    auto [filter_offset, filter_weight] = m_filter->sample(u_filter);
+
+    auto pixel = make_float2(pixel_coord) + 0.5f + filter_offset;
 
     auto ray_cs = generate_ray_in_camera_space(pixel, time, u_lens);
 
@@ -172,7 +176,7 @@ Camera::Sample Camera::Instance::generate_ray(Expr<uint2> pixel_coord, Expr<floa
 
     auto ray = make_ray(origin, direction);
 
-    return {std::move(ray), pixel};
+    return {std::move(ray), pixel, filter_weight};
 }
 
 } // namespace Yutrel

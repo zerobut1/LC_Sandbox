@@ -175,9 +175,10 @@ Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Ex
 {
     sampler()->start(pixel_id, frame_index);
 
-    auto u_filter        = sampler()->generate_2d();
-    auto u_lens          = camera->base()->requires_lens_sampling() ? sampler()->generate_2d() : make_float2(0.5f);
-    auto [camera_ray, _] = camera->generate_ray(pixel_id, time, u_filter, u_lens);
+    auto u_filter = sampler()->generate_2d();
+    auto u_lens   = camera->base()->requires_lens_sampling() ? sampler()->generate_2d() : make_float2(0.5f);
+
+    auto [camera_ray, _, camera_weight] = camera->generate_ray(pixel_id, time, u_filter, u_lens);
 
     Float3 Li   = make_float3(0.0f);
     Float3 beta = make_float3(1.0f);
@@ -188,7 +189,8 @@ Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Ex
     {
         // trace
         auto wo = -ray->direction();
-        auto it = renderer().geometry()->intersect(ray);
+
+        luisa::shared_ptr<Interaction> it = renderer().geometry()->intersect(ray);
 
         // miss
         $if(!it->valid())
@@ -274,7 +276,7 @@ Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Ex
         };
     };
 
-    Float3 color = Li;
+    Float3 color = Li * camera_weight;
 
     return color;
 };

@@ -1,19 +1,22 @@
 # Xmake cache
 .xmake/
 build/
+vsxmake2022/
+vsxmake2026/
 
 # MacOS Cache
 .DS_Store
 
-
+# Visual Studio Code
 .vscode
-vsxmake2022
-vsxmake2026
-imgui.ini
-scene
-render.exr
-data
-# pixi environments
-.pixi/*
-!.pixi/config.toml
+
+# clangd
 .cache
+
+# Temporary files
+imgui.ini
+render.exr
+
+# User data
+scene
+data

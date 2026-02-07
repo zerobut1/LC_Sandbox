@@ -19,7 +19,7 @@ public:
             : Texture::Instance(renderer, texture), m_even(even), m_odd(odd) {}
         ~Instance() noexcept override = default;
 
-        Float4 evaluate(const Interaction& it) const noexcept override;
+        Float4 evaluate(const Interaction& it, Expr<float> time) const noexcept override;
     };
 
 private:

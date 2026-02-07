@@ -5,6 +5,7 @@
 #include "base/camera.h"
 #include "base/film.h"
 #include "base/shape.h"
+#include "base/spectrum.h"
 #include "base/surface.h"
 #include "base/texture.h"
 
@@ -18,6 +19,7 @@ class Scene
 public:
     struct CreateInfo
     {
+        Spectrum::CreateInfo spectrum_info;
         Camera::CreateInfo camera_info;
         luisa::vector<Shape::CreateInfo> shape_infos;
     };
@@ -41,6 +43,7 @@ public:
 public:
     [[nodiscard]] static luisa::unique_ptr<Scene> create(const Context& context, const CreateInfo& info) noexcept;
 
+    void load_spectrum(const Spectrum::CreateInfo& info) noexcept;
     void load_camera(const Camera::CreateInfo& info) noexcept;
     [[nodiscard]] const Film* load_film(const Film::CreateInfo& info) noexcept;
     [[nodiscard]] const Filter* load_filter(const Filter::CreateInfo& info) noexcept;
@@ -49,6 +52,7 @@ public:
     [[nodiscard]] const Light* load_light(const Light::CreateInfo& info) noexcept;
     [[nodiscard]] const Texture* load_texture(const Texture::CreateInfo& info) noexcept;
 
+    [[nodiscard]] const Spectrum* spectrum() const noexcept;
     [[nodiscard]] const Camera* camera() const noexcept;
     [[nodiscard]] const Film* film() const noexcept;
     [[nodiscard]] luisa::span<const Shape* const> shapes() const noexcept;

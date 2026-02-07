@@ -20,11 +20,11 @@ luisa::unique_ptr<Surface> Surface::create(Scene& scene, const CreateInfo& info)
     }
 }
 
-void Surface::Instance::closure(PolymorphicCall<Closure>& call, const Interaction& it, Expr<float> time) const noexcept
+void Surface::Instance::closure(PolymorphicCall<Closure>& call, const Interaction& it, SampledWavelengths& swl, Expr<float> time) const noexcept
 {
     auto cls = call.collect(closure_identifier(), [&]
     {
-        return create_closure(time);
+        return create_closure(swl, time);
     });
     populate_closure(cls, it);
 }
@@ -43,12 +43,12 @@ static auto validate_surface_sides(Expr<float3> ng, Expr<float3> ns,
 
 Surface::Sample Surface::Closure::sample(Expr<float3> wo, Expr<float> u_lobe, Expr<float2> u) const noexcept
 {
-    auto s = Surface::Sample::zero();
+    auto s = Surface::Sample::zero(swl().dimension());
     $outline
     {
         s          = sample_impl(wo, u_lobe, u);
         auto valid = validate_surface_sides(it().n_g, it().shading.n(), wo, s.wi);
-        s.eval.f   = ite(valid, s.eval.f, make_float3(0.0f));
+        s.eval.f   = ite(valid, s.eval.f, 0.0f);
         s.eval.pdf = ite(valid, s.eval.pdf, 0.0f);
     };
 
@@ -57,12 +57,12 @@ Surface::Sample Surface::Closure::sample(Expr<float3> wo, Expr<float> u_lobe, Ex
 
 Surface::Evaluation Surface::Closure::evaluate(Expr<float3> wo, Expr<float3> wi) const noexcept
 {
-    auto eval = Surface::Evaluation::zero();
+    auto eval = Surface::Evaluation::zero(swl().dimension());
     $outline
     {
         eval       = evaluate_impl(wo, wi);
         auto valid = validate_surface_sides(it().n_g, it().shading.n(), wo, wi);
-        eval.f     = ite(valid, eval.f, make_float3(0.0f));
+        eval.f     = ite(valid, eval.f, 0.0f);
         eval.pdf   = ite(valid, eval.pdf, 0.0f);
     };
     return eval;

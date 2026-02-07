@@ -16,14 +16,16 @@ luisa::unique_ptr<Surface::Instance> Diffuse::build(Renderer& renderer, CommandB
     return luisa::make_unique<Instance>(renderer, this, reflectance);
 }
 
-luisa::unique_ptr<Surface::Closure> Diffuse::Instance::create_closure(Expr<float> time) const noexcept
+luisa::unique_ptr<Surface::Closure> Diffuse::Instance::create_closure(SampledWavelengths& swl, Expr<float> time) const noexcept
 {
-    return luisa::make_unique<Closure>(renderer(), time);
+    return luisa::make_unique<Closure>(renderer(), swl, time);
 }
 
 void Diffuse::Instance::populate_closure(Surface::Closure* closure, const Interaction& it) const noexcept
 {
-    Float3 reflectance = m_reflectance->evaluate(it).xyz();
+    auto& swl        = closure->swl();
+    auto time        = closure->time();
+    auto reflectance = m_reflectance->evaluate_albedo_spectrum(it, swl, time).value;
 
     Diffuse::Closure::Context ctx{
         .it          = it,

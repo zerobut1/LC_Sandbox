@@ -3,6 +3,8 @@
 #include <luisa/core/stl/memory.h>
 #include <luisa/dsl/syntax.h>
 
+#include "base/spectrum.h"
+
 namespace Yutrel
 {
 using namespace luisa;
@@ -75,7 +77,22 @@ public:
     public:
         [[nodiscard]] auto& renderer() const noexcept { return m_renderer; }
 
-        [[nodiscard]] virtual Float4 evaluate(const Interaction& it) const noexcept = 0;
+        [[nodiscard]] virtual Float4 evaluate(const Interaction& it, Expr<float> time) const noexcept = 0;
+        [[nodiscard]] virtual Spectrum::Decode evaluate_albedo_spectrum(
+            const Interaction& it, const SampledWavelengths& swl, Expr<float> time) const noexcept;
+        [[nodiscard]] virtual Spectrum::Decode evaluate_unbounded_spectrum(
+            const Interaction& it, const SampledWavelengths& swl, Expr<float> time) const noexcept;
+        [[nodiscard]] virtual Spectrum::Decode evaluate_illuminant_spectrum(
+            const Interaction& it, const SampledWavelengths& swl, Expr<float> time) const noexcept;
+
+    protected:
+    protected:
+        [[nodiscard]] Spectrum::Decode evaluate_static_albedo_spectrum_impl(
+            const SampledWavelengths& swl, float4 v) const noexcept;
+        [[nodiscard]] Spectrum::Decode evaluate_static_unbounded_spectrum_impl(
+            const SampledWavelengths& swl, float4 v) const noexcept;
+        [[nodiscard]] Spectrum::Decode evaluate_static_illuminant_spectrum_impl(
+            const SampledWavelengths& swl, float4 v) const noexcept;
     };
 
 public:
@@ -91,7 +108,9 @@ public:
 public:
     [[nodiscard]] virtual luisa::unique_ptr<Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept = 0;
 
-    // TODO 
+    [[nodiscard]] virtual luisa::optional<float4> evaluate_static() const noexcept { return luisa::nullopt; }
+    [[nodiscard]] virtual uint channels() const noexcept { return 4u; }
+    // TODO
     // is black
     // is constant
 };

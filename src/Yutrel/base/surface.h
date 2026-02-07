@@ -6,6 +6,7 @@
 #include "base/texture.h"
 #include "utils/command_buffer.h"
 #include "utils/polymorphic_closure.h"
+#include "utils/spectra.h"
 
 namespace Yutrel
 {
@@ -40,16 +41,16 @@ public:
 
     struct Evaluation
     {
-        Float3 f;
+        SampledSpectrum f;
         Float pdf;
-        Float3 f_diffuse;
+        SampledSpectrum f_diffuse;
         Float pdf_diffuse;
-        [[nodiscard]] static auto zero() noexcept
+        [[nodiscard]] static auto zero(uint dimension) noexcept
         {
             return Evaluation{
-                .f           = make_float3(0.f),
+                .f           = SampledSpectrum{dimension},
                 .pdf         = 0.f,
-                .f_diffuse   = make_float3(0.f),
+                .f_diffuse   = SampledSpectrum{dimension},
                 .pdf_diffuse = 0.f};
         }
     };
@@ -60,10 +61,10 @@ public:
         Float3 wi;
         UInt event;
 
-        [[nodiscard]] static auto zero() noexcept
+        [[nodiscard]] static auto zero(uint dimension) noexcept
         {
             return Sample{
-                .eval  = Evaluation::zero(),
+                .eval  = Evaluation::zero(dimension),
                 .wi    = make_float3(0.f, 0.f, 1.f),
                 .event = Surface::event_reflect};
         }
@@ -113,22 +114,23 @@ public:
         return static_cast<const T*>(m_surface);
     }
     [[nodiscard]] auto& renderer() const noexcept { return m_renderer; }
-    void closure(PolymorphicCall<Closure>& call, const Interaction& it, Expr<float> time) const noexcept;
+    void closure(PolymorphicCall<Closure>& call, const Interaction& it, SampledWavelengths& swl, Expr<float> time) const noexcept;
 
-    [[nodiscard]] virtual luisa::string closure_identifier() const noexcept                          = 0;
-    [[nodiscard]] virtual luisa::unique_ptr<Closure> create_closure(Expr<float> time) const noexcept = 0;
-    virtual void populate_closure(Closure* closure, const Interaction& it) const noexcept            = 0;
+    [[nodiscard]] virtual luisa::string closure_identifier() const noexcept                                                   = 0;
+    [[nodiscard]] virtual luisa::unique_ptr<Closure> create_closure(SampledWavelengths& swl, Expr<float> time) const noexcept = 0;
+    virtual void populate_closure(Closure* closure, const Interaction& it) const noexcept                                     = 0;
 };
 
 class Surface::Closure : public PolymorphicClosure
 {
 private:
     const Renderer& m_renderer;
+    const SampledWavelengths& m_swl;
     Float m_time;
 
 public:
-    explicit Closure(const Renderer& renderer, Float time) noexcept
-        : m_renderer{renderer}, m_time{time} {}
+    explicit Closure(const Renderer& renderer, const SampledWavelengths& swl, Float time) noexcept
+        : m_renderer{renderer}, m_swl{swl}, m_time{time} {}
     virtual ~Closure() noexcept override = default;
 
     Closure()                          = delete;
@@ -139,6 +141,7 @@ public:
 
 public:
     [[nodiscard]] auto& renderer() const noexcept { return m_renderer; }
+    [[nodiscard]] auto& swl() const noexcept { return m_swl; }
     [[nodiscard]] auto time() const noexcept { return m_time; }
     [[nodiscard]] virtual const Interaction& it() const noexcept = 0;
 
@@ -147,6 +150,6 @@ public:
 
 private:
     [[nodiscard]] virtual Surface::Sample sample_impl(Expr<float3> wo, Expr<float> u_lobe, Expr<float2> u) const noexcept = 0;
-    [[nodiscard]] virtual Surface::Evaluation evaluate_impl(Expr<float3> wo, Expr<float3> wi) const noexcept = 0;
+    [[nodiscard]] virtual Surface::Evaluation evaluate_impl(Expr<float3> wo, Expr<float3> wi) const noexcept              = 0;
 };
 } // namespace Yutrel

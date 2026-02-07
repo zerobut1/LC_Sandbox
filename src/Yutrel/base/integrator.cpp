@@ -14,6 +14,7 @@
 #include "utils/image_io.h"
 #include "utils/progress_bar.h"
 #include "utils/sampling.h"
+#include "utils/spectra.h"
 
 namespace Yutrel
 {
@@ -180,8 +181,10 @@ Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Ex
 
     auto [camera_ray, _, camera_weight] = camera->generate_ray(pixel_id, time, u_filter, u_lens);
 
-    Float3 Li   = make_float3(0.0f);
-    Float3 beta = make_float3(1.0f);
+    auto spectrum        = renderer().spectrum();
+    auto swl             = spectrum->sample(spectrum->base()->is_fixed() ? 0.0f : sampler()->generate_1d());
+    SampledSpectrum Li   = SampledSpectrum{swl.dimension(), 0.0f};
+    SampledSpectrum beta = {swl.dimension(), camera_weight};
 
     auto ray      = camera_ray;
     auto pdf_bsdf = def(1e16f);
@@ -196,7 +199,6 @@ Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Ex
         $if(!it->valid())
         {
             // no environment light for now
-            Li += beta * make_float3(0.0f);
             $break;
         };
 
@@ -207,7 +209,7 @@ Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Ex
             {
                 $if(it->shape.has_light())
                 {
-                    auto eval = light_sampler()->evaluate_hit(*it, ray->origin(), time);
+                    auto eval = light_sampler()->evaluate_hit(*it, ray->origin(), swl, time);
                     Li += beta * eval.L * balance_heuristic(pdf_bsdf, eval.pdf);
                 };
             };
@@ -219,10 +221,10 @@ Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Ex
         // sample light
         auto u_light_selection = sampler()->generate_1d();
         auto u_light_surface   = sampler()->generate_2d();
-        auto light_sample      = LightSampler::Sample::zero();
+        auto light_sample      = LightSampler::Sample::zero(swl.dimension());
         $outline
         {
-            light_sample = light_sampler()->sample(*it, u_light_selection, u_light_surface, time);
+            light_sample = light_sampler()->sample(*it, u_light_selection, u_light_surface, swl, time);
         };
 
         // cast shadow ray
@@ -242,9 +244,9 @@ Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Ex
             PolymorphicCall<Surface::Closure> call;
             renderer().surfaces().dispatch(it->shape.surface_tag(), [&](auto surface) noexcept
             {
-                surface->closure(call, *it, time);
+                surface->closure(call, *it, swl, time);
             });
-            call.execute([&](auto closure) noexcept
+            call.execute([&](const Surface::Closure* closure) noexcept
             {
                 // direct lighting
                 $if(light_sample.eval.pdf > 0.0f & !occluded)
@@ -264,8 +266,7 @@ Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Ex
             });
         };
 
-        auto q = max(max(beta.x, beta.y), beta.z);
-        q      = max(q, 0.05f);
+        auto q = max(beta.max(), 0.05f);
         $if(depth + 1u >= rr_depth())
         {
             $if(q < rr_threshold() & u_rr >= q)
@@ -276,7 +277,7 @@ Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Ex
         };
     };
 
-    Float3 color = Li * camera_weight;
+    Float3 color = spectrum->srgb(swl, Li);
 
     return color;
 };

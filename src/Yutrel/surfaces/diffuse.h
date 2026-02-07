@@ -34,7 +34,7 @@ public:
 
 public:
     [[nodiscard]] luisa::string closure_identifier() const noexcept override { return "Diffuse"; }
-    [[nodiscard]] luisa::unique_ptr<Surface::Closure> create_closure(Expr<float> time) const noexcept override;
+    [[nodiscard]] luisa::unique_ptr<Surface::Closure> create_closure(SampledWavelengths& swl, Expr<float> time) const noexcept override;
     void populate_closure(Surface::Closure* closure, const Interaction& it) const noexcept override;
 };
 
@@ -44,7 +44,7 @@ public:
     struct Context
     {
         Interaction it;
-        Float3 reflectance;
+        SampledSpectrum reflectance;
     };
 
 public:

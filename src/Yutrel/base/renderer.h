@@ -4,6 +4,7 @@
 
 #include "base/camera.h"
 #include "base/light.h"
+#include "base/spectrum.h"
 #include "base/surface.h"
 #include "base/texture.h"
 
@@ -31,6 +32,7 @@ private:
     luisa::unordered_map<const Light*, uint> m_light_tags;
     luisa::unordered_map<const Texture*, luisa::unique_ptr<Texture::Instance>> m_textures;
 
+    luisa::unique_ptr<Spectrum::Instance> m_spectrum;
     luisa::unique_ptr<Camera::Instance> m_camera;
     luisa::unique_ptr<Integrator> m_integrator;
     luisa::unique_ptr<Geometry> m_geometry;
@@ -102,6 +104,7 @@ public:
     void render_interactive(Stream& stream);
 
     [[nodiscard]] auto& device() const noexcept { return m_device; }
+    [[nodiscard]] auto spectrum() const noexcept { return m_spectrum.get(); }
     [[nodiscard]] auto camera() const noexcept { return m_camera.get(); }
     [[nodiscard]] auto integrator() const noexcept { return m_integrator.get(); }
     [[nodiscard]] auto geometry() const noexcept { return m_geometry.get(); }

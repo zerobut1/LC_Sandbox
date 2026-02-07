@@ -26,9 +26,9 @@ LightSampler::LightSampler(Renderer& renderer, CommandBuffer& command_buffer) no
     }
 }
 
-LightSampler::Evaluation LightSampler::evaluate_hit(const Interaction& it, Expr<float3> p_from, Expr<float> time) const noexcept
+LightSampler::Evaluation LightSampler::evaluate_hit(const Interaction& it, Expr<float3> p_from, const SampledWavelengths& swl, Expr<float> time) const noexcept
 {
-    auto eval = Light::Evaluation::zero();
+    auto eval = Light::Evaluation::zero(swl.dimension());
 
     if (renderer().lights().empty()) [[unlikely]]
     {
@@ -37,7 +37,7 @@ LightSampler::Evaluation LightSampler::evaluate_hit(const Interaction& it, Expr<
     };
     renderer().lights().dispatch(it.shape.light_tag(), [&](auto light) noexcept
     {
-        auto closure = light->closure(time);
+        auto closure = light->closure(swl, time);
         eval         = closure->evaluate(it, p_from);
     });
     auto n = static_cast<float>(renderer().lights().size());
@@ -45,15 +45,15 @@ LightSampler::Evaluation LightSampler::evaluate_hit(const Interaction& it, Expr<
     return eval;
 }
 
-LightSampler::Sample LightSampler::sample(const Interaction& it_from, Expr<float> u_select, Expr<float2> u_light, Expr<float> time) const noexcept
+LightSampler::Sample LightSampler::sample(const Interaction& it_from, Expr<float> u_select, Expr<float2> u_light, const SampledWavelengths& swl, Expr<float> time) const noexcept
 {
     if (renderer().lights().empty())
     {
-        return Sample::zero();
+        return Sample::zero(swl.dimension());
     }
 
     Selection sel = select(it_from, u_select, time);
-    return sample_selection(it_from, sel, u_light, time);
+    return sample_selection(it_from, sel, u_light, swl, time);
 }
 
 LightSampler::Selection LightSampler::select(const Interaction& it_from, Expr<float> u, Expr<float> time) const noexcept
@@ -64,12 +64,12 @@ LightSampler::Selection LightSampler::select(const Interaction& it_from, Expr<fl
     return {.tag = cast<uint>(clamp(u * n, 0.0f, n - 1.0f)), .prob = 1.0f / n};
 }
 
-LightSampler::Sample LightSampler::sample_selection(const Interaction& it_from, const Selection& sel, Expr<float2> u, Expr<float> time) const noexcept
+LightSampler::Sample LightSampler::sample_selection(const Interaction& it_from, const Selection& sel, Expr<float2> u, const SampledWavelengths& swl, Expr<float> time) const noexcept
 {
-    auto sample = Sample::zero();
+    auto sample = Sample::zero(swl.dimension());
     if (!renderer().lights().empty())
     {
-        sample = sample_light(it_from, sel, u, time);
+        sample = sample_light(it_from, sel, u, swl, time);
     }
     return sample;
 }
@@ -86,29 +86,29 @@ auto LightSampler::sample_area(Expr<float3> p_from, Expr<uint> tag, Expr<float2>
     auto attrib                = renderer().geometry()->shading_point(light_inst, triangle, uv, light_to_world);
 
     return luisa::make_shared<Interaction>(Interaction{
-        .shape      = std::move(light_inst),
-        .p_g        = attrib.pg,
-        .n_g        = attrib.ng,
-        .uv         = attrib.uv,
-        .p_s        = attrib.pg,
-        .shading    = Frame::make(attrib.ns, attrib.dpdu),
-        .inst_id    = handle.instance_id,
-        .prim_id    = triangle_id,
-        .prim_area  = attrib.area,
+        .shape     = std::move(light_inst),
+        .p_g       = attrib.pg,
+        .n_g       = attrib.ng,
+        .uv        = attrib.uv,
+        .p_s       = attrib.pg,
+        .shading   = Frame::make(attrib.ns, attrib.dpdu),
+        .inst_id   = handle.instance_id,
+        .prim_id   = triangle_id,
+        .prim_area = attrib.area,
         // Match hit-case convention: front_face is true when the outgoing direction
         // (from light point to shading point) lies in the +ng hemisphere.
         .front_face = dot(attrib.ng, p_from - attrib.pg) > 0.0f,
     });
 }
 
-LightSampler::Sample LightSampler::sample_light(const Interaction& it_from, const Selection& sel, Expr<float2> u, Expr<float> time) const noexcept
+LightSampler::Sample LightSampler::sample_light(const Interaction& it_from, const Selection& sel, Expr<float2> u, const SampledWavelengths& swl, Expr<float> time) const noexcept
 {
     LUISA_ASSERT(!renderer().lights().empty(), "No lights in the scene.");
     auto it   = sample_area(it_from.p_g, sel.tag, u);
-    auto eval = Light::Evaluation::zero();
+    auto eval = Light::Evaluation::zero(swl.dimension());
     renderer().lights().dispatch(it->shape.light_tag(), [&](auto light) noexcept
     {
-        auto closure = light->closure(time);
+        auto closure = light->closure(swl, time);
         eval         = closure->evaluate(*it, it_from.p_s);
     });
     Light::Sample light_sample = {.eval = std::move(eval), .p = it->p_g};
@@ -117,9 +117,9 @@ LightSampler::Sample LightSampler::sample_light(const Interaction& it_from, cons
     return Sample::from_light(light_sample, it_from);
 }
 
-LightSampler::Sample LightSampler::Sample::zero() noexcept
+LightSampler::Sample LightSampler::Sample::zero(uint dimension) noexcept
 {
-    return Sample{.eval = Evaluation::zero(), .shadow_ray = {}};
+    return Sample{.eval = Evaluation::zero(dimension), .shadow_ray = {}};
 }
 
 LightSampler::Sample LightSampler::Sample::from_light(const Light::Sample& s, const Interaction& it_from) noexcept

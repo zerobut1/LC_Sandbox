@@ -27,7 +27,7 @@ luisa::unique_ptr<Texture::Instance> ImageTexture::build(Renderer& renderer, Com
     return luisa::make_unique<ImageTexture::Instance>(renderer, this, tex_id);
 }
 
-Float4 ImageTexture::Instance::evaluate(const Interaction& it) const noexcept
+Float4 ImageTexture::Instance::evaluate(const Interaction& it, Expr<float> time) const noexcept
 {
     auto v = renderer().tex2d(m_texture_id).sample(it.uv);
 

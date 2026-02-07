@@ -15,7 +15,7 @@ public:
             : Texture::Instance(renderer, texture) {}
         ~Instance() noexcept override = default;
 
-        Float4 evaluate(const Interaction& it) const noexcept override;
+        Float4 evaluate(const Interaction& it, Expr<float> time) const noexcept override;
     };
 
 private:
@@ -27,5 +27,7 @@ public:
 
 public:
     [[nodiscard]] luisa::unique_ptr<Texture::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept override;
+
+    luisa::optional<float4> evaluate_static() const noexcept override { return m_v; }
 };
 } // namespace Yutrel

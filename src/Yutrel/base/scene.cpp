@@ -7,6 +7,7 @@ struct Scene::Config
     luisa::unique_ptr<Camera> camera;
     luisa::unique_ptr<Film> film;
     luisa::unique_ptr<Filter> filter;
+    luisa::unique_ptr<Spectrum> spectrum;
     luisa::vector<luisa::unique_ptr<Shape>> shapes;
     luisa::vector<luisa::unique_ptr<Surface>> surfaces;
     luisa::vector<luisa::unique_ptr<Light>> lights;
@@ -25,6 +26,8 @@ luisa::unique_ptr<Scene> Scene::create(const Context& context, const CreateInfo&
 {
     auto scene = luisa::make_unique<Scene>(context);
 
+    scene->load_spectrum(info.spectrum_info);
+
     scene->load_camera(info.camera_info);
 
     scene->m_config->shapes_view.reserve(info.shape_infos.size());
@@ -33,6 +36,11 @@ luisa::unique_ptr<Scene> Scene::create(const Context& context, const CreateInfo&
         scene->m_config->shapes_view.emplace_back(scene->load_shape(shape_info));
     }
     return scene;
+}
+
+void Scene::load_spectrum(const Spectrum::CreateInfo& info) noexcept
+{
+    m_config->spectrum = Spectrum::create(*this, info);
 }
 
 void Scene::load_camera(const Camera::CreateInfo& info) noexcept
@@ -78,6 +86,11 @@ const Light* Scene::load_light(const Light::CreateInfo& info) noexcept
 const Texture* Scene::load_texture(const Texture::CreateInfo& info) noexcept
 {
     return m_config->textures.emplace_back(Texture::create(*this, info)).get();
+}
+
+const Spectrum* Scene::spectrum() const noexcept
+{
+    return m_config->spectrum.get();
 }
 
 const Camera* Scene::camera() const noexcept

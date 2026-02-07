@@ -29,7 +29,7 @@ luisa::unique_ptr<Texture::Instance> CheckerBoard::build(Renderer& renderer, Com
     return luisa::make_unique<CheckerBoard::Instance>(renderer, this, even, odd);
 }
 
-Float4 CheckerBoard::Instance::evaluate(const Interaction& it) const noexcept
+Float4 CheckerBoard::Instance::evaluate(const Interaction& it, Expr<float> time) const noexcept
 {
     auto inv_scale = 1.0f / base<CheckerBoard>()->scale();
     auto position  = it.p_g;
@@ -39,6 +39,6 @@ Float4 CheckerBoard::Instance::evaluate(const Interaction& it) const noexcept
     auto z_integer = static_cast<Int>(floor(inv_scale * position.z));
 
     auto is_even = (x_integer + y_integer + z_integer) % 2 == 0;
-    return ite(is_even, m_even->evaluate(it), m_odd->evaluate(it));
+    return ite(is_even, m_even->evaluate(it, time), m_odd->evaluate(it, time));
 }
 } // namespace Yutrel

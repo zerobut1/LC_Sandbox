@@ -53,6 +53,9 @@ luisa::unique_ptr<Renderer> Renderer::create(Device& device, Stream& stream, con
         }
     };
 
+    renderer->m_spectrum = scene.spectrum()->build(*renderer, command_buffer);
+    update_bindless_if_dirty();
+
     renderer->m_camera = scene.camera()->build(*renderer, command_buffer);
     update_bindless_if_dirty();
 

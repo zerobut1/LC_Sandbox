@@ -4,6 +4,7 @@
 
 #include "base/camera.h"
 #include "base/light.h"
+#include "base/spectrum.h"
 #include "base/surface.h"
 #include "base/texture.h"
 
@@ -25,15 +26,19 @@ private:
     BindlessArray m_bindless_array;
     size_t m_bindless_buffer_count{0u};
     size_t m_bindless_tex2d_count{0u};
+    size_t m_bindless_tex3d_count{0u};
     Polymorphic<Surface::Instance> m_surfaces;
     Polymorphic<Light::Instance> m_lights;
     luisa::unordered_map<const Surface*, uint> m_surface_tags;
     luisa::unordered_map<const Light*, uint> m_light_tags;
     luisa::unordered_map<const Texture*, luisa::unique_ptr<Texture::Instance>> m_textures;
 
+    luisa::unique_ptr<Spectrum::Instance> m_spectrum;
     luisa::unique_ptr<Camera::Instance> m_camera;
     luisa::unique_ptr<Integrator> m_integrator;
     luisa::unique_ptr<Geometry> m_geometry;
+
+    luisa::unordered_map<luisa::string, uint> m_named_ids;
 
 public:
     explicit Renderer(Device& device) noexcept;
@@ -92,8 +97,28 @@ public:
         return static_cast<uint>(tex2d_id);
     }
 
+    template <typename T>
+    [[nodiscard]] auto register_bindless(const Volume<T>& volume, TextureSampler sampler) noexcept
+    {
+        auto tex3d_id = m_bindless_tex3d_count++;
+        m_bindless_array.emplace_on_update(tex3d_id, volume, sampler);
+        return static_cast<uint>(tex3d_id);
+    }
+
     [[nodiscard]] uint register_surface(CommandBuffer& command_buffer, const Surface* surface) noexcept;
     [[nodiscard]] uint register_light(CommandBuffer& command_buffer, const Light* light) noexcept;
+
+    template <typename Create>
+    uint register_named_id(luisa::string_view identifier, Create&& create_id) noexcept
+    {
+        if (auto it = m_named_ids.find(identifier); it != m_named_ids.end())
+        {
+            return it->second;
+        }
+        auto new_id = std::invoke(std::forward<Create>(create_id));
+        m_named_ids.emplace(identifier, new_id);
+        return new_id;
+    }
 
 public:
     [[nodiscard]] static luisa::unique_ptr<Renderer> create(Device& device, Stream& stream, const Scene& scene) noexcept;
@@ -102,6 +127,9 @@ public:
     void render_interactive(Stream& stream);
 
     [[nodiscard]] auto& device() const noexcept { return m_device; }
+    [[nodiscard]] auto& bindless_array() noexcept { return m_bindless_array; }
+    [[nodiscard]] auto& bindless_array() const noexcept { return m_bindless_array; }
+    [[nodiscard]] auto spectrum() const noexcept { return m_spectrum.get(); }
     [[nodiscard]] auto camera() const noexcept { return m_camera.get(); }
     [[nodiscard]] auto integrator() const noexcept { return m_integrator.get(); }
     [[nodiscard]] auto geometry() const noexcept { return m_geometry.get(); }

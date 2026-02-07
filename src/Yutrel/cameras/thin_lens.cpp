@@ -12,7 +12,7 @@ ThinLensCamera::ThinLensCamera(Scene& scene, const Camera::CreateInfo& info) noe
       m_focal_length(info.focal_length),
       m_focus_distance(info.focus_distance)
 {
-    m_focus_distance = max(m_focus_distance, 1e-4f);
+    m_focus_distance = luisa::max(m_focus_distance, 1e-4f);
 }
 
 luisa::unique_ptr<Camera::Instance> ThinLensCamera::build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept
@@ -33,10 +33,10 @@ ThinLensCamera::Instance::Instance(Renderer& renderer, CommandBuffer& command_bu
     auto pixel_offset           = 0.5f * resolution;
     auto projected_pixel_size =
         resolution.x > resolution.y
-            ? min(static_cast<float>(object_to_sensor_ratio * .036 / resolution.x),
-                  static_cast<float>(object_to_sensor_ratio * .024 / resolution.y))
-            : min(static_cast<float>(object_to_sensor_ratio * .024 / resolution.x),
-                  static_cast<float>(object_to_sensor_ratio * .036 / resolution.y));
+            ? luisa::min(static_cast<float>(object_to_sensor_ratio * .036 / resolution.x),
+                         static_cast<float>(object_to_sensor_ratio * .024 / resolution.y))
+            : luisa::min(static_cast<float>(object_to_sensor_ratio * .024 / resolution.x),
+                         static_cast<float>(object_to_sensor_ratio * .036 / resolution.y));
 
     ThinLensCameraData host_data{
         .pixel_offset         = pixel_offset,

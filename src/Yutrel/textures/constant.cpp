@@ -10,7 +10,7 @@ luisa::unique_ptr<Texture::Instance> ConstantTexture::build(Renderer& renderer, 
     return luisa::make_unique<ConstantTexture::Instance>(renderer, this);
 }
 
-Float4 ConstantTexture::Instance::evaluate(const Interaction& it) const noexcept
+Float4 ConstantTexture::Instance::evaluate(const Interaction& it, Expr<float> time) const noexcept
 {
     return base<ConstantTexture>()->m_v;
 }

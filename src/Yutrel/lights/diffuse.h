@@ -35,14 +35,14 @@ public:
         : Light::Instance(renderer, light), m_emission(emission) {}
 
     [[nodiscard]] auto texture() const noexcept { return m_emission; }
-    [[nodiscard]] luisa::unique_ptr<Light::Closure> closure(Expr<float> time) const noexcept override;
+    [[nodiscard]] luisa::unique_ptr<Light::Closure> closure(const SampledWavelengths& swl, Expr<float> time) const noexcept override;
 };
 
 class DiffuseLight::Closure : public Light::Closure
 {
 public:
-    Closure(const Light::Instance* instance, Expr<float> time) noexcept
-        : Light::Closure(instance, time) {}
+    Closure(const Light::Instance* instance, const SampledWavelengths& swl, Expr<float> time) noexcept
+        : Light::Closure(instance, swl, time) {}
 
     [[nodiscard]] Evaluation evaluate(const Interaction& it_light, Expr<float3> p_from) const noexcept override;
 };

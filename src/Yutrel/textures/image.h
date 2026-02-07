@@ -18,7 +18,7 @@ public:
             : Texture::Instance(renderer, texture), m_texture_id(texture_id) {}
         ~Instance() noexcept override = default;
 
-        [[nodiscard]] Float4 evaluate(const Interaction& it) const noexcept override;
+        [[nodiscard]] Float4 evaluate(const Interaction& it, Expr<float> time) const noexcept override;
 
         [[nodiscard]] Float4 decode(Expr<float4> rgba) const noexcept;
     };

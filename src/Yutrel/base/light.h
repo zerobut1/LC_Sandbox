@@ -4,6 +4,7 @@
 
 #include "base/texture.h"
 #include "utils/command_buffer.h"
+#include "utils/spectra.h"
 
 namespace Yutrel
 {
@@ -24,14 +25,14 @@ public:
 
     struct Evaluation
     {
-        Float3 L;
+        SampledSpectrum L;
         Float pdf;
         Float3 p;
         Float3 ng;
-        [[nodiscard]] static auto zero() noexcept
+        [[nodiscard]] static auto zero(uint dimension) noexcept
         {
             return Evaluation{
-                .L   = make_float3(0.0f),
+                .L   = SampledSpectrum{dimension},
                 .pdf = 0.0f,
                 .p   = make_float3(0.0f),
                 .ng  = make_float3(0.0f),
@@ -43,9 +44,9 @@ public:
     {
         Evaluation eval;
         Float3 p;
-        [[nodiscard]] static auto zero() noexcept
+        [[nodiscard]] static auto zero(uint dimension) noexcept
         {
-            return Sample{.eval = Evaluation::zero(), .p = make_float3()};
+            return Sample{.eval = Evaluation::zero(dimension), .p = make_float3()};
         }
     };
 
@@ -112,7 +113,7 @@ public:
     }
 
     [[nodiscard]] auto& renderer() const noexcept { return m_renderer; }
-    [[nodiscard]] virtual luisa::unique_ptr<Closure> closure(Expr<float> time) const noexcept = 0;
+    [[nodiscard]] virtual luisa::unique_ptr<Closure> closure(const SampledWavelengths& swl, Expr<float> time) const noexcept = 0;
 };
 
 class Light::Closure
@@ -121,11 +122,12 @@ private:
     const Instance* m_instance;
 
 private:
+    const SampledWavelengths& m_swl;
     Float m_time;
 
 public:
-    explicit Closure(const Instance* instance, Expr<float> time) noexcept
-        : m_instance{instance}, m_time{time} {}
+    explicit Closure(const Instance* instance, const SampledWavelengths& swl, Expr<float> time) noexcept
+        : m_instance{instance}, m_swl{swl}, m_time{time} {}
     virtual ~Closure() noexcept = default;
 
     Closure()                          = delete;
@@ -142,6 +144,7 @@ public:
         return static_cast<const T*>(m_instance);
     }
 
+    [[nodiscard]] auto& swl() const noexcept { return m_swl; }
     [[nodiscard]] auto time() const noexcept { return m_time; }
 
     [[nodiscard]] virtual Evaluation evaluate(const Interaction& it_light, Expr<float3> p_from) const noexcept = 0;

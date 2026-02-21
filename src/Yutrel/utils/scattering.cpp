@@ -1,4 +1,4 @@
-#include "scattering.h "
+#include "scattering.h"
 
 namespace Yutrel
 {

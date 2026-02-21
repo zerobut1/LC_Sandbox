@@ -13,15 +13,28 @@ after_load(function()
 		return
 	end
 
+	-- CUDA只在Windows和Linux上可用
+	if not is_plat("windows", "linux") then
+		return
+	end
+
 	local cuda_path = os.getenv("CUDA_PATH")
 	if cuda_path == nil or cuda_path == "" then
 		wprint("CUDA_PATH is not set; cannot locate cudadevrt.lib. CUDA indirect dispatch will remain unavailable.")
 		return
 	end
 
-	local cudadevrt = path.join(cuda_path, "lib", "x64", "cudadevrt.lib")
+	-- 根据平台构建正确的路径
+	local cudadevrt
+	if is_plat("windows") then
+		cudadevrt = path.join(cuda_path, "lib", "x64", "cudadevrt.lib")
+	else
+		-- Linux
+		cudadevrt = path.join(cuda_path, "lib64", "libcudadevrt.a")
+	end
+
 	if not os.isfile(cudadevrt) then
-		wprint("cudadevrt.lib not found at '%s'. CUDA indirect dispatch will remain unavailable.", cudadevrt)
+		wprint("cudadevrt library not found at '%s'. CUDA indirect dispatch will remain unavailable.", cudadevrt)
 		return
 	end
 

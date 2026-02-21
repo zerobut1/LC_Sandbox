@@ -8,7 +8,7 @@ int main(int argc, char* argv[])
 {
     if (argc <= 1)
     {
-        LUISA_ERROR("Usage: {} <backend> [--interactive|-i]. <backend>: cuda, dx, vk", argv[0]);
+        LUISA_ERROR("Usage: {} <backend> [--interactive|-i]. <backend>: cuda, dx, metal", argv[0]);
         exit(1);
     }
 

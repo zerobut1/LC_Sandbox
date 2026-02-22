@@ -181,10 +181,10 @@ Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Ex
 
     auto [camera_ray, _, camera_weight] = camera->generate_ray(pixel_id, time, u_filter, u_lens);
 
-    auto spectrum        = renderer().spectrum();
-    auto swl             = spectrum->sample(spectrum->base()->is_fixed() ? 0.0f : sampler()->generate_1d());
-    SampledSpectrum Li   = SampledSpectrum{swl.dimension(), 0.0f};
-    SampledSpectrum beta = {swl.dimension(), camera_weight};
+    auto spectrum = renderer().spectrum();
+    auto swl      = spectrum->sample(spectrum->base()->is_fixed() ? 0.0f : sampler()->generate_1d());
+    SampledSpectrum Li{swl.dimension(), 0.0f};
+    SampledSpectrum beta{swl.dimension(), camera_weight};
 
     auto ray      = camera_ray;
     auto pdf_bsdf = def(1e16f);

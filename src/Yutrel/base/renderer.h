@@ -37,6 +37,8 @@ private:
     luisa::unique_ptr<Integrator> m_integrator;
     luisa::unique_ptr<Geometry> m_geometry;
 
+    luisa::unordered_map<luisa::string, uint> m_named_ids;
+
 public:
     explicit Renderer(Device& device) noexcept;
     ~Renderer() noexcept;
@@ -96,6 +98,18 @@ public:
 
     [[nodiscard]] uint register_surface(CommandBuffer& command_buffer, const Surface* surface) noexcept;
     [[nodiscard]] uint register_light(CommandBuffer& command_buffer, const Light* light) noexcept;
+
+    template <typename Create>
+    uint register_named_id(luisa::string_view identifier, Create&& create_id) noexcept
+    {
+        if (auto it = m_named_ids.find(identifier); it != m_named_ids.end())
+        {
+            return it->second;
+        }
+        auto new_id = std::invoke(std::forward<Create>(create_id));
+        m_named_ids.emplace(identifier, new_id);
+        return new_id;
+    }
 
 public:
     [[nodiscard]] static luisa::unique_ptr<Renderer> create(Device& device, Stream& stream, const Scene& scene) noexcept;

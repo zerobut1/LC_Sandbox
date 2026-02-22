@@ -27,5 +27,7 @@ public:
 
 public:
     [[nodiscard]] luisa::unique_ptr<Texture::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept override;
+
+    luisa::optional<float4> evaluate_static() const noexcept override { return m_v; }
 };
 } // namespace Yutrel

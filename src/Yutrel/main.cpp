@@ -30,6 +30,9 @@ int main(int argc, char* argv[])
 
     auto& scene_info = app_info.scene_info;
 
+    scene_info.spectrum_info = {
+        .type = Spectrum::Type::HeroWavelength,
+    };
     scene_info.camera_info = {
         .type      = Camera::Type::pinhole,
         .film_info = {

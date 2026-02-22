@@ -11,7 +11,7 @@ public:
     class Instance : public Spectrum::Instance
     {
     public:
-        explicit Instance(const Renderer& renderer, CommandBuffer& command_buffer, const Spectrum* spectrum) noexcept
+        explicit Instance(Renderer& renderer, CommandBuffer& command_buffer, const Spectrum* spectrum) noexcept
             : Spectrum::Instance(renderer, command_buffer, spectrum) {}
 
         [[nodiscard]] SampledWavelengths sample(Expr<float>) const noexcept override
@@ -90,12 +90,13 @@ public:
     SRGBSpectrum(Scene& scene, const CreateInfo& info) noexcept
         : Spectrum(scene, info) {}
 
-    [[nodiscard]] bool is_fixed() const noexcept override { return true; }
-    [[nodiscard]] uint dimension() const noexcept override { return 3u; }
-    [[nodiscard]] luisa::unique_ptr<Spectrum::Instance> build(const Renderer& renderer, CommandBuffer& command_buffer) const noexcept override
+    [[nodiscard]] luisa::unique_ptr<Spectrum::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept override
     {
         return luisa::make_unique<Instance>(renderer, command_buffer, this);
     }
+
+    [[nodiscard]] bool is_fixed() const noexcept override { return true; }
+    [[nodiscard]] uint dimension() const noexcept override { return 3u; }
     [[nodiscard]] float4 encode_static_srgb_albedo(float3 rgb) const noexcept override { return make_float4(clamp(rgb, 0.f, 1.f), 1.f); }
     [[nodiscard]] float4 encode_static_srgb_unbounded(float3 rgb) const noexcept override { return make_float4(rgb, 1.f); }
     [[nodiscard]] float4 encode_static_srgb_illuminant(float3 rgb) const noexcept override { return make_float4(max(rgb, 0.f), 1.f); }

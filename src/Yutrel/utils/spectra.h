@@ -8,6 +8,17 @@ namespace Yutrel
 using namespace luisa;
 using namespace luisa::compute;
 
+constexpr float visible_wavelength_min = 360.0f;
+constexpr float visible_wavelength_max = 830.0f;
+constexpr auto cie_sample_count        = static_cast<uint>(
+    visible_wavelength_max - visible_wavelength_min + 1.0f);
+static_assert(cie_sample_count == 471u);
+
+extern const std::array<float, cie_sample_count> cie_x_samples;
+extern const std::array<float, cie_sample_count> cie_y_samples;
+extern const std::array<float, cie_sample_count> cie_z_samples;
+extern const std::array<float, cie_sample_count> cie_d65_samples;
+
 class SampledSpectrum
 {
 

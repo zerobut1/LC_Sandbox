@@ -3,6 +3,7 @@
 #include <luisa/core/stl.h>
 #include <luisa/dsl/syntax.h>
 
+#include "base/spd.h"
 #include "utils/spectra.h"
 
 namespace Yutrel
@@ -30,8 +31,15 @@ public:
     };
 
 public:
+    enum class Type
+    {
+        SRGB,
+        HeroWavelength,
+    };
+
     struct CreateInfo
     {
+        Type type{Type::SRGB};
     };
 
     static luisa::unique_ptr<Spectrum> create(Scene& scene, const CreateInfo& info) noexcept;
@@ -43,8 +51,12 @@ public:
         const Renderer& m_renderer;
         const Spectrum* m_spectrum;
 
+        SPD m_cie_x;
+        SPD m_cie_y;
+        SPD m_cie_z;
+
     public:
-        explicit Instance(const Renderer& renderer, CommandBuffer& command_buffer, const Spectrum* spectrum) noexcept;
+        explicit Instance(Renderer& renderer, CommandBuffer& command_buffer, const Spectrum* spectrum) noexcept;
         ~Instance() noexcept = default;
 
     public:
@@ -72,7 +84,7 @@ public:
     virtual ~Spectrum() noexcept = default;
 
 public:
-    [[nodiscard]] virtual luisa::unique_ptr<Instance> build(const Renderer& renderer, CommandBuffer& command_buffer) const noexcept = 0;
+    [[nodiscard]] virtual luisa::unique_ptr<Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept = 0;
 
     [[nodiscard]] virtual bool is_fixed() const noexcept                                  = 0;
     [[nodiscard]] virtual uint dimension() const noexcept                                 = 0;

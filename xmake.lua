@@ -1,6 +1,5 @@
 add_rules("mode.debug", "mode.release", "mode.releasedbg")
 
-
 set_languages("cxx20")
 set_encodings("utf-8")
 

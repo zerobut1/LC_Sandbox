@@ -37,15 +37,14 @@ Light::Evaluation DiffuseLight::Closure::evaluate(const Interaction& it_light, E
         auto pdf_triangle = renderer.buffer<float>(it_light.shape.pdf_buffer_id()).read(it_light.prim_id);
         auto pdf_area     = pdf_triangle / it_light.prim_area;
         auto cos_wo       = abs(dot(normalize(p_from - it_light.p_g), it_light.n_g));
-        // TODO: evaluate_illuminant_spectrum
-        auto L         = light->texture()->evaluate_illuminant_spectrum(it_light, swl(), time()).value;
-        auto pdf       = distance_squared(it_light.p_g, p_from) * pdf_area * (1.0f / cos_wo);
-        auto two_sided = light->base<DiffuseLight>()->two_sided();
-        auto invalid   = abs(cos_wo) < 1e-6f | (!two_sided & !it_light.front_face);
-        eval           = {.L   = ite(invalid, 0.0f, L),
-                          .pdf = ite(invalid, 0.0f, pdf),
-                          .p   = it_light.p_g,
-                          .ng  = it_light.shading.n()};
+        auto L            = light->texture()->evaluate_illuminant_spectrum(it_light, swl(), time()).value;
+        auto pdf          = distance_squared(it_light.p_g, p_from) * pdf_area * (1.0f / cos_wo);
+        auto two_sided    = light->base<DiffuseLight>()->two_sided();
+        auto invalid      = abs(cos_wo) < 1e-6f | (!two_sided & !it_light.front_face);
+        eval              = {.L   = ite(invalid, 0.0f, L),
+                             .pdf = ite(invalid, 0.0f, pdf),
+                             .p   = it_light.p_g,
+                             .ng  = it_light.shading.n()};
     };
     return eval;
 }

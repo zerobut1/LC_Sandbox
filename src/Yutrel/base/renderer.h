@@ -26,6 +26,7 @@ private:
     BindlessArray m_bindless_array;
     size_t m_bindless_buffer_count{0u};
     size_t m_bindless_tex2d_count{0u};
+    size_t m_bindless_tex3d_count{0u};
     Polymorphic<Surface::Instance> m_surfaces;
     Polymorphic<Light::Instance> m_lights;
     luisa::unordered_map<const Surface*, uint> m_surface_tags;
@@ -96,6 +97,14 @@ public:
         return static_cast<uint>(tex2d_id);
     }
 
+    template <typename T>
+    [[nodiscard]] auto register_bindless(const Volume<T>& volume, TextureSampler sampler) noexcept
+    {
+        auto tex3d_id = m_bindless_tex3d_count++;
+        m_bindless_array.emplace_on_update(tex3d_id, volume, sampler);
+        return static_cast<uint>(tex3d_id);
+    }
+
     [[nodiscard]] uint register_surface(CommandBuffer& command_buffer, const Surface* surface) noexcept;
     [[nodiscard]] uint register_light(CommandBuffer& command_buffer, const Light* light) noexcept;
 
@@ -118,6 +127,8 @@ public:
     void render_interactive(Stream& stream);
 
     [[nodiscard]] auto& device() const noexcept { return m_device; }
+    [[nodiscard]] auto& bindless_array() noexcept { return m_bindless_array; }
+    [[nodiscard]] auto& bindless_array() const noexcept { return m_bindless_array; }
     [[nodiscard]] auto spectrum() const noexcept { return m_spectrum.get(); }
     [[nodiscard]] auto camera() const noexcept { return m_camera.get(); }
     [[nodiscard]] auto integrator() const noexcept { return m_integrator.get(); }

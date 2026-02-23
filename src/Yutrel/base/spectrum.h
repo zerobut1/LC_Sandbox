@@ -66,6 +66,7 @@ public:
         {
             return static_cast<const T*>(m_spectrum);
         }
+        [[nodiscard]] auto& renderer() const noexcept { return m_renderer; }
 
         [[nodiscard]] virtual SampledWavelengths sample(Expr<float> u) const noexcept                                = 0;
         [[nodiscard]] virtual Float4 encode_srgb_albedo(Expr<float3> rgb) const noexcept                             = 0;

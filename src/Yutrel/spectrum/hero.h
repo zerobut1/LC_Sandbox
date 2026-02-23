@@ -13,20 +13,16 @@ public:
     class Instance : public Spectrum::Instance
     {
     private:
-        [[nodiscard]] static Float gaussian(Expr<float> lambda, float mean, float sigma) noexcept;
-        [[nodiscard]] static SampledSpectrum decode_from_srgb(
-            const SampledWavelengths& swl, Expr<float3> rgb) noexcept;
+        SPD m_illum_d65;
+        uint m_rgb2spec_t0;
 
     public:
-        explicit Instance(Renderer& renderer, CommandBuffer& command_buffer, const Spectrum* spectrum) noexcept;
+        explicit Instance(Renderer& renderer, CommandBuffer& command_buffer, const Spectrum* spectrum, uint t0) noexcept;
 
         [[nodiscard]] SampledWavelengths sample(Expr<float> u) const noexcept override;
         [[nodiscard]] Spectrum::Decode decode_albedo(const SampledWavelengths& swl, Expr<float4> v) const noexcept override;
         [[nodiscard]] Spectrum::Decode decode_unbounded(const SampledWavelengths& swl, Expr<float4> v) const noexcept override;
         [[nodiscard]] Spectrum::Decode decode_illuminant(const SampledWavelengths& swl, Expr<float4> v) const noexcept override;
-        [[nodiscard]] Float cie_y(const SampledWavelengths& swl, const SampledSpectrum& sp) const noexcept override;
-        [[nodiscard]] Float3 cie_xyz(const SampledWavelengths& swl, const SampledSpectrum& sp) const noexcept override;
-        [[nodiscard]] Float3 srgb(const SampledWavelengths& swl, const SampledSpectrum& sp) const noexcept override;
         [[nodiscard]] Float4 encode_srgb_albedo(Expr<float3> rgb) const noexcept override;
         [[nodiscard]] Float4 encode_srgb_unbounded(Expr<float3> rgb) const noexcept override;
         [[nodiscard]] Float4 encode_srgb_illuminant(Expr<float3> rgb) const noexcept override;

@@ -1,3 +1,3 @@
 -- includes("MNIST")
-includes("pathtracing")
-includes("ShaderToy")
+-- includes("pathtracing")
+-- includes("ShaderToy")

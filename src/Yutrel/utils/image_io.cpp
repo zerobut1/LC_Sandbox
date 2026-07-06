@@ -7,7 +7,6 @@
 
 #include <luisa/core/logging.h>
 
-#define TINYEXR_IMPLEMENTATION
 #include <tinyexr.h>
 
 namespace Yutrel

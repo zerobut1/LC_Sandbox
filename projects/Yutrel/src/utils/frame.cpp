@@ -44,4 +44,11 @@ void Frame::flip() noexcept
     m_n = -m_n;
     m_t = -m_t;
 }
+
+Frame Frame::flipped(Expr<bool> flip) const noexcept
+{
+    return {m_s,
+            ite(flip, -m_t, m_t),
+            ite(flip, -m_n, m_n)};
+}
 } // namespace Yutrel

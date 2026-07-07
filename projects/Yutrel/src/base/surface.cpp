@@ -8,6 +8,9 @@
 
 namespace Yutrel
 {
+Surface::Surface(Scene& scene, const CreateInfo& info) noexcept
+    : m_two_sided(info.two_sided) {}
+
 luisa::unique_ptr<Surface> Surface::create(Scene& scene, const CreateInfo& info) noexcept
 {
     switch (info.type)
@@ -20,13 +23,19 @@ luisa::unique_ptr<Surface> Surface::create(Scene& scene, const CreateInfo& info)
     }
 }
 
-void Surface::Instance::closure(PolymorphicCall<Closure>& call, const Interaction& it, SampledWavelengths& swl, Expr<float> time) const noexcept
+void Surface::Instance::closure(PolymorphicCall<Closure>& call, const Interaction& it, Expr<float3> wo, SampledWavelengths& swl, Expr<float> time) const noexcept
 {
     auto cls = call.collect(closure_identifier(), [&]
     {
         return create_closure(swl, time);
     });
-    populate_closure(cls, it);
+    auto oriented_it = it;
+    if (base()->two_sided())
+    {
+        auto flip           = dot(wo, it.shading.n()) < 0.0f;
+        oriented_it.shading = it.shading.flipped(flip);
+    }
+    populate_closure(cls, oriented_it);
 }
 
 static auto validate_surface_sides(Expr<float3> ng, Expr<float3> ns,

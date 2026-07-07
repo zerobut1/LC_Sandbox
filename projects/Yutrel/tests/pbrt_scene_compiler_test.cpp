@@ -83,6 +83,7 @@ int main()
         triangle_count += static_cast<uint>(shape.indices.size());
         if (shape.surface_info.type == Surface::Type::diffuse)
         {
+            require(shape.surface_info.two_sided, "PBRT diffuse surface two-sided");
             auto r = shape.surface_info.reflectance.v;
             if (std::abs(r.x - 0.63f) < 1e-5f)
             {
@@ -98,6 +99,7 @@ int main()
         if (shape.light_info.type == Light::Type::diffuse)
         {
             require_float4(shape.light_info.emission.v, 17.0f, 12.0f, 4.0f, 1.0f, "area light emission");
+            require(!shape.light_info.two_sided, "PBRT area light is single-sided");
             saw_light = true;
         }
     }

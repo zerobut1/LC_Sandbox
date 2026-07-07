@@ -28,6 +28,7 @@ public:
         Type type{Type::null};
         // diffuse
         Texture::CreateInfo reflectance{};
+        bool two_sided{false};
     };
 
     [[nodiscard]] static luisa::unique_ptr<Surface> create(Scene& scene, const CreateInfo& info) noexcept;
@@ -75,7 +76,7 @@ public:
     class Closure;
 
 public:
-    explicit Surface(Scene& scene, const CreateInfo& info) noexcept {}
+    explicit Surface(Scene& scene, const CreateInfo& info) noexcept;
     virtual ~Surface() noexcept = default;
 
     Surface()                          = delete;
@@ -86,7 +87,11 @@ public:
 
 public:
     [[nodiscard]] virtual bool is_null() const noexcept { return false; }
+    [[nodiscard]] bool two_sided() const noexcept { return m_two_sided; }
     [[nodiscard]] virtual luisa::unique_ptr<Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept = 0;
+
+private:
+    bool m_two_sided;
 };
 
 class Surface::Instance
@@ -114,7 +119,7 @@ public:
         return static_cast<const T*>(m_surface);
     }
     [[nodiscard]] auto& renderer() const noexcept { return m_renderer; }
-    void closure(PolymorphicCall<Closure>& call, const Interaction& it, SampledWavelengths& swl, Expr<float> time) const noexcept;
+    void closure(PolymorphicCall<Closure>& call, const Interaction& it, Expr<float3> wo, SampledWavelengths& swl, Expr<float> time) const noexcept;
 
     [[nodiscard]] virtual luisa::string closure_identifier() const noexcept                                                   = 0;
     [[nodiscard]] virtual luisa::unique_ptr<Closure> create_closure(SampledWavelengths& swl, Expr<float> time) const noexcept = 0;

@@ -51,6 +51,7 @@ int main(int argc, char* argv[])
     auto info = make_triangle_info();
     auto shape = Shape::create(scene, info);
     require(shape->is_mesh(), "inline mesh is mesh");
+    require(!shape->surface()->two_sided(), "inline mesh default surface single-sided");
     require(shape->vertex_properties() == 0u, "inline mesh default properties");
     auto mesh = shape->mesh();
     require(mesh.vertices.size() == 3u, "inline mesh vertex count");
@@ -78,6 +79,11 @@ int main(int argc, char* argv[])
     auto attributed_mesh = attributed_shape->mesh();
     require_close(attributed_mesh.vertices[0].normal().z, 1.0f, "inline mesh normalized normal");
     require_close(attributed_mesh.vertices[2].uv().y, 1.0f, "inline mesh uv value");
+
+    auto two_sided_info = make_triangle_info();
+    two_sided_info.surface_info.two_sided = true;
+    auto two_sided_shape = Shape::create(scene, two_sided_info);
+    require(two_sided_shape->surface()->two_sided(), "inline mesh explicit two-sided surface");
 
     std::cout << "Inline mesh tests passed.\n";
     return 0;

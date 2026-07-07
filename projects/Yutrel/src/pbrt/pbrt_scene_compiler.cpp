@@ -260,6 +260,7 @@ struct CameraBasis
             .surface_info = {
                 .type = Surface::Type::diffuse,
                 .reflectance = constant_texture(material.reflectance),
+                .two_sided = true,
             },
         };
         if (shape_desc.area_light)

@@ -18,6 +18,7 @@ public:
     Frame() noexcept;
     Frame(Expr<float3> s, Expr<float3> t, Expr<float3> n) noexcept;
     void flip() noexcept;
+    [[nodiscard]] Frame flipped(Expr<bool> flip) const noexcept;
     [[nodiscard]] static Frame make(Expr<float3> n) noexcept;
     [[nodiscard]] static Frame make(Expr<float3> n, Expr<float3> s) noexcept;
     [[nodiscard]] Float3 local_to_world(Expr<float3> d) const noexcept;

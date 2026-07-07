@@ -247,7 +247,7 @@ Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Ex
             PolymorphicCall<Surface::Closure> call;
             renderer().surfaces().dispatch(it->shape.surface_tag(), [&](auto surface) noexcept
             {
-                surface->closure(call, *it, swl, time);
+                surface->closure(call, *it, wo, swl, time);
             });
             call.execute([&](const Surface::Closure* closure) noexcept
             {

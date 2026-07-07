@@ -88,10 +88,10 @@ int main(int argc, char* argv[])
     vector<unsigned char> origin_test_images;
     vector<unsigned char> origin_test_labels;
     uint n_train_images, n_train_labels, n_test_images, n_test_labels;
-    read_mnist_images("data/MNIST/train-images.idx3-ubyte", origin_train_images, n_train_images);
-    read_mnist_labels("data/MNIST/train-labels.idx1-ubyte", origin_train_labels, n_train_labels);
-    read_mnist_images("data/MNIST/t10k-images.idx3-ubyte", origin_test_images, n_test_images);
-    read_mnist_labels("data/MNIST/t10k-labels.idx1-ubyte", origin_test_labels, n_test_labels);
+    read_mnist_images("data/train-images.idx3-ubyte", origin_train_images, n_train_images);
+    read_mnist_labels("data/train-labels.idx1-ubyte", origin_train_labels, n_train_labels);
+    read_mnist_images("data/t10k-images.idx3-ubyte", origin_test_images, n_test_images);
+    read_mnist_labels("data/t10k-labels.idx1-ubyte", origin_test_labels, n_test_labels);
     LUISA_ASSERT(n_train_images == n_train_labels, "Train Image and label count mismatch.");
     LUISA_ASSERT(n_test_images == n_test_labels, "Test Image and label count mismatch.");
     LUISA_INFO("MNIST dataset: {} training samples, {} testing samples.", n_train_labels, n_test_labels);

@@ -367,7 +367,7 @@ int main(int argc, char* argv[])
     constexpr auto fourier_cmin = -inv_pi;
     constexpr auto fourier_cmax = inv_pi;
     {
-        std::ifstream lut_file{"SRGBToFourierEvenPacked.dat", std::ios_base::binary};
+        std::ifstream lut_file{"assets/SRGBToFourierEvenPacked.dat", std::ios_base::binary};
         struct
         {
             size_t version, x, y, z;

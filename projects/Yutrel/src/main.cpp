@@ -2,33 +2,33 @@
 
 #include <luisa/core/logging.h>
 
+#include <cstdlib>
+#include <filesystem>
+
 using namespace Yutrel;
 
-int main(int argc, char* argv[])
+namespace
 {
-    if (argc <= 1)
-    {
-        LUISA_ERROR("Usage: {} <backend> [--interactive|-i]. <backend>: cuda, dx, metal", argv[0]);
-        exit(1);
-    }
 
-    bool interactive = false;
-    for (int i = 2; i < argc; i++)
-    {
-        auto arg = luisa::string_view{argv[i]};
-        if (arg == "--interactive" || arg == "-i" || arg == "interactive")
-        {
-            interactive = true;
-        }
-    }
+[[noreturn]] void print_usage_and_exit(char const* bin)
+{
+    LUISA_ERROR("Usage: {} <backend> [scene.pbrt] [--interactive|-i]. <backend>: cuda, dx, metal", bin);
+    std::abort();
+}
 
-    Application::CreateInfo app_info{
-        .bin         = argv[0],
-        .backend     = argv[1],
-        .interactive = interactive,
-    };
+[[nodiscard]] bool is_interactive_arg(luisa::string_view arg) noexcept
+{
+    return arg == "--interactive" || arg == "-i";
+}
 
-    auto& scene_info = app_info.scene_info;
+[[nodiscard]] bool is_pbrt_scene_path(std::filesystem::path const& path)
+{
+    return path.extension() == ".pbrt";
+}
+
+[[nodiscard]] Scene::CreateInfo make_default_cornell_box_scene_info()
+{
+    Scene::CreateInfo scene_info{};
 
     scene_info.spectrum_info = {
         .type = Spectrum::Type::HeroWavelength,
@@ -97,6 +97,68 @@ int main(int argc, char* argv[])
             .surface_info = {
                 .type        = Surface::Type::diffuse,
                 .reflectance = {.v = make_float4(0.725f, 0.71f, 0.68f, 1.0f)}}};
+
+    return scene_info;
+}
+
+[[nodiscard]] Scene::CreateInfo load_pbrt_scene_create_info(std::filesystem::path const& scene_path)
+{
+    LUISA_INFO("PBRT scene '{}' requested. PBRT loader is not implemented yet; falling back to the built-in Cornell Box scene.",
+               scene_path.string());
+    return make_default_cornell_box_scene_info();
+}
+
+} // namespace
+
+int main(int argc, char* argv[])
+{
+    if (argc <= 1)
+    {
+        print_usage_and_exit(argv[0]);
+    }
+
+    bool interactive     = false;
+    bool has_scene_path  = false;
+    std::filesystem::path scene_path{};
+
+    for (int i = 2; i < argc; i++)
+    {
+        auto arg = luisa::string_view{argv[i]};
+        if (is_interactive_arg(arg))
+        {
+            interactive = true;
+            continue;
+        }
+
+        if (!arg.empty() && arg.front() == '-')
+        {
+            LUISA_ERROR("Unknown option '{}'. Usage: {} <backend> [scene.pbrt] [--interactive|-i].",
+                        arg, argv[0]);
+        }
+
+        auto candidate = std::filesystem::path{argv[i]};
+        if (!is_pbrt_scene_path(candidate))
+        {
+            LUISA_ERROR("Unsupported scene file '{}'. Expected a .pbrt file.",
+                        candidate.string());
+        }
+
+        if (has_scene_path)
+        {
+            LUISA_ERROR("Multiple scene files specified: '{}' and '{}'. Only one .pbrt scene path is supported.",
+                        scene_path.string(), candidate.string());
+        }
+
+        scene_path     = candidate;
+        has_scene_path = true;
+    }
+
+    Application::CreateInfo app_info{
+        .bin         = argv[0],
+        .backend     = argv[1],
+        .scene_info  = has_scene_path ? load_pbrt_scene_create_info(scene_path) : make_default_cornell_box_scene_info(),
+        .interactive = interactive,
+    };
 
     Application app{app_info};
     app.run();

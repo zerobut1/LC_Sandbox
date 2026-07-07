@@ -12,7 +12,9 @@ luisa::unique_ptr<Film> Film::create(const CreateInfo& info) noexcept
 }
 
 Film::Film(const CreateInfo& info) noexcept
-    : m_resolution(info.resolution), m_hdr(info.hdr) {}
+    : m_resolution(info.resolution),
+      m_hdr(info.hdr),
+      m_filename(info.filename) {}
 
 Film::~Film() noexcept = default;
 

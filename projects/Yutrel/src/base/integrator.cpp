@@ -18,13 +18,16 @@
 
 namespace Yutrel
 {
-luisa::unique_ptr<Integrator> Integrator::create(Renderer& renderer, CommandBuffer& command_buffer) noexcept
+luisa::unique_ptr<Integrator> Integrator::create(Renderer& renderer, CommandBuffer& command_buffer, const CreateInfo& info) noexcept
 {
-    return luisa::make_unique<Integrator>(renderer, command_buffer);
+    return luisa::make_unique<Integrator>(renderer, command_buffer, info);
 }
 
-Integrator::Integrator(Renderer& renderer, CommandBuffer& command_buffer) noexcept
+Integrator::Integrator(Renderer& renderer, CommandBuffer& command_buffer, const CreateInfo& info) noexcept
     : m_renderer(renderer),
+      m_max_depth(info.max_depth),
+      m_rr_depth(info.rr_depth),
+      m_rr_threshold(info.rr_threshold),
       m_sampler(Sampler::create(renderer)),
       m_light_sampler(LightSampler::create(renderer, command_buffer)) {}
 
@@ -49,7 +52,7 @@ void Integrator::render(Stream& stream)
         luisa::vector<float4> pixels(pixel_count);
         camera->film()->download(command_buffer, pixels.data());
         command_buffer << synchronize();
-        auto output_path = std::filesystem::canonical(std::filesystem::current_path()) / "render.exr";
+        auto output_path = camera->film()->base()->filename();
         save_image(output_path, reinterpret_cast<const float*>(pixels.data()), resolution);
     }
     camera->film()->release();

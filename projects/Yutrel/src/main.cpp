@@ -1,9 +1,12 @@
 #include "base/application.h"
+#include "pbrt/pbrt_scene_compiler.h"
+#include "pbrt/pbrt_scene_loader.h"
 
 #include <luisa/core/logging.h>
 
 #include <cstdlib>
 #include <filesystem>
+#include <utility>
 
 using namespace Yutrel;
 
@@ -103,9 +106,8 @@ namespace
 
 [[nodiscard]] Scene::CreateInfo load_pbrt_scene_create_info(std::filesystem::path const& scene_path)
 {
-    LUISA_INFO("PBRT scene '{}' requested. PBRT loader is not implemented yet; falling back to the built-in Cornell Box scene.",
-               scene_path.string());
-    return make_default_cornell_box_scene_info();
+    auto desc = PbrtSceneLoader::load(scene_path);
+    return PbrtSceneCompiler::compile(std::move(desc));
 }
 
 } // namespace

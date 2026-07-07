@@ -29,6 +29,23 @@ target("YutrelPbrtSceneLoaderTest")
 
 target_end()
 
+target("YutrelPbrtSceneCompilerTest")
+    set_kind("binary")
+    set_group("tests")
+    set_default(false)
+    set_rundir("$(projectdir)")
+
+    add_files("src/pbrt/pbrt_scene_loader.cpp")
+    add_files("src/pbrt/pbrt_scene_compiler.cpp")
+    add_files("tests/pbrt_scene_compiler_test.cpp")
+    add_headerfiles("src/**.h")
+
+    add_includedirs("src")
+
+    add_deps("lc-dsl", "lc-gui")
+
+target_end()
+
 target("YutrelInlineMeshTest")
     set_kind("binary")
     set_group("tests")

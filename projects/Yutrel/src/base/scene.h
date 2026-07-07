@@ -4,6 +4,7 @@
 
 #include "base/camera.h"
 #include "base/film.h"
+#include "base/integrator.h"
 #include "base/shape.h"
 #include "base/spectrum.h"
 #include "base/surface.h"
@@ -20,6 +21,7 @@ public:
     struct CreateInfo
     {
         Spectrum::CreateInfo spectrum_info;
+        Integrator::CreateInfo integrator_info;
         Camera::CreateInfo camera_info;
         luisa::vector<Shape::CreateInfo> shape_infos;
     };
@@ -53,6 +55,7 @@ public:
     [[nodiscard]] const Texture* load_texture(const Texture::CreateInfo& info) noexcept;
 
     [[nodiscard]] const Spectrum* spectrum() const noexcept;
+    [[nodiscard]] const Integrator::CreateInfo& integrator_info() const noexcept;
     [[nodiscard]] const Camera* camera() const noexcept;
     [[nodiscard]] const Film* film() const noexcept;
     [[nodiscard]] luisa::span<const Shape* const> shapes() const noexcept;

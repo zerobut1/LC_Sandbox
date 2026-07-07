@@ -1,5 +1,7 @@
 #pragma once
 
+#include <filesystem>
+
 #include <imgui.h>
 #include <luisa/core/stl/memory.h>
 #include <luisa/dsl/syntax.h>
@@ -25,6 +27,7 @@ public:
     {
         uint2 resolution{1920u, 1080u};
         bool hdr{false};
+        std::filesystem::path filename{"render.exr"};
     };
 
     [[nodiscard]] static luisa::unique_ptr<Film> create(const CreateInfo& info) noexcept;
@@ -89,6 +92,7 @@ public:
 private:
     uint2 m_resolution{1920u, 1080u};
     bool m_hdr{false};
+    std::filesystem::path m_filename{"render.exr"};
 
 public:
     explicit Film(const CreateInfo& info) noexcept;
@@ -108,5 +112,6 @@ public:
 
     [[nodiscard]] auto resolution() const noexcept { return m_resolution; }
     [[nodiscard]] auto hdr() const noexcept { return m_hdr; }
+    [[nodiscard]] const auto& filename() const noexcept { return m_filename; }
 };
 } // namespace Yutrel

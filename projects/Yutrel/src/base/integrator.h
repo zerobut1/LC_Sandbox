@@ -19,7 +19,14 @@ class LightSampler;
 class Integrator
 {
 public:
-    [[nodiscard]] static luisa::unique_ptr<Integrator> create(Renderer& renderer, CommandBuffer& command_buffer) noexcept;
+    struct CreateInfo
+    {
+        uint max_depth{10u};
+        uint rr_depth{0u};
+        float rr_threshold{0.05f};
+    };
+
+    [[nodiscard]] static luisa::unique_ptr<Integrator> create(Renderer& renderer, CommandBuffer& command_buffer, const CreateInfo& info) noexcept;
 
 private:
     const Renderer& m_renderer;
@@ -32,7 +39,7 @@ private:
     luisa::unique_ptr<LightSampler> m_light_sampler;
 
 public:
-    explicit Integrator(Renderer& renderer, CommandBuffer& command_buffer) noexcept;
+    explicit Integrator(Renderer& renderer, CommandBuffer& command_buffer, const CreateInfo& info) noexcept;
     ~Integrator() noexcept;
 
     Integrator() noexcept                    = delete;

@@ -4,6 +4,7 @@ namespace Yutrel
 {
 struct Scene::Config
 {
+    Integrator::CreateInfo integrator_info;
     luisa::unique_ptr<Camera> camera;
     luisa::unique_ptr<Film> film;
     luisa::unique_ptr<Filter> filter;
@@ -27,6 +28,7 @@ luisa::unique_ptr<Scene> Scene::create(const Context& context, const CreateInfo&
     auto scene = luisa::make_unique<Scene>(context);
 
     scene->load_spectrum(info.spectrum_info);
+    scene->m_config->integrator_info = info.integrator_info;
 
     scene->load_camera(info.camera_info);
 
@@ -91,6 +93,11 @@ const Texture* Scene::load_texture(const Texture::CreateInfo& info) noexcept
 const Spectrum* Scene::spectrum() const noexcept
 {
     return m_config->spectrum.get();
+}
+
+const Integrator::CreateInfo& Scene::integrator_info() const noexcept
+{
+    return m_config->integrator_info;
 }
 
 const Camera* Scene::camera() const noexcept

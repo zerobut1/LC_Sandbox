@@ -4,6 +4,7 @@
 #include "filters/gaussian.h"
 #include "filters/lanczos_sinc.h"
 #include "filters/mitchell.h"
+#include "filters/triangle.h"
 #include "utils/sampling.h"
 
 namespace Yutrel
@@ -14,6 +15,8 @@ luisa::unique_ptr<Filter> Filter::create(const Scene& scene, const CreateInfo& i
     {
     case Type::Box:
         return luisa::make_unique<BoxFilter>(scene, info);
+    case Type::Triangle:
+        return luisa::make_unique<TriangleFilter>(scene, info);
     case Type::Gaussian:
         return luisa::make_unique<GaussianFilter>(scene, info);
     case Type::Mitchell:

@@ -28,3 +28,22 @@ target("YutrelPbrtSceneLoaderTest")
     add_deps("lc-dsl")
 
 target_end()
+
+target("YutrelInlineMeshTest")
+    set_kind("binary")
+    set_group("tests")
+    set_default(false)
+    set_rundir("$(projectdir)")
+
+    add_files("src/**.cpp")
+    remove_files("src/main.cpp")
+    add_files("tests/inline_mesh_test.cpp")
+    add_headerfiles("src/**.h")
+
+    add_includedirs("src")
+
+    add_deps("lc-dsl", "lc-gui", "stb-image")
+    add_packages("tinyexr")
+    add_packages("assimp")
+
+target_end()

@@ -2,11 +2,14 @@
 
 #include <luisa/core/logging.h>
 
+#include "base/scene.h"
+
 namespace Yutrel
 {
 
-SceneBuilder::SceneBuilder(const SceneSpec& spec) noexcept
-    : _spec{spec},
+SceneBuilder::SceneBuilder(Scene& scene, const SceneSpec& spec) noexcept
+    : _scene{scene},
+      _spec{spec},
       _textures{spec.textures().size()},
       _surfaces{spec.surfaces().size()},
       _lights{spec.lights().size()},
@@ -18,6 +21,21 @@ SceneBuilder::SceneBuilder(const SceneSpec& spec) noexcept
       _samplers{spec.samplers().size()},
       _integrators{spec.integrators().size()}
 {
+}
+
+void SceneBuilder::_store(luisa::unique_ptr<Texture> texture) noexcept
+{
+    (void)_scene._store(std::move(texture));
+}
+
+void SceneBuilder::_store(luisa::unique_ptr<Surface> surface) noexcept
+{
+    (void)_scene._store(std::move(surface));
+}
+
+void SceneBuilder::_store(luisa::unique_ptr<Light> light) noexcept
+{
+    (void)_scene._store(std::move(light));
 }
 
 const Texture* SceneBuilder::resolve(TextureRef ref) noexcept

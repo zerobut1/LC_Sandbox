@@ -73,10 +73,9 @@ public:
     [[nodiscard]] static luisa::unique_ptr<Light> create(Scene& scene, const CreateInfo& info) noexcept;
 
 public:
-    explicit Light(Scene& scene, const CreateInfo& info) noexcept {}
+    Light() noexcept          = default;
     virtual ~Light() noexcept = default;
 
-    Light()                        = delete;
     Light(const Light&)            = delete;
     Light& operator=(const Light&) = delete;
     Light(Light&&)                 = delete;

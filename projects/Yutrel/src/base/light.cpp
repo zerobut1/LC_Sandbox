@@ -1,5 +1,6 @@
 #include "light.h"
 
+#include "base/scene.h"
 #include "lights/diffuse.h"
 #include "lights/null.h"
 
@@ -10,10 +11,10 @@ luisa::unique_ptr<Light> Light::create(Scene& scene, const CreateInfo& info) noe
     switch (info.type)
     {
     case Type::diffuse:
-        return luisa::make_unique<DiffuseLight>(scene, info);
+        return luisa::make_unique<DiffuseLight>(scene.load_texture(info.emission), info.scale, info.two_sided);
     case Type::null:
     default:
-        return luisa::make_unique<NullLight>(scene, info);
+        return luisa::make_unique<NullLight>();
     }
 }
 

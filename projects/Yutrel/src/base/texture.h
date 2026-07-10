@@ -96,10 +96,9 @@ public:
     };
 
 public:
-    explicit Texture(Scene& scene, const Texture::CreateInfo& info) noexcept {}
+    Texture() noexcept          = default;
     virtual ~Texture() noexcept = default;
 
-    Texture()                          = delete;
     Texture(const Texture&)            = delete;
     Texture& operator=(const Texture&) = delete;
     Texture(Texture&&)                 = delete;

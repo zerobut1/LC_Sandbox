@@ -77,17 +77,32 @@ const Shape* Scene::load_shape(const Shape::CreateInfo& info) noexcept
 
 const Surface* Scene::load_surface(const Surface::CreateInfo& info) noexcept
 {
-    return m_config->surfaces.emplace_back(Surface::create(*this, info)).get();
+    return _store(Surface::create(*this, info));
 }
 
 const Light* Scene::load_light(const Light::CreateInfo& info) noexcept
 {
-    return m_config->lights.emplace_back(Light::create(*this, info)).get();
+    return _store(Light::create(*this, info));
 }
 
 const Texture* Scene::load_texture(const Texture::CreateInfo& info) noexcept
 {
-    return m_config->textures.emplace_back(Texture::create(*this, info)).get();
+    return _store(Texture::create(*this, info));
+}
+
+const Texture* Scene::_store(luisa::unique_ptr<Texture> texture) noexcept
+{
+    return m_config->textures.emplace_back(std::move(texture)).get();
+}
+
+const Surface* Scene::_store(luisa::unique_ptr<Surface> surface) noexcept
+{
+    return m_config->surfaces.emplace_back(std::move(surface)).get();
+}
+
+const Light* Scene::_store(luisa::unique_ptr<Light> light) noexcept
+{
+    return m_config->lights.emplace_back(std::move(light)).get();
 }
 
 const Spectrum* Scene::spectrum() const noexcept

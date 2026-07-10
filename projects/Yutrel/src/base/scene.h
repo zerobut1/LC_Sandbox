@@ -15,6 +15,8 @@ namespace Yutrel
 using namespace luisa;
 using namespace luisa::compute;
 
+class SceneBuilder;
+
 class Scene
 {
 public:
@@ -31,6 +33,13 @@ public:
 private:
     const Context& m_context;
     luisa::unique_ptr<Config> m_config;
+
+    friend class SceneBuilder;
+
+private:
+    [[nodiscard]] const Texture* _store(luisa::unique_ptr<Texture> texture) noexcept;
+    [[nodiscard]] const Surface* _store(luisa::unique_ptr<Surface> surface) noexcept;
+    [[nodiscard]] const Light* _store(luisa::unique_ptr<Light> light) noexcept;
 
 public:
     explicit Scene(const Context& context) noexcept;

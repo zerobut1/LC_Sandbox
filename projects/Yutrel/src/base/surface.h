@@ -76,7 +76,7 @@ public:
     class Closure;
 
 public:
-    explicit Surface(Scene& scene, const CreateInfo& info) noexcept;
+    explicit Surface(bool two_sided) noexcept;
     virtual ~Surface() noexcept = default;
 
     Surface()                          = delete;

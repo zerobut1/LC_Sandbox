@@ -1,9 +1,11 @@
 #include "constant.h"
 
+#include "scene/scene_builder.h"
+
 namespace Yutrel
 {
-ConstantTexture::ConstantTexture(Scene& scene, const Texture::CreateInfo& info) noexcept
-    : Texture(scene, info), m_v(info.v) {}
+ConstantTexture::ConstantTexture(float4 value) noexcept
+    : m_v{value} {}
 
 luisa::unique_ptr<Texture::Instance> ConstantTexture::build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept
 {
@@ -13,5 +15,10 @@ luisa::unique_ptr<Texture::Instance> ConstantTexture::build(Renderer& renderer, 
 Float4 ConstantTexture::Instance::evaluate(const Interaction& it, Expr<float> time) const noexcept
 {
     return base<ConstantTexture>()->m_v;
+}
+
+const Texture* ConstantTextureSpec::build(SceneBuilder& builder) const noexcept
+{
+    return builder.emplace<Texture, ConstantTexture>(_value);
 }
 } // namespace Yutrel

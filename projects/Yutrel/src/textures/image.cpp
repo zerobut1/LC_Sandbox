@@ -2,18 +2,18 @@
 
 #include "base/interaction.h"
 #include "base/renderer.h"
+#include "scene/scene_builder.h"
 
 namespace Yutrel
 {
-ImageTexture::ImageTexture(Scene& scene, const Texture::CreateInfo& info) noexcept
-    : Texture(scene, info),
-      m_sampler(info.sampler),
-      m_encoding(info.encoding)
+ImageTexture::ImageTexture(luisa::filesystem::path path, TextureSampler sampler, Encoding encoding) noexcept
+    : m_sampler{sampler},
+      m_encoding{encoding}
 {
-    m_image = LoadedImage::load(info.path);
+    m_image = LoadedImage::load(path);
     if (!m_image) [[unlikely]]
     {
-        LUISA_ERROR("Failed to load image texture from '{}'.", info.path.string());
+        LUISA_ERROR("Failed to load image texture from '{}'.", path.string());
     }
 }
 
@@ -50,6 +50,11 @@ Float4 ImageTexture::Instance::decode(Expr<float4> rgba) const noexcept
     }
 
     return rgba;
+}
+
+const Texture* ImageTextureSpec::build(SceneBuilder& builder) const noexcept
+{
+    return builder.emplace<Texture, ImageTexture>(_path, _sampler, _encoding);
 }
 
 } // namespace Yutrel

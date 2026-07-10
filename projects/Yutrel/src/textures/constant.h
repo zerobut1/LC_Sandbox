@@ -2,6 +2,7 @@
 
 #include "base/scene.h"
 #include "base/texture.h"
+#include "scene/spec_base.h"
 
 namespace Yutrel
 {
@@ -22,12 +23,24 @@ private:
     float4 m_v;
 
 public:
-    explicit ConstantTexture(Scene& scene, const Texture::CreateInfo& info) noexcept;
+    explicit ConstantTexture(float4 value) noexcept;
     ~ConstantTexture() noexcept override = default;
 
 public:
     [[nodiscard]] luisa::unique_ptr<Texture::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept override;
 
     luisa::optional<float4> evaluate_static() const noexcept override { return m_v; }
+};
+
+class ConstantTextureSpec final : public TextureSpec
+{
+private:
+    luisa::float4 _value;
+
+public:
+    explicit ConstantTextureSpec(luisa::float4 value) noexcept
+        : _value{value} {}
+
+    [[nodiscard]] const Texture* build(SceneBuilder& builder) const noexcept override;
 };
 } // namespace Yutrel

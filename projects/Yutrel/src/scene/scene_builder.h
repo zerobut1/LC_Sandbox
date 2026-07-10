@@ -1,14 +1,19 @@
 #pragma once
 
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 
+#include <luisa/core/stl/memory.h>
 #include <luisa/core/stl/vector.h>
 
 #include "scene/scene_spec.h"
 
 namespace Yutrel
 {
+
+class Scene;
 
 class SceneBuilder
 {
@@ -35,6 +40,7 @@ private:
     };
 
 private:
+    Scene& _scene;
     const SceneSpec& _spec;
     BuildCache<Texture> _textures;
     BuildCache<Surface> _surfaces;
@@ -48,7 +54,7 @@ private:
     BuildCache<Integrator> _integrators;
 
 public:
-    explicit SceneBuilder(const SceneSpec& spec) noexcept;
+    SceneBuilder(Scene& scene, const SceneSpec& spec) noexcept;
 
     SceneBuilder()                               = delete;
     SceneBuilder(SceneBuilder&&)                 = delete;
@@ -67,7 +73,21 @@ public:
     [[nodiscard]] const Sampler* resolve(SamplerRef ref) noexcept;
     [[nodiscard]] const Integrator* resolve(IntegratorRef ref) noexcept;
 
+    template <typename Base, typename Impl, typename... Args>
+        requires std::derived_from<Impl, Base>
+    [[nodiscard]] const Base* emplace(Args&&... args) noexcept
+    {
+        auto object = luisa::make_unique<Impl>(std::forward<Args>(args)...);
+        auto ptr    = static_cast<const Base*>(object.get());
+        _store(luisa::unique_ptr<Base>{std::move(object)});
+        return ptr;
+    }
+
 private:
+    void _store(luisa::unique_ptr<Texture> texture) noexcept;
+    void _store(luisa::unique_ptr<Surface> surface) noexcept;
+    void _store(luisa::unique_ptr<Light> light) noexcept;
+
     template <typename Spec, typename Runtime>
     [[nodiscard]] const Runtime* _resolve(SceneRef<Spec> ref, const SpecTable<Spec>& table, BuildCache<Runtime>& cache) noexcept;
 };

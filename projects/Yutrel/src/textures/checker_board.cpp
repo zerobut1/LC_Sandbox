@@ -2,25 +2,14 @@
 
 #include "base/interaction.h"
 #include "base/renderer.h"
-#include "base/scene.h"
+#include "scene/scene_builder.h"
 
 namespace Yutrel
 {
-CheckerBoard::CheckerBoard(Scene& scene, const Texture::CreateInfo& info) noexcept
-    : Texture(scene, info),
-      m_scale(info.scale)
-{
-    Texture::CreateInfo even_info{
-        .type = Type::constant,
-        .v    = info.even,
-    };
-    m_even = scene.load_texture(even_info);
-    Texture::CreateInfo odd_info{
-        .type = Type::constant,
-        .v    = info.odd,
-    };
-    m_odd = scene.load_texture(odd_info);
-}
+CheckerBoard::CheckerBoard(float scale, const Texture* even, const Texture* odd) noexcept
+    : m_scale{scale},
+      m_even{even},
+      m_odd{odd} {}
 
 luisa::unique_ptr<Texture::Instance> CheckerBoard::build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept
 {
@@ -40,5 +29,10 @@ Float4 CheckerBoard::Instance::evaluate(const Interaction& it, Expr<float> time)
 
     auto is_even = (x_integer + y_integer + z_integer) % 2 == 0;
     return ite(is_even, m_even->evaluate(it, time), m_odd->evaluate(it, time));
+}
+
+const Texture* CheckerBoardTextureSpec::build(SceneBuilder& builder) const noexcept
+{
+    return builder.emplace<Texture, CheckerBoard>(_scale, builder.resolve(_even), builder.resolve(_odd));
 }
 } // namespace Yutrel

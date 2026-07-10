@@ -1,6 +1,7 @@
 #pragma once
 
 #include "base/texture.h"
+#include "scene/spec_base.h"
 
 namespace Yutrel
 {
@@ -28,12 +29,32 @@ private:
     const Texture* m_odd;
 
 public:
-    explicit CheckerBoard(Scene& scene, const Texture::CreateInfo& info) noexcept;
+    CheckerBoard(float scale, const Texture* even, const Texture* odd) noexcept;
     ~CheckerBoard() noexcept override = default;
 
 public:
     [[nodiscard]] luisa::unique_ptr<Texture::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept override;
     [[nodiscard]] auto scale() const noexcept { return m_scale; }
+};
+
+class CheckerBoardTextureSpec final : public TextureSpec
+{
+private:
+    float _scale;
+    TextureRef _even;
+    TextureRef _odd;
+
+public:
+    CheckerBoardTextureSpec(float scale, TextureRef even, TextureRef odd) noexcept
+        : _scale{scale}, _even{even}, _odd{odd} {}
+
+    void visit_dependencies(SpecDependencyVisitor& visitor) const noexcept override
+    {
+        visitor.visit(_even);
+        visitor.visit(_odd);
+    }
+
+    [[nodiscard]] const Texture* build(SceneBuilder& builder) const noexcept override;
 };
 
 } // namespace Yutrel

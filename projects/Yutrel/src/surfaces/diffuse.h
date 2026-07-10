@@ -2,6 +2,7 @@
 
 #include "base/interaction.h"
 #include "base/surface.h"
+#include "scene/spec_base.h"
 
 namespace Yutrel
 {
@@ -17,7 +18,7 @@ private:
     const Texture* m_reflectance;
 
 public:
-    explicit Diffuse(Scene& scene, const CreateInfo& info) noexcept;
+    Diffuse(const Texture* reflectance, bool two_sided) noexcept;
 
 public:
     [[nodiscard]] luisa::unique_ptr<Surface::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept override;
@@ -54,6 +55,24 @@ public:
 
     [[nodiscard]] Surface::Sample sample_impl(Expr<float3> wo, Expr<float> u_lobe, Expr<float2> u) const noexcept override;
     [[nodiscard]] Surface::Evaluation evaluate_impl(Expr<float3> wo, Expr<float3> wi) const noexcept override;
+};
+
+class DiffuseSurfaceSpec final : public SurfaceSpec
+{
+private:
+    TextureRef _reflectance;
+    bool _two_sided;
+
+public:
+    DiffuseSurfaceSpec(TextureRef reflectance, bool two_sided) noexcept
+        : _reflectance{reflectance}, _two_sided{two_sided} {}
+
+    void visit_dependencies(SpecDependencyVisitor& visitor) const noexcept override
+    {
+        visitor.visit(_reflectance);
+    }
+
+    [[nodiscard]] const Surface* build(SceneBuilder& builder) const noexcept override;
 };
 
 } // namespace Yutrel

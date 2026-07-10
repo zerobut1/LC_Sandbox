@@ -1,13 +1,13 @@
 #include "diffuse.h"
 
 #include "base/renderer.h"
-#include "base/scene.h"
+#include "scene/scene_builder.h"
 #include "utils/sampling.h"
 
 namespace Yutrel
 {
-Diffuse::Diffuse(Scene& scene, const CreateInfo& info) noexcept
-    : Surface(scene, info), m_reflectance(scene.load_texture(info.reflectance)) {}
+Diffuse::Diffuse(const Texture* reflectance, bool two_sided) noexcept
+    : Surface{two_sided}, m_reflectance{reflectance} {}
 
 luisa::unique_ptr<Surface::Instance> Diffuse::build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept
 {
@@ -68,6 +68,11 @@ Surface::Evaluation Diffuse::Closure::evaluate_impl(Expr<float3> wo, Expr<float3
         .f_diffuse   = f * abs_cos_theta(wi_local),
         .pdf_diffuse = pdf,
     };
+}
+
+const Surface* DiffuseSurfaceSpec::build(SceneBuilder& builder) const noexcept
+{
+    return builder.emplace<Surface, Diffuse>(builder.resolve(_reflectance), _two_sided);
 }
 
 } // namespace Yutrel

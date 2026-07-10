@@ -2,16 +2,15 @@
 
 #include "base/interaction.h"
 #include "base/renderer.h"
-#include "base/scene.h"
+#include "scene/scene_builder.h"
 #include "utils/spectra.h"
 
 namespace Yutrel
 {
-DiffuseLight::DiffuseLight(Scene& scene, const CreateInfo& info) noexcept
-    : Light(scene, info),
-      m_emission(scene.load_texture(info.emission)),
-      m_scale(info.scale),
-      m_two_sided(info.two_sided) {}
+DiffuseLight::DiffuseLight(const Texture* emission, float scale, bool two_sided) noexcept
+    : m_emission{emission},
+      m_scale{scale},
+      m_two_sided{two_sided} {}
 
 luisa::unique_ptr<Light::Instance> DiffuseLight::build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept
 {
@@ -47,6 +46,11 @@ Light::Evaluation DiffuseLight::Closure::evaluate(const Interaction& it_light, E
                              .ng  = it_light.shading.n()};
     };
     return eval;
+}
+
+const Light* DiffuseLightSpec::build(SceneBuilder& builder) const noexcept
+{
+    return builder.emplace<Light, DiffuseLight>(builder.resolve(_emission), _scale, _two_sided);
 }
 
 } // namespace Yutrel

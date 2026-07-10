@@ -2,6 +2,7 @@
 
 #include "base/light.h"
 #include "base/texture.h"
+#include "scene/spec_base.h"
 
 namespace Yutrel
 {
@@ -17,7 +18,7 @@ private:
     bool m_two_sided;
 
 public:
-    explicit DiffuseLight(Scene& scene, const CreateInfo& info) noexcept;
+    DiffuseLight(const Texture* emission, float scale, bool two_sided) noexcept;
 
     [[nodiscard]] auto scale() const noexcept { return m_scale; }
     [[nodiscard]] auto two_sided() const noexcept { return m_two_sided; }
@@ -45,6 +46,25 @@ public:
         : Light::Closure(instance, swl, time) {}
 
     [[nodiscard]] Evaluation evaluate(const Interaction& it_light, Expr<float3> p_from) const noexcept override;
+};
+
+class DiffuseLightSpec final : public LightSpec
+{
+private:
+    TextureRef _emission;
+    float _scale;
+    bool _two_sided;
+
+public:
+    DiffuseLightSpec(TextureRef emission, float scale, bool two_sided) noexcept
+        : _emission{emission}, _scale{scale}, _two_sided{two_sided} {}
+
+    void visit_dependencies(SpecDependencyVisitor& visitor) const noexcept override
+    {
+        visitor.visit(_emission);
+    }
+
+    [[nodiscard]] const Light* build(SceneBuilder& builder) const noexcept override;
 };
 
 } // namespace Yutrel

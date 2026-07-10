@@ -1,0 +1,122 @@
+#include "scene/scene_builder.h"
+
+#include <luisa/core/logging.h>
+
+namespace Yutrel
+{
+
+SceneBuilder::SceneBuilder(const SceneSpec& spec) noexcept
+    : _spec{spec},
+      _textures{spec.textures().size()},
+      _surfaces{spec.surfaces().size()},
+      _lights{spec.lights().size()},
+      _shapes{spec.shapes().size()},
+      _spectra{spec.spectra().size()},
+      _cameras{spec.cameras().size()},
+      _films{spec.films().size()},
+      _filters{spec.filters().size()},
+      _samplers{spec.samplers().size()},
+      _integrators{spec.integrators().size()}
+{
+}
+
+const Texture* SceneBuilder::resolve(TextureRef ref) noexcept
+{
+    return _resolve(ref, _spec.textures(), _textures);
+}
+
+const Surface* SceneBuilder::resolve(SurfaceRef ref) noexcept
+{
+    return _resolve(ref, _spec.surfaces(), _surfaces);
+}
+
+const Light* SceneBuilder::resolve(LightRef ref) noexcept
+{
+    return _resolve(ref, _spec.lights(), _lights);
+}
+
+const Shape* SceneBuilder::resolve(ShapeRef ref) noexcept
+{
+    return _resolve(ref, _spec.shapes(), _shapes);
+}
+
+const Spectrum* SceneBuilder::resolve(SpectrumRef ref) noexcept
+{
+    return _resolve(ref, _spec.spectra(), _spectra);
+}
+
+const Camera* SceneBuilder::resolve(CameraRef ref) noexcept
+{
+    return _resolve(ref, _spec.cameras(), _cameras);
+}
+
+const Film* SceneBuilder::resolve(FilmRef ref) noexcept
+{
+    return _resolve(ref, _spec.films(), _films);
+}
+
+const Filter* SceneBuilder::resolve(FilterRef ref) noexcept
+{
+    return _resolve(ref, _spec.filters(), _filters);
+}
+
+const Sampler* SceneBuilder::resolve(SamplerRef ref) noexcept
+{
+    return _resolve(ref, _spec.samplers(), _samplers);
+}
+
+const Integrator* SceneBuilder::resolve(IntegratorRef ref) noexcept
+{
+    return _resolve(ref, _spec.integrators(), _integrators);
+}
+
+template <typename Spec, typename Runtime>
+const Runtime* SceneBuilder::_resolve(SceneRef<Spec> ref, const SpecTable<Spec>& table, BuildCache<Runtime>& cache) noexcept
+{
+    if (!table.contains(ref))
+    {
+        LUISA_ERROR("{} spec ref index {} is out of bounds (size {}).", table.category(), ref.index(), table.size());
+        return nullptr;
+    }
+
+    auto& state  = cache.states[ref.index()];
+    auto& object = cache.objects[ref.index()];
+    switch (state)
+    {
+    case BuildState::Built:
+        return object;
+    case BuildState::Visiting:
+        LUISA_ERROR(
+            "Runtime spec dependency cycle at {} spec '{}' ({}).",
+            table.category(),
+            table.meta(ref).name,
+            format_source_location(table.meta(ref).source));
+        return nullptr;
+    case BuildState::Failed:
+        LUISA_ERROR(
+            "{} spec '{}' has already failed to build ({}).",
+            table.category(),
+            table.meta(ref).name,
+            format_source_location(table.meta(ref).source));
+        return nullptr;
+    case BuildState::Unvisited:
+        break;
+    }
+
+    state  = BuildState::Visiting;
+    object = table.spec(ref).build(*this);
+    if (object == nullptr)
+    {
+        state = BuildState::Failed;
+        LUISA_ERROR(
+            "{} spec '{}' returned a null runtime object ({}).",
+            table.category(),
+            table.meta(ref).name,
+            format_source_location(table.meta(ref).source));
+        return nullptr;
+    }
+    state = BuildState::Built;
+    return object;
+}
+
+} // namespace Yutrel

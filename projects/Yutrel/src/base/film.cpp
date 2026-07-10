@@ -63,11 +63,9 @@ void Film::Instance::accumulate_single_writer(Expr<uint2> pixel, Expr<float3> rg
     };
 }
 
-void Film::Instance::prepare(CommandBuffer& command_buffer) noexcept
+void Film::Instance::prepare(CommandBuffer& command_buffer, bool enable_display) noexcept
 {
     m_rendering_finished = false;
-
-    auto&& device = m_renderer.device();
 
     // render image
     uint2 render_resolution = base()->resolution();
@@ -99,8 +97,9 @@ void Film::Instance::prepare(CommandBuffer& command_buffer) noexcept
     }
     command_buffer << m_clear_image(m_image).dispatch(pixel_count);
 
-    if (!m_window)
+    if (enable_display && !m_window)
     {
+        auto&& device = m_renderer.device();
         m_stream = command_buffer.stream();
 
         auto window_resolution = render_resolution;
@@ -142,7 +141,10 @@ void Film::Instance::prepare(CommandBuffer& command_buffer) noexcept
         };
         m_clear = device.compile(clear_kernel);
     }
-    m_framerate.clear();
+    if (enable_display)
+    {
+        m_framerate.clear();
+    }
 }
 
 void Film::Instance::download(CommandBuffer& command_buffer, float4* buffer) const noexcept
@@ -159,6 +161,11 @@ void Film::Instance::download(CommandBuffer& command_buffer, float4* buffer) con
 void Film::Instance::release() noexcept
 {
     m_rendering_finished = true;
+
+    if (!m_window)
+    {
+        return;
+    }
 
     CommandBuffer command_buffer{*m_stream};
 
@@ -179,6 +186,11 @@ bool Film::Instance::should_close() const noexcept
 
 bool Film::Instance::show(CommandBuffer& command_buffer, bool force) const noexcept
 {
+    if (!m_window)
+    {
+        return false;
+    }
+
     LUISA_ASSERT(command_buffer.stream() == m_stream, "Command buffer stream mismatch.");
 
     static const auto target_fps = 60.0;

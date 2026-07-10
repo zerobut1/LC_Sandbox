@@ -22,12 +22,17 @@ namespace
 
 [[noreturn]] void print_usage_and_exit(char const* bin)
 {
-    fail(luisa::format("Usage: {} <backend> <scene.pbrt> [--interactive|-i]. <backend>: cuda, dx, metal", bin));
+    fail(luisa::format("Usage: {} <backend> <scene.pbrt> [--interactive|-i] [--headless]. <backend>: cuda, dx, metal", bin));
 }
 
 [[nodiscard]] bool is_interactive_arg(luisa::string_view arg) noexcept
 {
     return arg == "--interactive" || arg == "-i";
+}
+
+[[nodiscard]] bool is_headless_arg(luisa::string_view arg) noexcept
+{
+    return arg == "--headless";
 }
 
 [[nodiscard]] bool is_pbrt_scene_path(std::filesystem::path const& path)
@@ -50,8 +55,9 @@ int main(int argc, char* argv[]) try
         print_usage_and_exit(argv[0]);
     }
 
-    bool interactive     = false;
-    bool has_scene_path  = false;
+    bool interactive      = false;
+    bool headless         = false;
+    bool has_scene_path   = false;
     std::filesystem::path scene_path{};
 
     for (int i = 2; i < argc; i++)
@@ -62,10 +68,15 @@ int main(int argc, char* argv[]) try
             interactive = true;
             continue;
         }
+        if (is_headless_arg(arg))
+        {
+            headless = true;
+            continue;
+        }
 
         if (!arg.empty() && arg.front() == '-')
         {
-            fail(luisa::format("Unknown option '{}'. Usage: {} <backend> <scene.pbrt> [--interactive|-i].",
+            fail(luisa::format("Unknown option '{}'. Usage: {} <backend> <scene.pbrt> [--interactive|-i] [--headless].",
                                arg, argv[0]));
         }
 
@@ -90,12 +101,17 @@ int main(int argc, char* argv[]) try
     {
         print_usage_and_exit(argv[0]);
     }
+    if (interactive && headless)
+    {
+        fail("--interactive and --headless cannot be used together.");
+    }
 
     Application::CreateInfo app_info{
         .bin         = argv[0],
         .backend     = argv[1],
         .scene_info  = load_pbrt_scene_create_info(scene_path),
         .interactive = interactive,
+        .headless    = headless,
     };
 
     Application app{app_info};

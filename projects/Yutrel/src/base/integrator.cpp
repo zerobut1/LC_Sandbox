@@ -35,7 +35,7 @@ Integrator::Integrator(Renderer& renderer, CommandBuffer& command_buffer, const 
 
 Integrator::~Integrator() noexcept = default;
 
-void Integrator::render(Stream& stream)
+void Integrator::render(Stream& stream, bool enable_display)
 {
     CommandBuffer command_buffer{stream};
 
@@ -43,7 +43,7 @@ void Integrator::render(Stream& stream)
     auto resolution  = camera->film()->base()->resolution();
     auto pixel_count = resolution.x * resolution.y;
 
-    camera->film()->prepare(command_buffer);
+    camera->film()->prepare(command_buffer, enable_display);
     {
         render_one_camera(command_buffer, camera);
         if (camera->film()->should_close())
@@ -67,7 +67,7 @@ void Integrator::render_interactive(Stream& stream)
     auto camera     = m_renderer.camera();
     auto resolution = camera->film()->base()->resolution();
 
-    camera->film()->prepare(command_buffer);
+    camera->film()->prepare(command_buffer, true);
     sampler()->reset(command_buffer, resolution.x * resolution.y);
     command_buffer << synchronize();
 
@@ -98,7 +98,7 @@ void Integrator::render_interactive(Stream& stream)
         {
             auto c2w = controller.camera_to_world();
             camera->set_transform(command_buffer, c2w);
-            camera->film()->prepare(command_buffer);
+            camera->film()->prepare(command_buffer, true);
             sampler()->reset(command_buffer, resolution.x * resolution.y);
             global_sample_index = 0u;
             command_buffer << synchronize();
@@ -146,16 +146,31 @@ void Integrator::render_one_camera(CommandBuffer& command_buffer, Camera::Instan
     Clock clock_render;
     ProgressBar progress_bar;
     progress_bar.update(0.0);
-    auto dispatch_count      = 0u;
-    auto global_sample_index = 0u;
+    constexpr auto dispatches_per_commit = 4u;
+    constexpr auto max_progress_updates  = 100u;
+    auto progress_stride                 = std::max(1u, (spp + max_progress_updates - 1u) / max_progress_updates);
+    auto dispatch_count                  = 0u;
+    auto global_sample_index             = 0u;
     for (const auto& s : shutter_samples)
     {
         for (auto i = 0u; i < s.spp; i++)
         {
             dispatch_count++;
             command_buffer << render(global_sample_index++, s.time, s.weight).dispatch(resolution);
-            const auto dispatches_per_commit = 4u;
-            if (camera->film()->show(command_buffer) || dispatch_count >= dispatches_per_commit) [[unlikely]]
+
+            if (camera->film()->show(command_buffer))
+            {
+                dispatch_count = 0u;
+            }
+            if (camera->film()->should_close()) [[unlikely]]
+            {
+                command_buffer << synchronize();
+                progress_bar.cancel();
+                return;
+            }
+
+            auto progress_due = global_sample_index < spp && global_sample_index % progress_stride == 0u;
+            if (progress_due) [[unlikely]]
             {
                 dispatch_count = 0u;
                 auto p         = global_sample_index / static_cast<double>(spp);
@@ -164,11 +179,10 @@ void Integrator::render_one_camera(CommandBuffer& command_buffer, Camera::Instan
                     progress_bar.update(p);
                 };
             }
-            if (camera->film()->should_close()) [[unlikely]]
+            else if (dispatch_count >= dispatches_per_commit) [[unlikely]]
             {
-                command_buffer << synchronize();
-                progress_bar.done();
-                return;
+                dispatch_count = 0u;
+                command_buffer << commit();
             }
         }
     }

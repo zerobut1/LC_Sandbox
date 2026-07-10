@@ -24,6 +24,7 @@ public:
         luisa::string_view backend;
         Scene::CreateInfo scene_info;
         bool interactive{false};
+        bool headless{false};
     };
 
 private:
@@ -32,6 +33,7 @@ private:
     Stream m_stream;
 
     bool m_interactive{false};
+    bool m_headless{false};
 
     luisa::unique_ptr<Scene> m_scene;
     luisa::unique_ptr<Renderer> m_renderer;

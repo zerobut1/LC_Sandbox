@@ -12,6 +12,7 @@ Application::Application(const CreateInfo& info)
     : m_context(info.bin)
 {
     m_interactive = info.interactive;
+    m_headless    = info.headless;
 
     m_device = m_context.create_device(info.backend);
     m_stream = m_device.create_stream(StreamTag::GRAPHICS);
@@ -30,7 +31,7 @@ void Application::run()
     }
     else
     {
-        m_renderer->render(m_stream);
+        m_renderer->render(m_stream, !m_headless);
     }
     m_stream << synchronize();
 }

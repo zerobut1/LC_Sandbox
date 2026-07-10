@@ -56,7 +56,7 @@ public:
     [[nodiscard]] auto sampler() const noexcept { return m_sampler.get(); }
     [[nodiscard]] auto light_sampler() const noexcept { return m_light_sampler.get(); }
 
-    void render(Stream& stream);
+    void render(Stream& stream, bool enable_display);
     void render_interactive(Stream& stream);
 
 private:

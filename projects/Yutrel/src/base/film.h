@@ -83,7 +83,7 @@ public:
         // consecutive dispatches ordered on the same stream.
         void accumulate_single_writer(Expr<uint2> pixel, Expr<float3> rgb, Expr<float> effective_spp) const noexcept;
 
-        void prepare(CommandBuffer& command_buffer) noexcept;
+        void prepare(CommandBuffer& command_buffer, bool enable_display) noexcept;
         void download(CommandBuffer& command_buffer, float4* buffer) const noexcept;
         void release() noexcept;
         bool show(CommandBuffer& command_buffer, bool force = false) const noexcept;

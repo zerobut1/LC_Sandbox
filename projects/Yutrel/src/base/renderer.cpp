@@ -71,9 +71,9 @@ luisa::unique_ptr<Renderer> Renderer::create(Device& device, Stream& stream, con
     return renderer;
 }
 
-void Renderer::render(Stream& stream)
+void Renderer::render(Stream& stream, bool enable_display)
 {
-    m_integrator->render(stream);
+    m_integrator->render(stream, enable_display);
 }
 
 void Renderer::render_interactive(Stream& stream)

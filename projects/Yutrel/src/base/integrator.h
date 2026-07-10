@@ -23,7 +23,7 @@ public:
     {
         uint max_depth{10u};
         uint rr_depth{0u};
-        float rr_threshold{0.05f};
+        float rr_threshold{0.95f};
     };
 
     [[nodiscard]] static luisa::unique_ptr<Integrator> create(Renderer& renderer, CommandBuffer& command_buffer, const CreateInfo& info) noexcept;
@@ -33,7 +33,7 @@ private:
 
     uint m_max_depth{10u};
     uint m_rr_depth{0u};
-    float m_rr_threshold{0.05f};
+    float m_rr_threshold{0.95f};
 
     luisa::unique_ptr<Sampler> m_sampler;
     luisa::unique_ptr<LightSampler> m_light_sampler;

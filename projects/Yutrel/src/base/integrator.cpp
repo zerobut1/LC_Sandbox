@@ -1,5 +1,7 @@
 #include "integrator.h"
 
+#include <algorithm>
+
 #include <luisa/luisa-compute.h>
 
 #include "base/camera.h"
@@ -27,7 +29,7 @@ Integrator::Integrator(Renderer& renderer, CommandBuffer& command_buffer, const 
     : m_renderer(renderer),
       m_max_depth(info.max_depth),
       m_rr_depth(info.rr_depth),
-      m_rr_threshold(info.rr_threshold),
+      m_rr_threshold(std::max(info.rr_threshold, 0.05f)),
       m_sampler(Sampler::create(renderer)),
       m_light_sampler(LightSampler::create(renderer, command_buffer)) {}
 
@@ -267,6 +269,12 @@ Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Ex
                 auto w              = ite(surface_sample.eval.pdf > 0.0f, 1.0f / surface_sample.eval.pdf, 0.0f);
                 beta *= w * surface_sample.eval.f;
             });
+        };
+
+        beta = zero_if_any_nan(beta);
+        $if(beta.all([](auto b) noexcept { return b <= 0.0f; }))
+        {
+            $break;
         };
 
         auto q = max(beta.max(), 0.05f);

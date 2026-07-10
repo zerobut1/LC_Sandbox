@@ -299,7 +299,7 @@ Scene::CreateInfo PbrtSceneCompiler::compile(SceneDescription desc)
     {
         fail("Unsupported PBRT integrator type.");
     }
-    if (desc.sampler.type != SamplerDesc::Type::Sobol)
+    if (desc.sampler.type != SamplerDesc::Type::Independent)
     {
         fail("Unsupported PBRT sampler type.");
     }

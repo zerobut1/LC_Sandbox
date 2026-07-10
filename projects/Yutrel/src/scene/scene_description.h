@@ -50,9 +50,9 @@ struct SamplerDesc
 {
     enum class Type
     {
-        Sobol,
+        Independent,
     };
-    Type type{Type::Sobol};
+    Type type{Type::Independent};
     uint pixel_samples{1u};
 };
 

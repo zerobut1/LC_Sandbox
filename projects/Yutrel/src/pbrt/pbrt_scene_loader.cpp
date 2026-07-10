@@ -642,12 +642,12 @@ private:
     {
         expect_options(command);
         auto type = expect_string("Sampler type");
-        if (type != "sobol")
+        if (type != "independent")
         {
             fail(command, luisa::format("unsupported Sampler '{}'", type));
         }
         auto params = parse_parameters();
-        m_desc.sampler.type = SamplerDesc::Type::Sobol;
+        m_desc.sampler.type = SamplerDesc::Type::Independent;
         m_desc.sampler.pixel_samples = one_uint(params, "pixelsamples", command, 1u);
     }
 

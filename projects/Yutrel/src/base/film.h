@@ -79,6 +79,9 @@ public:
         [[nodiscard]] bool should_close() const noexcept;
 
         void accumulate(Expr<uint2> pixel, Expr<float3> rgb, Expr<float> effective_spp) const noexcept;
+        // Requires at most one invocation to write each pixel in a dispatch, with
+        // consecutive dispatches ordered on the same stream.
+        void accumulate_single_writer(Expr<uint2> pixel, Expr<float3> rgb, Expr<float> effective_spp) const noexcept;
 
         void prepare(CommandBuffer& command_buffer) noexcept;
         void download(CommandBuffer& command_buffer, float4* buffer) const noexcept;
@@ -86,6 +89,7 @@ public:
         bool show(CommandBuffer& command_buffer, bool force = false) const noexcept;
 
     private:
+        [[nodiscard]] Float4 filtered_contribution(Expr<float3> rgb, Expr<float> effective_spp) const noexcept;
         void display() const noexcept;
     };
 

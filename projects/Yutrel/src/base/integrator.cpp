@@ -78,7 +78,7 @@ void Integrator::render_interactive(Stream& stream)
         set_block_size(16u, 16u, 1u);
         Var pixel_id = dispatch_id().xy();
         Var L        = Li(camera, frame_index, pixel_id, time);
-        camera->film()->accumulate(pixel_id, L, 1.0f);
+        camera->film()->accumulate_single_writer(pixel_id, L, 1.0f);
     };
     auto render = renderer().device().compile(render_kernel);
 
@@ -132,7 +132,7 @@ void Integrator::render_one_camera(CommandBuffer& command_buffer, Camera::Instan
         set_block_size(16u, 16u, 1u);
         Var pixel_id = dispatch_id().xy();
         Var L        = Li(camera, frame_index, pixel_id, time);
-        camera->film()->accumulate(pixel_id, L * shutter_weight, 1.0f);
+        camera->film()->accumulate_single_writer(pixel_id, L * shutter_weight, 1.0f);
     };
 
     LUISA_INFO("Start compiling Integrator shader");

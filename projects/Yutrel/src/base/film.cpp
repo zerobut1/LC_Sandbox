@@ -18,28 +18,48 @@ Film::Film(const CreateInfo& info) noexcept
 
 Film::~Film() noexcept = default;
 
-void Film::Instance::accumulate(Expr<uint2> pixel, Expr<float3> rgb, Expr<float> effective_spp) const noexcept
+Float4 Film::Instance::filtered_contribution(Expr<float3> rgb, Expr<float> effective_spp) const noexcept
 {
     LUISA_ASSERT(m_image && m_converted, "Film is not prepared.");
 
-    auto pixel_id = pixel.y * base()->resolution().x + pixel.x;
+    auto contribution = def(make_float4(0.0f));
     $if(!any(compute::isnan(rgb) || compute::isinf(rgb)))
     {
         auto threshold = 256.0f * max(effective_spp, 1.f);
         auto abs_rgb   = abs(rgb);
         auto strength  = max(max(max(abs_rgb.x, abs_rgb.y), abs_rgb.z), 0.f);
         auto c         = rgb * (threshold / max(strength, threshold));
+        contribution   = make_float4(c, effective_spp);
+    };
+    return contribution;
+}
 
-        $if(any(c != 0.f))
-        {
-            m_image->atomic(pixel_id).x.fetch_add(c.x);
-            m_image->atomic(pixel_id).y.fetch_add(c.y);
-            m_image->atomic(pixel_id).z.fetch_add(c.z);
-        };
-        $if(effective_spp != 0.f)
-        {
-            m_image->atomic(pixel_id).w.fetch_add(effective_spp);
-        };
+void Film::Instance::accumulate(Expr<uint2> pixel, Expr<float3> rgb, Expr<float> effective_spp) const noexcept
+{
+    auto pixel_id     = pixel.y * base()->resolution().x + pixel.x;
+    auto contribution = filtered_contribution(rgb, effective_spp);
+
+    $if(any(contribution.xyz() != 0.0f))
+    {
+        m_image->atomic(pixel_id).x.fetch_add(contribution.x);
+        m_image->atomic(pixel_id).y.fetch_add(contribution.y);
+        m_image->atomic(pixel_id).z.fetch_add(contribution.z);
+    };
+    $if(contribution.w != 0.0f)
+    {
+        m_image->atomic(pixel_id).w.fetch_add(contribution.w);
+    };
+}
+
+void Film::Instance::accumulate_single_writer(Expr<uint2> pixel, Expr<float3> rgb, Expr<float> effective_spp) const noexcept
+{
+    auto pixel_id     = pixel.y * base()->resolution().x + pixel.x;
+    auto contribution = filtered_contribution(rgb, effective_spp);
+
+    $if(any(contribution != 0.0f))
+    {
+        auto previous = m_image->read(pixel_id);
+        m_image->write(pixel_id, previous + contribution);
     };
 }
 

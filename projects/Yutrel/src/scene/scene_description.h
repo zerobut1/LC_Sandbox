@@ -61,6 +61,7 @@ struct FilterDesc
     enum class Type
     {
         Triangle,
+        Gaussian,
     };
     Type type{Type::Triangle};
     float2 radius{1.0f, 1.0f};

@@ -59,7 +59,7 @@ void expect_load_failure(const std::filesystem::path& path, const char* contents
 
 } // namespace
 
-int main()
+int main() try
 {
     auto scene_path = std::filesystem::current_path() / "projects/Yutrel/scene/cornell-box/scene-v4.pbrt";
     if (!std::filesystem::exists(scene_path))
@@ -68,6 +68,14 @@ int main()
     }
 
     auto desc = PbrtSceneLoader::load(scene_path);
+    auto gaussian_desc = PbrtSceneLoader::load(scene_path.parent_path() / "scene-v5.pbrt");
+
+    require(gaussian_desc.integrator.max_depth == 10u, "Gaussian scene integrator max depth");
+    require(gaussian_desc.sampler.pixel_samples == 65536u, "Gaussian scene sampler pixel samples");
+    require(gaussian_desc.filter.type == FilterDesc::Type::Gaussian, "Gaussian scene filter type");
+    require_close(gaussian_desc.filter.radius.x, 1.0f, "Gaussian scene filter x radius");
+    require_close(gaussian_desc.filter.radius.y, 1.0f, "Gaussian scene filter y radius");
+    require(gaussian_desc.film.filename.empty(), "Gaussian scene default film filename");
 
     require(desc.integrator.type == IntegratorDesc::Type::Path, "integrator type");
     require(desc.integrator.max_depth == 65u, "integrator max depth");
@@ -142,4 +150,9 @@ Include "other.pbrt"
 
     std::cout << "PBRT scene loader tests passed.\n";
     return 0;
+}
+catch (const std::exception& e)
+{
+    std::cerr << "PBRT scene loader test failed: " << e.what() << '\n';
+    return 1;
 }

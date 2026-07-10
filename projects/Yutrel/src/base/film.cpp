@@ -13,7 +13,7 @@ luisa::unique_ptr<Film> Film::create(const CreateInfo& info) noexcept
 
 Film::Film(const CreateInfo& info) noexcept
     : m_resolution(info.resolution),
-      m_hdr(info.hdr),
+      m_display_hdr(info.display_hdr),
       m_filename(info.filename) {}
 
 Film::~Film() noexcept = default;
@@ -92,7 +92,7 @@ void Film::Instance::prepare(CommandBuffer& command_buffer) noexcept
             ImGuiWindow::Config{
                 .size         = window_resolution,
                 .vsync        = true,
-                .hdr          = base()->hdr(),
+                .hdr          = base()->display_hdr(),
                 .back_buffers = 3,
             });
         m_framebuffer = device.create_image<float>(PixelStorage::FLOAT4, render_resolution);

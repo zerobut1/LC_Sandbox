@@ -26,7 +26,7 @@ public:
     struct CreateInfo
     {
         uint2 resolution{1920u, 1080u};
-        bool hdr{false};
+        bool display_hdr{false};
         std::filesystem::path filename{"render.exr"};
     };
 
@@ -91,7 +91,7 @@ public:
 
 private:
     uint2 m_resolution{1920u, 1080u};
-    bool m_hdr{false};
+    bool m_display_hdr{false};
     std::filesystem::path m_filename{"render.exr"};
 
 public:
@@ -111,7 +111,7 @@ public:
     }
 
     [[nodiscard]] auto resolution() const noexcept { return m_resolution; }
-    [[nodiscard]] auto hdr() const noexcept { return m_hdr; }
+    [[nodiscard]] auto display_hdr() const noexcept { return m_display_hdr; }
     [[nodiscard]] const auto& filename() const noexcept { return m_filename; }
 };
 } // namespace Yutrel

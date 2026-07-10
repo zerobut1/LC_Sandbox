@@ -152,14 +152,14 @@ struct CameraBasis
     };
 }
 
-[[nodiscard]] bool is_hdr_path(const std::filesystem::path& path)
+[[nodiscard]] bool is_exr_path(const std::filesystem::path& path)
 {
     auto ext = path.extension().string();
     for (auto& c : ext)
     {
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     }
-    return ext == ".exr" || ext == ".hdr";
+    return ext == ".exr";
 }
 
 [[nodiscard]] std::filesystem::path resolve_relative_to_scene(
@@ -180,17 +180,25 @@ struct CameraBasis
 
 [[nodiscard]] Filter::CreateInfo compile_filter(const FilterDesc& desc)
 {
-    if (desc.type != FilterDesc::Type::Triangle)
-    {
-        fail("Unsupported PBRT pixel filter.");
-    }
     if (std::abs(desc.radius.x - desc.radius.y) > 1e-6f)
     {
-        fail(luisa::format("PBRT triangle filter expects equal x/y radii for now, got {} and {}.",
+        fail(luisa::format("PBRT pixel filter expects equal x/y radii for now, got {} and {}.",
                            desc.radius.x, desc.radius.y));
     }
+    auto type = Filter::Type::Triangle;
+    switch (desc.type)
+    {
+    case FilterDesc::Type::Triangle:
+        type = Filter::Type::Triangle;
+        break;
+    case FilterDesc::Type::Gaussian:
+        type = Filter::Type::Gaussian;
+        break;
+    default:
+        fail("Unsupported PBRT pixel filter.");
+    }
     return Filter::CreateInfo{
-        .type = Filter::Type::Triangle,
+        .type = type,
         .radius = desc.radius.x,
     };
 }
@@ -205,11 +213,15 @@ struct CameraBasis
     auto filename = desc.film.filename.empty() ?
                         std::filesystem::path{"render.exr"} :
                         resolve_relative_to_scene(desc.source_path, desc.film.filename);
+    if (!is_exr_path(filename))
+    {
+        fail(luisa::format("Yutrel only supports EXR film output, got '{}'.", filename.string()));
+    }
     return Camera::CreateInfo{
         .type = Camera::Type::pinhole,
         .film_info = {
             .resolution = desc.film.resolution,
-            .hdr = is_hdr_path(filename),
+            .display_hdr = false,
             .filename = std::move(filename),
         },
         .filter_info = compile_filter(desc.filter),

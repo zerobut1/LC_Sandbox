@@ -1033,38 +1033,24 @@ void save_image(std::filesystem::path path, const float* pixels, uint2 resolutio
     {
         c = static_cast<char>(std::tolower(c));
     }
-    if (ext != ".exr" && ext != ".hdr") [[unlikely]]
+    if (ext != ".exr") [[unlikely]]
     {
-        LUISA_WARNING_WITH_LOCATION(
-            "Unsupported image extension '{}' in path '{}'. "
-            "Falling back to '.exr'.",
+        LUISA_ERROR_WITH_LOCATION(
+            "Unsupported film output extension '{}' in path '{}'. "
+            "Yutrel only supports EXR film output.",
             ext,
             path.string());
-        path.replace_extension(".exr");
     }
 
     auto c = static_cast<int>(std::clamp(components, 1u, 4u));
-    if (ext == ".exr")
+    const char* err = nullptr;
+    if (auto ret = save_exr_impl(pixels, size.x, size.y, c, false, path.string().c_str(), &err);
+        ret != TINYEXR_SUCCESS) [[unlikely]]
     {
-        const char* err = nullptr;
-        if (auto ret = save_exr_impl(pixels, size.x, size.y, c, false, path.string().c_str(), &err);
-            ret != TINYEXR_SUCCESS) [[unlikely]]
-        {
-            LUISA_WARNING_WITH_LOCATION(
-                "Failed to save film to '{}': {}.",
-                path.string(),
-                err ? err : "unknown error");
-        }
-    }
-    else if (ext == ".hdr")
-    {
-        if (!stbi_write_hdr(path.string().c_str(), size.x, size.y, c, reinterpret_cast<const float*>(pixels)))
-        {
-            LUISA_WARNING_WITH_LOCATION(
-                "Failed to save film to '{}': {}.",
-                path.string(),
-                stbi_failure_reason());
-        }
+        LUISA_WARNING_WITH_LOCATION(
+            "Failed to save film to '{}': {}.",
+            path.string(),
+            err ? err : "unknown error");
     }
 }
 

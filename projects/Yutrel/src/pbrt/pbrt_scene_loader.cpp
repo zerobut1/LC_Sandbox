@@ -655,12 +655,19 @@ private:
     {
         expect_options(command);
         auto type = expect_string("PixelFilter type");
-        if (type != "triangle")
+        if (type == "triangle")
+        {
+            m_desc.filter.type = FilterDesc::Type::Triangle;
+        }
+        else if (type == "gaussian")
+        {
+            m_desc.filter.type = FilterDesc::Type::Gaussian;
+        }
+        else
         {
             fail(command, luisa::format("unsupported PixelFilter '{}'", type));
         }
         auto params = parse_parameters();
-        m_desc.filter.type = FilterDesc::Type::Triangle;
         m_desc.filter.radius = make_float2(one_float(params, "xradius", command, 1.0f),
                                            one_float(params, "yradius", command, 1.0f));
     }

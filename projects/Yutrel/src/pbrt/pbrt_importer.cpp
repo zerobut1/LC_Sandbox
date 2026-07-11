@@ -18,6 +18,7 @@
 #include "samplers/independent.h"
 #include "scene/scene_spec_builder.h"
 #include "shapes/inline_mesh.h"
+#include "shapes/mesh.h"
 #include "spectrum/hero.h"
 #include "surfaces/diffuse.h"
 #include "textures/constant.h"
@@ -214,29 +215,44 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
             true);
     }
 
-    luisa::vector<ShapeRef> shape_refs;
-    shape_refs.reserve(scene.meshes.size());
+    luisa::vector<ShapeRef> inline_mesh_refs;
+    inline_mesh_refs.reserve(scene.meshes.size());
     for (auto& mesh : scene.meshes)
     {
-        shape_refs.emplace_back(builder.add_shape<InlineMeshShapeSpec>(
-            SpecMeta{.name = luisa::format("mesh_{}", shape_refs.size()), .source = mesh.source},
+        inline_mesh_refs.emplace_back(builder.add_shape<InlineMeshShapeSpec>(
+            SpecMeta{.name = luisa::format("mesh_{}", inline_mesh_refs.size()), .source = mesh.source},
             std::move(mesh.positions),
             std::move(mesh.normals),
             std::move(mesh.uvs),
             std::move(mesh.indices)));
     }
 
-    for (auto& shape : scene.shapes)
+    for (auto shape_index = 0u; shape_index < scene.shapes.size(); shape_index++)
     {
-        if (shape.type != ShapeDesc::Type::TriangleMesh)
+        auto& shape = scene.shapes[shape_index];
+        auto shape_ref = [&]() -> ShapeRef
         {
-            auto type = shape.type == ShapeDesc::Type::PlyMesh ? "plymesh" : "sphere";
-            fail(luisa::format("PBRT Importer does not implement Shape '{}' at {}.", type, format_source_location(shape.source)));
-        }
-        if (!shape.mesh_index || *shape.mesh_index >= shape_refs.size())
-        {
-            fail(luisa::format("PBRT shape references an out-of-range mesh at {}.", format_source_location(shape.source)));
-        }
+            switch (shape.type)
+            {
+            case ShapeDesc::Type::TriangleMesh:
+                if (!shape.mesh_index || *shape.mesh_index >= inline_mesh_refs.size())
+                {
+                    fail(luisa::format("PBRT shape references an out-of-range mesh at {}.", format_source_location(shape.source)));
+                }
+                return inline_mesh_refs[*shape.mesh_index];
+            case ShapeDesc::Type::PlyMesh:
+                if (!shape.filename || shape.filename->empty())
+                {
+                    fail(luisa::format("PBRT plymesh has no filename at {}.", format_source_location(shape.source)));
+                }
+                return builder.add_shape<MeshShapeSpec>(
+                    SpecMeta{.name = luisa::format("plymesh_{}", shape_index), .source = shape.source},
+                    resolve_relative_to_scene(scene.source_path, *shape.filename));
+            case ShapeDesc::Type::Sphere:
+                fail(luisa::format("PBRT Importer does not implement Shape 'sphere' at {}.", format_source_location(shape.source)));
+            }
+            fail("Unsupported PBRT shape type.");
+        }();
         if (shape.material.named.empty())
         {
             fail(luisa::format("PBRT Importer does not implement anonymous/default material binding at {}.", format_source_location(shape.source)));
@@ -256,7 +272,7 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         }
         builder.add_instance(ShapeInstanceSpec{
             .source    = shape.source,
-            .shape     = shape_refs[*shape.mesh_index],
+            .shape     = shape_ref,
             .surface   = surface,
             .light     = light,
             .transform = instance_transform(shape.pbrt_transform),

@@ -1064,6 +1064,24 @@ private:
         else if (type == "plymesh")
         {
             shape.type = ShapeDesc::Type::PlyMesh;
+            const RawParameter* filename_param = nullptr;
+            for (auto&& param : params)
+            {
+                if (param.type == "string" && param.name == "filename")
+                {
+                    if (filename_param != nullptr)
+                    {
+                        fail(param.source, "duplicate parameter 'string filename'");
+                    }
+                    filename_param = &param;
+                }
+            }
+            auto filename = one_string(params, "filename", command, {});
+            if (filename.empty())
+            {
+                fail(command, "plymesh requires a non-empty 'string filename'");
+            }
+            shape.filename = std::filesystem::path{std::move(filename)};
         }
         else if (type == "trianglemesh")
         {

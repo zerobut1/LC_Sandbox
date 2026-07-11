@@ -1,0 +1,4 @@
+WorldBegin
+Shape "plymesh"
+    "string filename" [ "first.ply" ]
+    "string filename" [ "second.ply" ]

@@ -50,6 +50,8 @@ public:
     explicit MeshShapeSpec(std::filesystem::path path) noexcept
         : _path{std::move(path)} {}
 
+    [[nodiscard]] const std::filesystem::path& path() const noexcept { return _path; }
+
     [[nodiscard]] luisa::optional<luisa::string> validate() const noexcept override
     {
         if (_path.empty())

@@ -5,7 +5,10 @@
 
 #include "pbrt/pbrt_parser.h"
 
+#include <array>
 #include <cmath>
+#include <stdexcept>
+#include <string>
 
 using namespace Yutrel;
 using namespace boost::ut;
@@ -89,6 +92,59 @@ static auto test_book_parse_registration = []
         expect(is_near(translated_sphere[3u], 34.92f));
         expect(is_near(translated_sphere[7u], 55.92f));
         expect(is_near(translated_sphere[11u], -15.351f));
+    };
+
+    "parse_book_v2_ply_filenames"_test = []
+    {
+        auto scene = PbrtParser::parse("scene/pbrt-book/book-v2.pbrt");
+        expect(scene.sampler.type == SamplerDesc::Type::Independent);
+
+        std::array<std::filesystem::path, 3u> filenames{
+            "geometry/mesh_00001.ply",
+            "geometry/mesh_00002.ply",
+            "geometry/mesh_00003.ply",
+        };
+        auto filename_index = 0u;
+        for (auto&& shape : scene.shapes)
+        {
+            if (shape.type != ShapeDesc::Type::PlyMesh)
+            {
+                continue;
+            }
+            expect(shape.filename.has_value());
+            if (shape.filename)
+            {
+                expect(filename_index < filenames.size());
+                if (filename_index < filenames.size())
+                {
+                    expect(*shape.filename == filenames[filename_index]);
+                }
+            }
+            filename_index++;
+        }
+        expect(filename_index == filenames.size());
+    };
+
+    "reject_invalid_ply_filenames"_test = []
+    {
+        for (auto path : {
+                 "tests/scenes/ply_missing_filename.pbrt",
+                 "tests/scenes/ply_empty_filename.pbrt",
+                 "tests/scenes/ply_duplicate_filename.pbrt",
+             })
+        {
+            auto rejected = false;
+            try
+            {
+                (void)PbrtParser::parse(path);
+            }
+            catch (const std::runtime_error& error)
+            {
+                auto message = std::string{error.what()};
+                rejected     = message.find(path) != std::string::npos;
+            }
+            expect(rejected) << "invalid plymesh filename should produce a source-located parse error";
+        }
     };
     return 0;
 }();

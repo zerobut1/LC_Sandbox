@@ -168,6 +168,7 @@ struct ShapeDesc
     };
     Type type{Type::TriangleMesh};
     luisa::optional<uint> mesh_index;
+    luisa::optional<std::filesystem::path> filename;
     luisa::vector<RawParameter> parameters;
     MaterialBinding material;
     luisa::optional<AreaLightDesc> area_light;

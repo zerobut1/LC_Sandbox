@@ -30,20 +30,6 @@ public:
     };
 
 public:
-    enum class Type
-    {
-        SRGB,
-        HeroWavelength,
-    };
-
-    struct CreateInfo
-    {
-        Type type{Type::SRGB};
-    };
-
-    static luisa::unique_ptr<Spectrum> create(const CreateInfo& info) noexcept;
-
-public:
     class Instance
     {
     private:

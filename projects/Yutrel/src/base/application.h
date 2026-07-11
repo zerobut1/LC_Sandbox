@@ -6,7 +6,7 @@
 #include <luisa/runtime/stream.h>
 #include <luisa/runtime/swapchain.h>
 
-#include "base/scene.h"
+#include "scene/scene_spec.h"
 
 namespace Yutrel
 {
@@ -14,19 +14,19 @@ using namespace luisa;
 using namespace luisa::compute;
 
 class Renderer;
+class Scene;
+
+struct ApplicationOptions
+{
+    luisa::string_view bin;
+    luisa::string_view backend;
+    bool interactive{false};
+    bool headless{false};
+    SceneSpec scene;
+};
 
 class Application final
 {
-public:
-    struct CreateInfo
-    {
-        luisa::string_view bin;
-        luisa::string_view backend;
-        Scene::CreateInfo scene_info;
-        bool interactive{false};
-        bool headless{false};
-    };
-
 private:
     Context m_context;
     Device m_device;
@@ -39,7 +39,7 @@ private:
     luisa::unique_ptr<Renderer> m_renderer;
 
 public:
-    explicit Application(const CreateInfo& info);
+    explicit Application(ApplicationOptions options);
     ~Application() noexcept;
 
     Application() noexcept                     = delete;

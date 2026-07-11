@@ -3,26 +3,12 @@
 #include <luisa/dsl/sugar.h>
 #include <luisa/dsl/syntax.h>
 
-#include "base/scene.h"
-#include "surfaces/diffuse.h"
-#include "surfaces/null.h"
+#include "base/interaction.h"
 
 namespace Yutrel
 {
 Surface::Surface(bool two_sided) noexcept
     : m_two_sided{two_sided} {}
-
-luisa::unique_ptr<Surface> Surface::create(Scene& scene, const CreateInfo& info) noexcept
-{
-    switch (info.type)
-    {
-    case Type::diffuse:
-        return luisa::make_unique<Diffuse>(scene.load_texture(info.reflectance), info.two_sided);
-    case Type::null:
-    default:
-        return luisa::make_unique<NullSurface>(info.two_sided);
-    }
-}
 
 void Surface::Instance::closure(PolymorphicCall<Closure>& call, const Interaction& it, Expr<float3> wo, SampledWavelengths& swl, Expr<float> time) const noexcept
 {

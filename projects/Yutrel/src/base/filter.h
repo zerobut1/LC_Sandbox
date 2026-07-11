@@ -19,23 +19,6 @@ class Filter
 public:
     static constexpr auto look_up_table_size = 64u;
 
-    enum class Type
-    {
-        Box,
-        Triangle,
-        Gaussian,
-        Mitchell,
-        LanczosSinc,
-    };
-
-    struct CreateInfo
-    {
-        Type type{Type::Box};
-        float radius{0.5f};
-    };
-
-    [[nodiscard]] static luisa::unique_ptr<Filter> create(const CreateInfo& info) noexcept;
-
 public:
     struct Sample
     {

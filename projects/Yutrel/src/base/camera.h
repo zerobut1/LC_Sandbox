@@ -17,42 +17,6 @@ class Renderer;
 class Camera
 {
 public:
-    enum class Type
-    {
-        pinhole,
-        thin_lens,
-    };
-
-    struct CreateInfo
-    {
-        Type type{Type::pinhole};
-
-        // film
-        Film::CreateInfo film_info{};
-
-        // filter
-        Filter::CreateInfo filter_info{};
-
-        uint spp{1024u};
-        float2 shutter_span{0.0f, 0.0f};
-        uint shutter_samples_count{0u};
-
-        float3 position{};
-        float3 lookat{};
-        float3 up{0.0f, 1.0f, 0.0f};
-
-        // pinhole
-        float fov{45.0f};
-
-        // thin lens
-        float aperture{2.0f};
-        float focal_length{35.0f};
-        float focus_distance{10.0f};
-    };
-
-    [[nodiscard]] static luisa::unique_ptr<Camera> create(const CreateInfo& info) noexcept;
-
-public:
     struct Sample
     {
         Var<Ray> ray;

@@ -1,39 +1,9 @@
 #include "texture.h"
 
 #include "base/renderer.h"
-#include "base/scene.h"
-#include "textures/checker_board.h"
-#include "textures/constant.h"
-#include "textures/image.h"
 
 namespace Yutrel
 {
-luisa::unique_ptr<Texture> Texture::create(Scene& scene, const CreateInfo& info) noexcept
-{
-    switch (info.type)
-    {
-    case Type::constant:
-        return luisa::make_unique<ConstantTexture>(info.v);
-    case Type::checker_board:
-    {
-        auto even = scene.load_texture(CreateInfo{
-            .type = Type::constant,
-            .v    = info.even,
-        });
-        auto odd  = scene.load_texture(CreateInfo{
-            .type = Type::constant,
-            .v    = info.odd,
-        });
-        return luisa::make_unique<CheckerBoard>(info.scale, even, odd);
-    }
-    case Type::image:
-        return luisa::make_unique<ImageTexture>(info.path, info.sampler, info.encoding);
-    default:
-        LUISA_ERROR("Unsupported texture");
-        return nullptr;
-    }
-}
-
 [[nodiscard]] inline auto extend_color_to_rgb(auto color, uint n) noexcept
 {
     if (n == 1u)

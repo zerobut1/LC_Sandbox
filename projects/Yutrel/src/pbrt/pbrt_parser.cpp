@@ -1,4 +1,4 @@
-#include "pbrt_scene_loader.h"
+#include "pbrt_parser.h"
 
 #include <charconv>
 #include <fstream>
@@ -9,18 +9,6 @@ namespace Yutrel
 {
 namespace
 {
-
-struct SourceLocation
-{
-    std::filesystem::path file;
-    uint line{1u};
-    uint column{1u};
-
-    [[nodiscard]] luisa::string string() const
-    {
-        return luisa::format("{}:{}:{}", file.string(), line, column);
-    }
-};
 
 enum class TokenKind
 {
@@ -40,7 +28,7 @@ struct Token
 
 [[noreturn]] void fail(const SourceLocation& loc, luisa::string_view message)
 {
-    auto s = luisa::format("{}: {}", loc.string(), message);
+    auto s = luisa::format("{}: {}", format_source_location(loc), message);
     throw std::runtime_error{s.c_str()};
 }
 
@@ -218,7 +206,7 @@ struct RawParameter
 class Parser
 {
 private:
-    SceneDescription m_desc;
+    PbrtScene m_desc;
     luisa::vector<Token> m_tokens;
     size_t m_cursor{};
 
@@ -236,19 +224,16 @@ private:
 
     Block m_block{Block::Options};
     std::array<float, 16u> m_current_transform{
-        1.0f, 0.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f,
-        0.0f, 0.0f, 0.0f, 1.0f};
+        1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
     luisa::string m_current_material;
     luisa::optional<AreaLightDesc> m_current_area_light;
     luisa::vector<AttributeState> m_attribute_stack;
 
 public:
-    Parser(SceneDescription desc, luisa::vector<Token> tokens) noexcept
+    Parser(PbrtScene desc, luisa::vector<Token> tokens) noexcept
         : m_desc{std::move(desc)}, m_tokens{std::move(tokens)} {}
 
-    [[nodiscard]] SceneDescription parse()
+    [[nodiscard]] PbrtScene parse()
     {
         while (!peek(TokenKind::End))
         {
@@ -317,13 +302,13 @@ private:
         luisa::vector<RawParameter> params;
         while (peek(TokenKind::String))
         {
-            auto decl = advance();
+            auto decl  = advance();
             auto split = decl.text.find_first_of(" \t");
             if (split == luisa::string::npos)
             {
                 fail(decl, luisa::format("invalid parameter declaration '{}'", decl.text));
             }
-            auto type = decl.text.substr(0u, split);
+            auto type     = decl.text.substr(0u, split);
             auto name_pos = decl.text.find_first_not_of(" \t", split);
             if (name_pos == luisa::string::npos)
             {
@@ -346,10 +331,10 @@ private:
             }
             (void)expect(TokenKind::RBracket, "expected ']'");
             params.emplace_back(RawParameter{
-                .type = std::move(type),
-                .name = std::move(name),
+                .type   = std::move(type),
+                .name   = std::move(name),
                 .values = std::move(values),
-                .loc = decl.loc,
+                .loc    = decl.loc,
             });
         }
         return params;
@@ -385,7 +370,7 @@ private:
         try
         {
             size_t parsed_chars = 0u;
-            auto v = std::stof(std::string{token.text}, &parsed_chars);
+            auto v              = std::stof(std::string{token.text}, &parsed_chars);
             if (parsed_chars != token.text.size())
             {
                 fail(token, luisa::format("invalid float '{}'", token.text));
@@ -404,9 +389,9 @@ private:
         {
             fail(token, luisa::format("expected integer, got string '{}'", token.text));
         }
-        int value = 0;
-        auto begin = token.text.data();
-        auto end = begin + token.text.size();
+        int value   = 0;
+        auto begin  = token.text.data();
+        auto end    = begin + token.text.size();
         auto result = std::from_chars(begin, end, value);
         if (result.ec != std::errc{} || result.ptr != end)
         {
@@ -618,8 +603,9 @@ private:
         {
             fail(command, luisa::format("unsupported Integrator '{}'", type));
         }
-        auto params = parse_parameters();
-        m_desc.integrator.type = IntegratorDesc::Type::Path;
+        auto params                 = parse_parameters();
+        m_desc.integrator.source    = command.loc;
+        m_desc.integrator.type      = IntegratorDesc::Type::Path;
         m_desc.integrator.max_depth = one_uint(params, "maxdepth", command, 10u);
     }
 
@@ -646,15 +632,17 @@ private:
         {
             fail(command, luisa::format("unsupported Sampler '{}'", type));
         }
-        auto params = parse_parameters();
-        m_desc.sampler.type = SamplerDesc::Type::Independent;
+        auto params                  = parse_parameters();
+        m_desc.sampler.source        = command.loc;
+        m_desc.sampler.type          = SamplerDesc::Type::Independent;
         m_desc.sampler.pixel_samples = one_uint(params, "pixelsamples", command, 1u);
     }
 
     void parse_filter(const Token& command)
     {
         expect_options(command);
-        auto type = expect_string("PixelFilter type");
+        m_desc.filter.source = command.loc;
+        auto type            = expect_string("PixelFilter type");
         if (type == "triangle")
         {
             m_desc.filter.type = FilterDesc::Type::Triangle;
@@ -667,7 +655,7 @@ private:
         {
             fail(command, luisa::format("unsupported PixelFilter '{}'", type));
         }
-        auto params = parse_parameters();
+        auto params          = parse_parameters();
         m_desc.filter.radius = make_float2(one_float(params, "xradius", command, 1.0f),
                                            one_float(params, "yradius", command, 1.0f));
     }
@@ -680,11 +668,12 @@ private:
         {
             fail(command, luisa::format("unsupported Film '{}'", type));
         }
-        auto params = parse_parameters();
-        m_desc.film.type = FilmDesc::Type::RGB;
+        auto params            = parse_parameters();
+        m_desc.film.source     = command.loc;
+        m_desc.film.type       = FilmDesc::Type::RGB;
         m_desc.film.resolution = make_uint2(one_uint(params, "xresolution", command, 1024u),
                                             one_uint(params, "yresolution", command, 1024u));
-        auto filename = one_string(params, "filename", command, {});
+        auto filename          = one_string(params, "filename", command, {});
         if (!filename.empty())
         {
             m_desc.film.filename = std::filesystem::path{filename};
@@ -699,9 +688,10 @@ private:
         {
             fail(command, luisa::format("unsupported Camera '{}'", type));
         }
-        auto params = parse_parameters();
-        m_desc.camera.type = CameraDesc::Type::Perspective;
-        m_desc.camera.fov = one_float(params, "fov", command, 45.0f);
+        auto params                  = parse_parameters();
+        m_desc.camera.source         = command.loc;
+        m_desc.camera.type           = CameraDesc::Type::Perspective;
+        m_desc.camera.fov            = one_float(params, "fov", command, 45.0f);
         m_desc.camera.pbrt_transform = m_current_transform;
     }
 
@@ -712,18 +702,30 @@ private:
         {
             fail(command, "WorldBegin does not take parameters");
         }
-        m_block = Block::World;
+        m_block             = Block::World;
         m_current_transform = {
-            1.0f, 0.0f, 0.0f, 0.0f,
-            0.0f, 1.0f, 0.0f, 0.0f,
-            0.0f, 0.0f, 1.0f, 0.0f,
-            0.0f, 0.0f, 0.0f, 1.0f};
+            1.0f,
+            0.0f,
+            0.0f,
+            0.0f,
+            0.0f,
+            1.0f,
+            0.0f,
+            0.0f,
+            0.0f,
+            0.0f,
+            1.0f,
+            0.0f,
+            0.0f,
+            0.0f,
+            0.0f,
+            1.0f};
     }
 
     void parse_make_named_material(const Token& command)
     {
         expect_world(command);
-        auto name = expect_string("named material name");
+        auto name   = expect_string("named material name");
         auto params = parse_parameters();
         if (m_desc.named_materials.find(name) != m_desc.named_materials.end())
         {
@@ -735,9 +737,10 @@ private:
             fail(command, luisa::format("unsupported named material type '{}'", type));
         }
         m_desc.named_materials.emplace(std::move(name), MaterialDesc{
-            .type = MaterialDesc::Type::Diffuse,
-            .reflectance = rgb(params, "reflectance", command),
-        });
+                                                            .source      = command.loc,
+                                                            .type        = MaterialDesc::Type::Diffuse,
+                                                            .reflectance = rgb(params, "reflectance", command),
+                                                        });
     }
 
     void parse_named_material(const Token& command)
@@ -765,7 +768,8 @@ private:
         }
         auto params = parse_parameters();
         m_current_area_light.emplace(AreaLightDesc{
-            .type = AreaLightDesc::Type::Diffuse,
+            .source   = command.loc,
+            .type     = AreaLightDesc::Type::Diffuse,
             .emission = rgb(params, "L", command),
         });
     }
@@ -779,7 +783,7 @@ private:
         }
         m_attribute_stack.emplace_back(AttributeState{
             .material_name = m_current_material,
-            .area_light = m_current_area_light,
+            .area_light    = m_current_area_light,
         });
     }
 
@@ -796,7 +800,7 @@ private:
         }
         auto state = std::move(m_attribute_stack.back());
         m_attribute_stack.pop_back();
-        m_current_material = std::move(state.material_name);
+        m_current_material   = std::move(state.material_name);
         m_current_area_light = std::move(state.area_light);
     }
 
@@ -817,10 +821,10 @@ private:
             fail(command, luisa::format("Shape references undefined material '{}'", m_current_material));
         }
 
-        auto params = parse_parameters();
+        auto params    = parse_parameters();
         auto positions = float3_array(params, "point3", "P", command);
-        auto normals = float3_array(params, "normal", "N", command);
-        auto uvs = optional_float2_array(params, "point2", "uv");
+        auto normals   = float3_array(params, "normal", "N", command);
+        auto uvs       = optional_float2_array(params, "point2", "uv");
         if (!normals.empty() && normals.size() != positions.size())
         {
             fail(command, "'normal N' count must match 'point3 P' count");
@@ -833,15 +837,17 @@ private:
 
         auto mesh_index = static_cast<uint>(m_desc.meshes.size());
         m_desc.meshes.emplace_back(MeshDesc{
+            .source    = command.loc,
             .positions = std::move(positions),
-            .normals = std::move(normals),
-            .uvs = std::move(uvs),
-            .indices = std::move(indices),
+            .normals   = std::move(normals),
+            .uvs       = std::move(uvs),
+            .indices   = std::move(indices),
         });
         m_desc.shapes.emplace_back(ShapeDesc{
-            .mesh_index = mesh_index,
+            .source        = command.loc,
+            .mesh_index    = mesh_index,
             .material_name = m_current_material,
-            .area_light = m_current_area_light,
+            .area_light    = m_current_area_light,
         });
     }
 };
@@ -862,13 +868,18 @@ private:
 
 } // namespace
 
-SceneDescription PbrtSceneLoader::load(const std::filesystem::path& path)
+PbrtScene PbrtParser::parse(const std::filesystem::path& path)
 {
     auto source_path = std::filesystem::absolute(path);
-    auto source = read_file(source_path);
+    auto source      = read_file(source_path);
     Tokenizer tokenizer{source_path, std::move(source)};
-    SceneDescription desc{};
-    desc.source_path = source_path;
+    PbrtScene desc{};
+    desc.source_path       = source_path;
+    desc.camera.source     = SourceLocation{source_path};
+    desc.film.source       = SourceLocation{source_path};
+    desc.integrator.source = SourceLocation{source_path};
+    desc.sampler.source    = SourceLocation{source_path};
+    desc.filter.source     = SourceLocation{source_path};
     Parser parser{std::move(desc), tokenizer.tokenize()};
     return parser.parse();
 }

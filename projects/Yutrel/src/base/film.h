@@ -24,16 +24,6 @@ class Camera;
 class Film
 {
 public:
-    struct CreateInfo
-    {
-        uint2 resolution{1920u, 1080u};
-        bool display_hdr{false};
-        std::filesystem::path filename{"render.exr"};
-    };
-
-    [[nodiscard]] static luisa::unique_ptr<Film> create(const CreateInfo& info) noexcept;
-
-public:
     class Instance
     {
     private:

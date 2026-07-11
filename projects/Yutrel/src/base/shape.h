@@ -20,32 +20,6 @@ struct MeshView
 class Shape
 {
 public:
-    enum class Type
-    {
-        mesh,
-        inline_mesh,
-    };
-
-    struct CreateInfo
-    {
-        Type type{Type::mesh};
-
-        // mesh
-        std::filesystem::path path;
-
-        // inline_mesh
-        luisa::vector<float3> positions;
-        luisa::vector<float3> normals;
-        luisa::vector<float2> uvs;
-        luisa::vector<uint3> indices;
-
-        Surface::CreateInfo surface_info;
-        Light::CreateInfo light_info;
-    };
-
-    [[nodiscard]] static luisa::unique_ptr<Shape> create(const CreateInfo& info) noexcept;
-
-public:
     class Handle;
 
 public:

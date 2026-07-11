@@ -7,11 +7,6 @@
 
 namespace Yutrel
 {
-luisa::unique_ptr<Film> Film::create(const CreateInfo& info) noexcept
-{
-    return luisa::make_unique<Film>(info.resolution, info.display_hdr, info.filename);
-}
-
 Film::Film(uint2 resolution, bool display_hdr, std::filesystem::path filename) noexcept
     : m_resolution{resolution},
       m_display_hdr{display_hdr},

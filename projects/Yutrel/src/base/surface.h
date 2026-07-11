@@ -10,29 +10,11 @@
 
 namespace Yutrel
 {
-class Scene;
 class Renderer;
 class Interaction;
 
 class Surface
 {
-public:
-    enum class Type
-    {
-        null,
-        diffuse,
-    };
-
-    struct CreateInfo
-    {
-        Type type{Type::null};
-        // diffuse
-        Texture::CreateInfo reflectance{};
-        bool two_sided{false};
-    };
-
-    [[nodiscard]] static luisa::unique_ptr<Surface> create(Scene& scene, const CreateInfo& info) noexcept;
-
 public:
     static constexpr auto event_reflect  = 0x00u;
     static constexpr auto event_enter    = 0x01u;

@@ -6,12 +6,15 @@
 #include <luisa/core/basic_types.h>
 #include <luisa/core/stl.h>
 
+#include "scene/source_location.h"
+
 namespace Yutrel
 {
 using namespace luisa;
 
 struct CameraDesc
 {
+    SourceLocation source;
     enum class Type
     {
         Perspective,
@@ -19,14 +22,12 @@ struct CameraDesc
     Type type{Type::Perspective};
     float fov{45.0f};
     std::array<float, 16u> pbrt_transform{
-        1.0f, 0.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f,
-        0.0f, 0.0f, 0.0f, 1.0f};
+        1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
 };
 
 struct FilmDesc
 {
+    SourceLocation source;
     enum class Type
     {
         RGB,
@@ -38,6 +39,7 @@ struct FilmDesc
 
 struct IntegratorDesc
 {
+    SourceLocation source;
     enum class Type
     {
         Path,
@@ -48,6 +50,7 @@ struct IntegratorDesc
 
 struct SamplerDesc
 {
+    SourceLocation source;
     enum class Type
     {
         Independent,
@@ -58,6 +61,7 @@ struct SamplerDesc
 
 struct FilterDesc
 {
+    SourceLocation source;
     enum class Type
     {
         Triangle,
@@ -69,6 +73,7 @@ struct FilterDesc
 
 struct MaterialDesc
 {
+    SourceLocation source;
     enum class Type
     {
         Diffuse,
@@ -79,6 +84,7 @@ struct MaterialDesc
 
 struct AreaLightDesc
 {
+    SourceLocation source;
     enum class Type
     {
         Diffuse,
@@ -89,6 +95,7 @@ struct AreaLightDesc
 
 struct MeshDesc
 {
+    SourceLocation source;
     luisa::vector<float3> positions;
     luisa::vector<float3> normals;
     luisa::vector<float2> uvs;
@@ -97,12 +104,13 @@ struct MeshDesc
 
 struct ShapeDesc
 {
+    SourceLocation source;
     uint mesh_index{};
     luisa::string material_name;
     luisa::optional<AreaLightDesc> area_light;
 };
 
-struct SceneDescription
+struct PbrtScene
 {
     std::filesystem::path source_path;
     CameraDesc camera;

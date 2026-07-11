@@ -1,6 +1,5 @@
 #include "scene.h"
 
-#include "scene/legacy_scene_adapter.h"
 #include "scene/scene_builder.h"
 #include "scene/scene_spec.h"
 
@@ -35,22 +34,12 @@ Scene::Scene(const Context& context) noexcept
 
 Scene::~Scene() noexcept = default;
 
-luisa::unique_ptr<Scene> Scene::create(const Context& context, const CreateInfo& info)
-{
-    auto spec = make_legacy_scene_spec(info);
-    return create(context, spec);
-}
-
 luisa::unique_ptr<Scene> Scene::create(const Context& context, const SceneSpec& spec) noexcept
 {
     auto scene = luisa::make_unique<Scene>(context);
     SceneBuilder{*scene, spec}.build();
     return scene;
 }
-
-const Texture* Scene::load_texture(const Texture::CreateInfo& info) noexcept { return _store(Texture::create(*this, info)); }
-const Surface* Scene::load_surface(const Surface::CreateInfo& info) noexcept { return _store(Surface::create(*this, info)); }
-const Light* Scene::load_light(const Light::CreateInfo& info) noexcept { return _store(Light::create(*this, info)); }
 
 const Texture* Scene::_store(luisa::unique_ptr<Texture> object) noexcept { return m_config->textures.emplace_back(std::move(object)).get(); }
 const Surface* Scene::_store(luisa::unique_ptr<Surface> object) noexcept { return m_config->surfaces.emplace_back(std::move(object)).get(); }

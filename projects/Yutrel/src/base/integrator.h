@@ -22,13 +22,6 @@ class LightSampler;
 class Integrator
 {
 public:
-    struct CreateInfo
-    {
-        uint max_depth{10u};
-        uint rr_depth{0u};
-        float rr_threshold{0.95f};
-    };
-
     class Instance
     {
     private:
@@ -60,7 +53,6 @@ public:
 public:
     virtual ~Integrator() noexcept = default;
 
-    [[nodiscard]] static luisa::unique_ptr<Integrator> create(const CreateInfo& info) noexcept;
     [[nodiscard]] virtual luisa::unique_ptr<Instance> build(Renderer& renderer, CommandBuffer& command_buffer, const Sampler* sampler) const noexcept = 0;
 };
 

@@ -2,28 +2,11 @@
 
 #include "base/film.h"
 #include "base/renderer.h"
-#include "cameras/pinhole.h"
-#include "cameras/thin_lens.h"
-
 #include <numeric>
 #include <random>
 
 namespace Yutrel
 {
-luisa::unique_ptr<Camera> Camera::create(const CreateInfo& info) noexcept
-{
-    switch (info.type)
-    {
-    case Type::pinhole:
-        return luisa::make_unique<PinholeCamera>(info.position, info.lookat, info.up, info.shutter_span, info.shutter_samples_count, info.fov);
-    case Type::thin_lens:
-        return luisa::make_unique<ThinLensCamera>(info.position, info.lookat, info.up, info.shutter_span, info.shutter_samples_count, info.aperture, info.focal_length, info.focus_distance);
-    default:
-        LUISA_ERROR("Unsupported camera type {}.", static_cast<uint>(info.type));
-        return nullptr;
-    }
-}
-
 Camera::Camera(float3 position, float3 lookat, float3 up, float2 shutter_span, uint shutter_samples_count) noexcept
     : m_up{up},
       m_shutter_span{shutter_span},

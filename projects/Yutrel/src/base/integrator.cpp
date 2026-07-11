@@ -21,11 +21,6 @@
 
 namespace Yutrel
 {
-luisa::unique_ptr<Integrator> Integrator::create(const CreateInfo& info) noexcept
-{
-    return luisa::make_unique<PathIntegrator>(info.max_depth, info.rr_depth, info.rr_threshold);
-}
-
 Integrator::Instance::Instance(Renderer& renderer, CommandBuffer& command_buffer, const Integrator* integrator, const Sampler* sampler) noexcept
     : _renderer{renderer},
       _integrator{integrator},

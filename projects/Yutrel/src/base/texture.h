@@ -11,7 +11,6 @@ using namespace luisa;
 using namespace luisa::compute;
 using TextureSampler = compute::Sampler;
 
-class Scene;
 class Renderer;
 class CommandBuffer;
 class Interaction;
@@ -19,36 +18,12 @@ class Interaction;
 class Texture
 {
 public:
-    enum class Type
-    {
-        constant,
-        checker_board,
-        image,
-    };
-
     enum class Encoding : uint
     {
         LINEAR,
         SRGB,
         GAMMA,
     };
-
-    struct CreateInfo
-    {
-        Type type{Type::constant};
-        // constant
-        float4 v;
-        // checker_board
-        float scale{1.0f};
-        float4 even;
-        float4 odd;
-        // image
-        luisa::filesystem::path path;
-        TextureSampler sampler;
-        Encoding encoding{Encoding::LINEAR};
-    };
-
-    [[nodiscard]] static luisa::unique_ptr<Texture> create(Scene& scene, const CreateInfo& info) noexcept;
 
 public:
     class Instance
@@ -85,7 +60,6 @@ public:
         [[nodiscard]] virtual Spectrum::Decode evaluate_illuminant_spectrum(
             const Interaction& it, const SampledWavelengths& swl, Expr<float> time) const noexcept;
 
-    protected:
     protected:
         [[nodiscard]] Spectrum::Decode evaluate_static_albedo_spectrum_impl(
             const SampledWavelengths& swl, float4 v) const noexcept;

@@ -21,14 +21,6 @@ class SceneSpec;
 class Scene
 {
 public:
-    struct CreateInfo
-    {
-        Spectrum::CreateInfo spectrum_info;
-        Integrator::CreateInfo integrator_info;
-        Camera::CreateInfo camera_info;
-        luisa::vector<Shape::CreateInfo> shape_infos;
-    };
-
     struct Config;
 
 private:
@@ -61,12 +53,7 @@ public:
     Scene(Scene&&)                 = delete;
     Scene& operator=(Scene&&)      = delete;
 
-    [[nodiscard]] static luisa::unique_ptr<Scene> create(const Context& context, const CreateInfo& info);
     [[nodiscard]] static luisa::unique_ptr<Scene> create(const Context& context, const SceneSpec& spec) noexcept;
-
-    [[nodiscard]] const Texture* load_texture(const Texture::CreateInfo& info) noexcept;
-    [[nodiscard]] const Surface* load_surface(const Surface::CreateInfo& info) noexcept;
-    [[nodiscard]] const Light* load_light(const Light::CreateInfo& info) noexcept;
 
     [[nodiscard]] const Spectrum* spectrum() const noexcept;
     [[nodiscard]] const Camera* camera() const noexcept;

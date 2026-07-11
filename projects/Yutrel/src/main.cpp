@@ -1,6 +1,6 @@
 #include "base/application.h"
-#include "pbrt/pbrt_scene_compiler.h"
-#include "pbrt/pbrt_scene_loader.h"
+#include "pbrt/pbrt_importer.h"
+#include "pbrt/pbrt_parser.h"
 
 #include <luisa/core/logging.h>
 
@@ -40,24 +40,25 @@ namespace
     return path.extension() == ".pbrt";
 }
 
-[[nodiscard]] Scene::CreateInfo load_pbrt_scene_create_info(std::filesystem::path const& scene_path)
+[[nodiscard]] SceneSpec load_pbrt_scene_spec(std::filesystem::path const& scene_path)
 {
-    auto desc = PbrtSceneLoader::load(scene_path);
-    return PbrtSceneCompiler::compile(std::move(desc));
+    auto scene = PbrtParser::parse(scene_path);
+    return PbrtImporter::import(std::move(scene));
 }
 
 } // namespace
 
-int main(int argc, char* argv[]) try
+int main(int argc, char* argv[])
+try
 {
     if (argc <= 1)
     {
         print_usage_and_exit(argv[0]);
     }
 
-    bool interactive      = false;
-    bool headless         = false;
-    bool has_scene_path   = false;
+    bool interactive    = false;
+    bool headless       = false;
+    bool has_scene_path = false;
     std::filesystem::path scene_path{};
 
     for (int i = 2; i < argc; i++)
@@ -77,7 +78,8 @@ int main(int argc, char* argv[]) try
         if (!arg.empty() && arg.front() == '-')
         {
             fail(luisa::format("Unknown option '{}'. Usage: {} <backend> <scene.pbrt> [--interactive|-i] [--headless].",
-                               arg, argv[0]));
+                               arg,
+                               argv[0]));
         }
 
         auto candidate = std::filesystem::path{argv[i]};
@@ -90,7 +92,8 @@ int main(int argc, char* argv[]) try
         if (has_scene_path)
         {
             fail(luisa::format("Multiple scene files specified: '{}' and '{}'. Only one .pbrt scene path is supported.",
-                               scene_path.string(), candidate.string()));
+                               scene_path.string(),
+                               candidate.string()));
         }
 
         scene_path     = candidate;
@@ -106,15 +109,15 @@ int main(int argc, char* argv[]) try
         fail("--interactive and --headless cannot be used together.");
     }
 
-    Application::CreateInfo app_info{
+    ApplicationOptions options{
         .bin         = argv[0],
         .backend     = argv[1],
-        .scene_info  = load_pbrt_scene_create_info(scene_path),
         .interactive = interactive,
         .headless    = headless,
+        .scene       = load_pbrt_scene_spec(scene_path),
     };
 
-    Application app{app_info};
+    Application app{std::move(options)};
     app.run();
 
     return 0;

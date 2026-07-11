@@ -11,7 +11,6 @@ namespace Yutrel
 using namespace luisa;
 using namespace luisa::compute;
 
-class Scene;
 class Renderer;
 
 class Light
@@ -53,24 +52,6 @@ public:
 public:
     class Instance;
     class Closure;
-
-public:
-    enum class Type
-    {
-        null,
-        diffuse,
-    };
-
-    struct CreateInfo
-    {
-        Type type{Type::null};
-        // diffuse
-        Texture::CreateInfo emission{};
-        float scale{1.0f};
-        bool two_sided{false};
-    };
-
-    [[nodiscard]] static luisa::unique_ptr<Light> create(Scene& scene, const CreateInfo& info) noexcept;
 
 public:
     Light() noexcept          = default;

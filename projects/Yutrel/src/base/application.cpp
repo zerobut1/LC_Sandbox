@@ -8,16 +8,16 @@
 
 namespace Yutrel
 {
-Application::Application(const CreateInfo& info)
-    : m_context(info.bin)
+Application::Application(ApplicationOptions options)
+    : m_context(options.bin)
 {
-    m_interactive = info.interactive;
-    m_headless    = info.headless;
+    m_interactive = options.interactive;
+    m_headless    = options.headless;
 
-    m_device = m_context.create_device(info.backend);
+    m_device = m_context.create_device(options.backend);
     m_stream = m_device.create_stream(StreamTag::GRAPHICS);
 
-    m_scene    = Scene::create(m_context, info.scene_info);
+    m_scene    = Scene::create(m_context, options.scene);
     m_renderer = Renderer::create(m_device, m_stream, *m_scene);
 }
 

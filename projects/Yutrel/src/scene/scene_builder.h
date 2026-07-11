@@ -73,6 +73,8 @@ public:
     [[nodiscard]] const Sampler* resolve(SamplerRef ref) noexcept;
     [[nodiscard]] const Integrator* resolve(IntegratorRef ref) noexcept;
 
+    void build() noexcept;
+
     template <typename Base, typename Impl, typename... Args>
         requires std::derived_from<Impl, Base>
     [[nodiscard]] const Base* emplace(Args&&... args) noexcept
@@ -87,6 +89,13 @@ private:
     void _store(luisa::unique_ptr<Texture> texture) noexcept;
     void _store(luisa::unique_ptr<Surface> surface) noexcept;
     void _store(luisa::unique_ptr<Light> light) noexcept;
+    void _store(luisa::unique_ptr<Shape> shape) noexcept;
+    void _store(luisa::unique_ptr<Spectrum> spectrum) noexcept;
+    void _store(luisa::unique_ptr<Camera> camera) noexcept;
+    void _store(luisa::unique_ptr<Film> film) noexcept;
+    void _store(luisa::unique_ptr<Filter> filter) noexcept;
+    void _store(luisa::unique_ptr<Sampler> sampler) noexcept;
+    void _store(luisa::unique_ptr<Integrator> integrator) noexcept;
 
     template <typename Spec, typename Runtime>
     [[nodiscard]] const Runtime* _resolve(SceneRef<Spec> ref, const SpecTable<Spec>& table, BuildCache<Runtime>& cache) noexcept;

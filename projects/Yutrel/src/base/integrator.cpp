@@ -12,6 +12,7 @@
 #include "base/light_sampler.h"
 #include "base/renderer.h"
 #include "base/sampler.h"
+#include "scene/scene_builder.h"
 #include "utils/command_buffer.h"
 #include "utils/image_io.h"
 #include "utils/progress_bar.h"
@@ -20,26 +21,48 @@
 
 namespace Yutrel
 {
-luisa::unique_ptr<Integrator> Integrator::create(Renderer& renderer, CommandBuffer& command_buffer, const CreateInfo& info) noexcept
+luisa::unique_ptr<Integrator> Integrator::create(const CreateInfo& info) noexcept
 {
-    return luisa::make_unique<Integrator>(renderer, command_buffer, info);
+    return luisa::make_unique<PathIntegrator>(info.max_depth, info.rr_depth, info.rr_threshold);
 }
 
-Integrator::Integrator(Renderer& renderer, CommandBuffer& command_buffer, const CreateInfo& info) noexcept
-    : m_renderer(renderer),
-      m_max_depth(info.max_depth),
-      m_rr_depth(info.rr_depth),
-      m_rr_threshold(std::max(info.rr_threshold, 0.05f)),
-      m_sampler(Sampler::create(renderer)),
-      m_light_sampler(LightSampler::create(renderer, command_buffer)) {}
+Integrator::Instance::Instance(Renderer& renderer, CommandBuffer& command_buffer, const Integrator* integrator, const Sampler* sampler) noexcept
+    : _renderer{renderer},
+      _integrator{integrator},
+      _sampler{sampler->build(renderer)},
+      _light_sampler{LightSampler::create(renderer, command_buffer)}
+{
+}
 
-Integrator::~Integrator() noexcept = default;
+Integrator::Instance::~Instance() noexcept = default;
 
-void Integrator::render(Stream& stream, bool enable_display)
+PathIntegrator::PathIntegrator(uint max_depth, uint rr_depth, float rr_threshold) noexcept
+    : _max_depth{max_depth},
+      _rr_depth{rr_depth},
+      _rr_threshold{std::max(rr_threshold, 0.05f)}
+{
+}
+
+PathIntegrator::Instance::Instance(Renderer& renderer, CommandBuffer& command_buffer, const PathIntegrator* integrator, const Sampler* sampler) noexcept
+    : Integrator::Instance{renderer, command_buffer, integrator, sampler}
+{
+}
+
+luisa::unique_ptr<Integrator::Instance> PathIntegrator::build(Renderer& renderer, CommandBuffer& command_buffer, const Sampler* sampler) const noexcept
+{
+    return luisa::make_unique<PathIntegrator::Instance>(renderer, command_buffer, this, sampler);
+}
+
+const Integrator* PathIntegratorSpec::build(SceneBuilder& builder) const noexcept
+{
+    return builder.emplace<Integrator, PathIntegrator>(_max_depth, _rr_depth, _rr_threshold);
+}
+
+void PathIntegrator::Instance::render(Stream& stream, bool enable_display)
 {
     CommandBuffer command_buffer{stream};
 
-    auto camera      = m_renderer.camera();
+    auto camera      = renderer().camera();
     auto resolution  = camera->film()->base()->resolution();
     auto pixel_count = resolution.x * resolution.y;
 
@@ -60,11 +83,11 @@ void Integrator::render(Stream& stream, bool enable_display)
     camera->film()->release();
 }
 
-void Integrator::render_interactive(Stream& stream)
+void PathIntegrator::Instance::render_interactive(Stream& stream)
 {
     CommandBuffer command_buffer{stream};
 
-    auto camera     = m_renderer.camera();
+    auto camera     = renderer().camera();
     auto resolution = camera->film()->base()->resolution();
 
     camera->film()->prepare(command_buffer, true);
@@ -113,9 +136,9 @@ void Integrator::render_interactive(Stream& stream)
     camera->film()->release();
 }
 
-void Integrator::render_one_camera(CommandBuffer& command_buffer, Camera::Instance* camera)
+void PathIntegrator::Instance::render_one_camera(CommandBuffer& command_buffer, Camera::Instance* camera)
 {
-    auto spp        = camera->base()->spp();
+    auto spp        = sampler()->base()->spp();
     auto resolution = camera->film()->base()->resolution();
 
     sampler()->reset(command_buffer, resolution.x * resolution.y);
@@ -141,7 +164,7 @@ void Integrator::render_one_camera(CommandBuffer& command_buffer, Camera::Instan
     LUISA_INFO("Integrator shader compile in {} ms.", clock_compile.toc());
     command_buffer << synchronize();
 
-    auto shutter_samples = camera->base()->shutter_samples();
+    auto shutter_samples = camera->base()->shutter_samples(spp);
     LUISA_INFO("Rendering started.");
     Clock clock_render;
     ProgressBar progress_bar;
@@ -191,7 +214,7 @@ void Integrator::render_one_camera(CommandBuffer& command_buffer, Camera::Instan
     LUISA_INFO("Rendering finished in {} ms.", clock_render.toc());
 }
 
-Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Expr<uint2> pixel_id, Expr<float> time) const noexcept
+Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> frame_index, Expr<uint2> pixel_id, Expr<float> time) const noexcept
 {
     sampler()->start(pixel_id, frame_index);
 
@@ -286,7 +309,10 @@ Float3 Integrator::Li(const Camera::Instance* camera, Expr<uint> frame_index, Ex
         };
 
         beta = zero_if_any_nan(beta);
-        $if(beta.all([](auto b) noexcept { return b <= 0.0f; }))
+        $if(beta.all([](auto b) noexcept
+        {
+            return b <= 0.0f;
+        }))
         {
             $break;
         };

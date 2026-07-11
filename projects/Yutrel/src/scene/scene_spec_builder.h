@@ -20,6 +20,8 @@ private:
     SpecTable<FilterSpec> _filters{"filter"};
     SpecTable<SamplerSpec> _samplers{"sampler"};
     SpecTable<IntegratorSpec> _integrators{"integrator"};
+    luisa::vector<ShapeInstanceSpec> _instances;
+    luisa::optional<RenderSpec> _render;
     bool _finished{};
 
 public:
@@ -208,6 +210,9 @@ public:
     }
 
     [[nodiscard]] IntegratorRef reference_integrator(luisa::string name, SourceLocation use_site);
+
+    void add_instance(ShapeInstanceSpec instance);
+    void set_render(RenderSpec render);
 
     [[nodiscard]] SceneSpec finish();
 

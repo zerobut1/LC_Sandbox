@@ -12,7 +12,6 @@ namespace Yutrel
 using namespace luisa;
 using namespace luisa::compute;
 
-class Scene;
 class Renderer;
 
 class Camera
@@ -51,7 +50,7 @@ public:
         float focus_distance{10.0f};
     };
 
-    [[nodiscard]] static luisa::unique_ptr<Camera> create(Scene& scene, const CreateInfo& info) noexcept;
+    [[nodiscard]] static luisa::unique_ptr<Camera> create(const CreateInfo& info) noexcept;
 
 public:
     struct Sample
@@ -81,7 +80,7 @@ public:
         BufferView<float4x4> m_device_transform;
 
     public:
-        explicit Instance(Renderer& renderer, CommandBuffer& command_buffer, const Camera* camera) noexcept;
+        Instance(Renderer& renderer, CommandBuffer& command_buffer, const Camera* camera, const Film* film, const Filter* filter) noexcept;
         virtual ~Instance() noexcept = default;
 
         Instance()                           = delete;
@@ -109,16 +108,13 @@ public:
     };
 
 private:
-    const Film* m_film;
-    const Filter* m_filter;
     float4x4 m_init_transform;
     float3 m_up;
-    uint m_spp;
     float2 m_shutter_span;
     uint m_shutter_samples_count;
 
 public:
-    explicit Camera(Scene& scene, const CreateInfo& info) noexcept;
+    Camera(float3 position, float3 lookat, float3 up, float2 shutter_span, uint shutter_samples_count) noexcept;
     virtual ~Camera() noexcept;
 
     Camera()                         = delete;
@@ -128,14 +124,11 @@ public:
     Camera& operator=(Camera&&)      = delete;
 
 public:
-    [[nodiscard]] virtual luisa::unique_ptr<Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept = 0;
+    [[nodiscard]] virtual luisa::unique_ptr<Instance> build(Renderer& renderer, CommandBuffer& command_buffer, const Film* film, const Filter* filter) const noexcept = 0;
 
-    [[nodiscard]] auto film() const noexcept { return m_film; }
-    [[nodiscard]] auto filter() const noexcept { return m_filter; }
-    [[nodiscard]] auto spp() const noexcept { return m_spp; }
     [[nodiscard]] auto init_transform() const noexcept { return m_init_transform; }
     [[nodiscard]] auto up() const noexcept { return m_up; }
-    [[nodiscard]] luisa::vector<ShutterSample> shutter_samples() const noexcept;
+    [[nodiscard]] luisa::vector<ShutterSample> shutter_samples(uint spp) const noexcept;
     [[nodiscard]] virtual bool requires_lens_sampling() const noexcept { return false; }
 };
 

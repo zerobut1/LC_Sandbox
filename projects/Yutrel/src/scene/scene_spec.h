@@ -2,6 +2,10 @@
 
 #include <utility>
 
+#include <luisa/core/basic_types.h>
+#include <luisa/core/stl/optional.h>
+#include <luisa/core/stl/vector.h>
+
 #include "scene/spec_base.h"
 #include "scene/spec_table.h"
 
@@ -9,6 +13,25 @@ namespace Yutrel
 {
 
 class SceneSpecBuilder;
+
+struct ShapeInstanceSpec
+{
+    SourceLocation source;
+    ShapeRef shape;
+    SurfaceRef surface;
+    luisa::optional<LightRef> light;
+    luisa::float4x4 transform{luisa::make_float4x4(1.0f)};
+};
+
+struct RenderSpec
+{
+    SpectrumRef spectrum;
+    CameraRef camera;
+    FilmRef film;
+    FilterRef filter;
+    SamplerRef sampler;
+    IntegratorRef integrator;
+};
 
 class SceneSpec
 {
@@ -23,6 +46,8 @@ private:
     SpecTable<FilterSpec> _filters;
     SpecTable<SamplerSpec> _samplers;
     SpecTable<IntegratorSpec> _integrators;
+    luisa::vector<ShapeInstanceSpec> _instances;
+    RenderSpec _render;
 
 private:
     SceneSpec(
@@ -35,7 +60,9 @@ private:
         SpecTable<FilmSpec> films,
         SpecTable<FilterSpec> filters,
         SpecTable<SamplerSpec> samplers,
-        SpecTable<IntegratorSpec> integrators) noexcept
+        SpecTable<IntegratorSpec> integrators,
+        luisa::vector<ShapeInstanceSpec> instances,
+        RenderSpec render) noexcept
         : _textures{std::move(textures)},
           _surfaces{std::move(surfaces)},
           _lights{std::move(lights)},
@@ -45,7 +72,9 @@ private:
           _films{std::move(films)},
           _filters{std::move(filters)},
           _samplers{std::move(samplers)},
-          _integrators{std::move(integrators)}
+          _integrators{std::move(integrators)},
+          _instances{std::move(instances)},
+          _render{render}
     {
     }
 
@@ -69,6 +98,8 @@ public:
     [[nodiscard]] const SpecTable<FilterSpec>& filters() const noexcept { return _filters; }
     [[nodiscard]] const SpecTable<SamplerSpec>& samplers() const noexcept { return _samplers; }
     [[nodiscard]] const SpecTable<IntegratorSpec>& integrators() const noexcept { return _integrators; }
+    [[nodiscard]] luisa::span<const ShapeInstanceSpec> instances() const noexcept { return _instances; }
+    [[nodiscard]] const RenderSpec& render() const noexcept { return _render; }
 };
 
 } // namespace Yutrel

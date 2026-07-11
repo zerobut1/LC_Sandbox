@@ -1,6 +1,7 @@
 #pragma once
 
 #include "base/spectrum.h"
+#include "scene/spec_base.h"
 #include "utils/color_space.h"
 
 namespace Yutrel
@@ -92,8 +93,7 @@ public:
     };
 
 public:
-    SRGBSpectrum(Scene& scene, const CreateInfo& info) noexcept
-        : Spectrum(scene, info) {}
+    SRGBSpectrum() noexcept = default;
 
     [[nodiscard]] luisa::unique_ptr<Spectrum::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept override
     {
@@ -105,6 +105,12 @@ public:
     [[nodiscard]] float4 encode_static_srgb_albedo(float3 rgb) const noexcept override { return make_float4(clamp(rgb, 0.f, 1.f), 1.f); }
     [[nodiscard]] float4 encode_static_srgb_unbounded(float3 rgb) const noexcept override { return make_float4(rgb, 1.f); }
     [[nodiscard]] float4 encode_static_srgb_illuminant(float3 rgb) const noexcept override { return make_float4(max(rgb, 0.f), 1.f); }
+};
+
+class SRGBSpectrumSpec final : public SpectrumSpec
+{
+public:
+    [[nodiscard]] const Spectrum* build(SceneBuilder& builder) const noexcept override;
 };
 
 } // namespace Yutrel

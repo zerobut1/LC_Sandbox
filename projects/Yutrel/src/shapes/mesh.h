@@ -1,6 +1,7 @@
 #pragma once
 
 #include "base/shape.h"
+#include "scene/spec_base.h"
 
 namespace Yutrel
 {
@@ -31,12 +32,28 @@ private:
     luisa::shared_ptr<MeshLoader> m_loader;
 
 public:
-    explicit Mesh(Scene& scene, const CreateInfo& info) noexcept;
+    explicit Mesh(std::filesystem::path path) noexcept;
     ~Mesh() noexcept override = default;
 
 public:
     [[nodiscard]] bool is_mesh() const noexcept override { return true; }
     [[nodiscard]] MeshView mesh() const noexcept override { return m_loader->mesh(); }
     [[nodiscard]] virtual uint vertex_properties() const noexcept override { return m_loader->properties(); }
+};
+
+class MeshShapeSpec final : public ShapeSpec
+{
+private:
+    std::filesystem::path _path;
+
+public:
+    explicit MeshShapeSpec(std::filesystem::path path) noexcept
+        : _path{std::move(path)} {}
+
+    [[nodiscard]] luisa::optional<luisa::string> validate() const noexcept override
+    {
+        return _path.empty() ? spec_validation_error("Mesh path cannot be empty.") : luisa::nullopt;
+    }
+    [[nodiscard]] const Shape* build(SceneBuilder& builder) const noexcept override;
 };
 } // namespace Yutrel

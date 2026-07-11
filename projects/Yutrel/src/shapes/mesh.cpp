@@ -8,11 +8,17 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 
+#include "scene/scene_builder.h"
+
 namespace Yutrel
 {
-Mesh::Mesh(Scene& scene, const CreateInfo& info) noexcept
-    : Shape(scene, info),
-      m_loader(MeshLoader::load(info.path)) {}
+Mesh::Mesh(std::filesystem::path path) noexcept
+    : m_loader(MeshLoader::load(std::move(path))) {}
+
+const Shape* MeshShapeSpec::build(SceneBuilder& builder) const noexcept
+{
+    return builder.emplace<Shape, Mesh>(_path);
+}
 
 luisa::shared_ptr<MeshLoader> MeshLoader::load(std::filesystem::path path,
                                                uint subdiv_level,

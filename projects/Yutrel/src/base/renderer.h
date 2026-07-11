@@ -3,6 +3,7 @@
 #include <luisa/luisa-compute.h>
 
 #include "base/camera.h"
+#include "base/integrator.h"
 #include "base/light.h"
 #include "base/spectrum.h"
 #include "base/surface.h"
@@ -15,7 +16,6 @@ using namespace luisa::compute;
 using TextureSampler = compute::Sampler;
 
 class Scene;
-class Integrator;
 class Geometry;
 
 class Renderer final
@@ -35,7 +35,7 @@ private:
 
     luisa::unique_ptr<Spectrum::Instance> m_spectrum;
     luisa::unique_ptr<Camera::Instance> m_camera;
-    luisa::unique_ptr<Integrator> m_integrator;
+    luisa::unique_ptr<Integrator::Instance> m_integrator;
     luisa::unique_ptr<Geometry> m_geometry;
 
     luisa::unordered_map<luisa::string, uint> m_named_ids;

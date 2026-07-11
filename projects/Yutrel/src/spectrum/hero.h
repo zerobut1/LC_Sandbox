@@ -1,6 +1,7 @@
 #pragma once
 
 #include "base/spectrum.h"
+#include "scene/spec_base.h"
 
 namespace Yutrel
 {
@@ -29,8 +30,7 @@ public:
     };
 
 public:
-    HeroWavelengthSpectrum(Scene& scene, const CreateInfo& info) noexcept
-        : Spectrum(scene, info) {}
+    HeroWavelengthSpectrum() noexcept = default;
 
     [[nodiscard]] luisa::unique_ptr<Spectrum::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept override;
 
@@ -39,5 +39,11 @@ public:
     [[nodiscard]] float4 encode_static_srgb_albedo(float3 rgb) const noexcept override;
     [[nodiscard]] float4 encode_static_srgb_unbounded(float3 rgb) const noexcept override;
     [[nodiscard]] float4 encode_static_srgb_illuminant(float3 rgb) const noexcept override;
+};
+
+class HeroWavelengthSpectrumSpec final : public SpectrumSpec
+{
+public:
+    [[nodiscard]] const Spectrum* build(SceneBuilder& builder) const noexcept override;
 };
 } // namespace Yutrel

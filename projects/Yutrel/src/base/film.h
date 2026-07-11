@@ -10,6 +10,7 @@
 #include <luisa/runtime/image.h>
 #include <luisa/runtime/swapchain.h>
 
+#include "scene/spec_base.h"
 #include "utils/command_buffer.h"
 
 namespace Yutrel
@@ -99,7 +100,7 @@ private:
     std::filesystem::path m_filename{"render.exr"};
 
 public:
-    explicit Film(const CreateInfo& info) noexcept;
+    Film(uint2 resolution, bool display_hdr, std::filesystem::path filename) noexcept;
     ~Film() noexcept;
 
     Film()                       = delete;
@@ -117,5 +118,31 @@ public:
     [[nodiscard]] auto resolution() const noexcept { return m_resolution; }
     [[nodiscard]] auto display_hdr() const noexcept { return m_display_hdr; }
     [[nodiscard]] const auto& filename() const noexcept { return m_filename; }
+};
+
+class RGBFilmSpec final : public FilmSpec
+{
+private:
+    uint2 _resolution;
+    bool _display_hdr;
+    std::filesystem::path _filename;
+
+public:
+    RGBFilmSpec(uint2 resolution, bool display_hdr, std::filesystem::path filename) noexcept
+        : _resolution{resolution}, _display_hdr{display_hdr}, _filename{std::move(filename)} {}
+
+    [[nodiscard]] luisa::optional<luisa::string> validate() const noexcept override
+    {
+        if (_resolution.x == 0u || _resolution.y == 0u)
+        {
+            return spec_validation_error("Film resolution must be non-zero.");
+        }
+        if (_filename.empty())
+        {
+            return spec_validation_error("Film output path cannot be empty.");
+        }
+        return luisa::nullopt;
+    }
+    [[nodiscard]] const Film* build(SceneBuilder& builder) const noexcept override;
 };
 } // namespace Yutrel

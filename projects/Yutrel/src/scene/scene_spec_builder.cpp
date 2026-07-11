@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <stdexcept>
 #include <utility>
@@ -165,6 +166,22 @@ IntegratorRef SceneSpecBuilder::reference_integrator(luisa::string name, SourceL
     return _integrators.reference(std::move(name), std::move(use_site));
 }
 
+void SceneSpecBuilder::add_instance(ShapeInstanceSpec instance)
+{
+    _ensure_mutable();
+    _instances.emplace_back(std::move(instance));
+}
+
+void SceneSpecBuilder::set_render(RenderSpec render)
+{
+    _ensure_mutable();
+    if (_render)
+    {
+        throw std::runtime_error{"SceneSpec render root has already been set."};
+    }
+    _render.emplace(render);
+}
+
 SceneSpec SceneSpecBuilder::finish()
 {
     _ensure_mutable();
@@ -181,6 +198,8 @@ SceneSpec SceneSpecBuilder::finish()
         std::move(_filters),
         std::move(_samplers),
         std::move(_integrators),
+        std::move(_instances),
+        *_render,
     };
 }
 
@@ -204,6 +223,52 @@ void SceneSpecBuilder::_validate() const
     _filters.validate_definitions();
     _samplers.validate_definitions();
     _integrators.validate_definitions();
+
+    if (!_render)
+    {
+        throw std::runtime_error{"SceneSpec render root has not been set."};
+    }
+    auto validate_ref = [](const auto& table, auto ref, const SourceLocation& source)
+    {
+        if (!table.contains(ref))
+        {
+            throw_validation_error(source, luisa::format("{} spec ref index {} is out of bounds (size {}).", table.category(), ref.index(), table.size()));
+        }
+    };
+    SourceLocation root_source{};
+    validate_ref(_spectra, _render->spectrum, root_source);
+    validate_ref(_cameras, _render->camera, root_source);
+    validate_ref(_films, _render->film, root_source);
+    validate_ref(_filters, _render->filter, root_source);
+    validate_ref(_samplers, _render->sampler, root_source);
+    validate_ref(_integrators, _render->integrator, root_source);
+    for (auto& instance : _instances)
+    {
+        validate_ref(_shapes, instance.shape, instance.source);
+        validate_ref(_surfaces, instance.surface, instance.source);
+        if (instance.light)
+        {
+            validate_ref(_lights, *instance.light, instance.source);
+        }
+        auto& m = instance.transform;
+        for (auto column = 0u; column < 4u; column++)
+        {
+            for (auto row = 0u; row < 4u; row++)
+            {
+                if (!std::isfinite(m[column][row]))
+                {
+                    throw_validation_error(instance.source, "Shape instance transform contains a non-finite value.");
+                }
+            }
+        }
+        auto determinant = m[0].x * (m[1].y * m[2].z - m[1].z * m[2].y) -
+                           m[1].x * (m[0].y * m[2].z - m[0].z * m[2].y) +
+                           m[2].x * (m[0].y * m[1].z - m[0].z * m[1].y);
+        if (std::abs(determinant) < 1e-8f)
+        {
+            throw_validation_error(instance.source, "Shape instance transform is singular.");
+        }
+    }
 
     constexpr auto category_count = category_index(SpecCategory::Count);
     std::array<size_t, category_count> counts{
@@ -232,6 +297,10 @@ void SceneSpecBuilder::_validate() const
         table.visit_entries(
             [&](SceneRef<Spec>, const SpecMeta& meta, const Spec* spec)
         {
+            if (auto error = spec->validate())
+            {
+                throw_validation_error(meta.source, *error);
+            }
             SpecNodeData node{.category = category, .meta = meta};
             DependencyCollector collector{node.dependencies};
             spec->visit_dependencies(collector);

@@ -1,28 +1,27 @@
 #include "spectrum.h"
 
-#include "base/scene.h"
+#include "scene/scene_builder.h"
 #include "spectrum/hero.h"
 #include "spectrum/srgb.h"
 
 namespace Yutrel
 {
-luisa::unique_ptr<Spectrum> Spectrum::create(Scene& scene, const CreateInfo& info) noexcept
+luisa::unique_ptr<Spectrum> Spectrum::create(const CreateInfo& info) noexcept
 {
     switch (info.type)
     {
     case Type::SRGB:
-        return luisa::make_unique<SRGBSpectrum>(scene, info);
+        return luisa::make_unique<SRGBSpectrum>();
     case Type::HeroWavelength:
-        return luisa::make_unique<HeroWavelengthSpectrum>(scene, info);
+        return luisa::make_unique<HeroWavelengthSpectrum>();
     default:
         LUISA_ERROR("Unsupported spectrum type.");
         return nullptr;
     }
 }
 
-Spectrum::Spectrum(Scene& scene, const CreateInfo& info) noexcept
-{
-}
+const Spectrum* SRGBSpectrumSpec::build(SceneBuilder& builder) const noexcept { return builder.emplace<Spectrum, SRGBSpectrum>(); }
+const Spectrum* HeroWavelengthSpectrumSpec::build(SceneBuilder& builder) const noexcept { return builder.emplace<Spectrum, HeroWavelengthSpectrum>(); }
 
 Spectrum::Instance::Instance(Renderer& renderer, CommandBuffer& command_buffer, const Spectrum* spectrum) noexcept
     : m_renderer(renderer), m_spectrum(spectrum),

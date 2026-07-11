@@ -1,28 +1,22 @@
 #include "shape.h"
 
-#include "base/scene.h"
-#include "base/surface.h"
 #include "shapes/inline_mesh.h"
 #include "shapes/mesh.h"
 
 namespace Yutrel
 {
-luisa::unique_ptr<Shape> Shape::create(Scene& scene, const CreateInfo& info) noexcept
+luisa::unique_ptr<Shape> Shape::create(const CreateInfo& info) noexcept
 {
     switch (info.type)
     {
     case Type::mesh:
-        return luisa::make_unique<Mesh>(scene, info);
+        return luisa::make_unique<Mesh>(info.path);
     case Type::inline_mesh:
-        return luisa::make_unique<InlineMesh>(scene, info);
+        return luisa::make_unique<InlineMesh>(info.positions, info.normals, info.uvs, info.indices);
     default:
         LUISA_ERROR("Unsupported shape type {}.", static_cast<uint>(info.type));
     }
 }
-
-Shape::Shape(Scene& scene, const CreateInfo& info) noexcept
-    : m_surface(scene.load_surface(info.surface_info)),
-      m_light(scene.load_light(info.light_info)) {}
 
 uint4 Shape::Handle::encode(
     uint buffer_base, uint flags,

@@ -2,26 +2,27 @@
 
 #include "base/film.h"
 #include "base/renderer.h"
+#include "scene/scene_builder.h"
 #include "utils/sampling.h"
 
 namespace Yutrel
 {
-ThinLensCamera::ThinLensCamera(Scene& scene, const Camera::CreateInfo& info) noexcept
-    : Camera(scene, info),
-      m_aperture(info.aperture),
-      m_focal_length(info.focal_length),
-      m_focus_distance(info.focus_distance)
+ThinLensCamera::ThinLensCamera(float3 position, float3 lookat, float3 up, float2 shutter_span, uint shutter_samples_count, float aperture, float focal_length, float focus_distance) noexcept
+    : Camera{position, lookat, up, shutter_span, shutter_samples_count},
+      m_aperture{aperture},
+      m_focal_length{focal_length},
+      m_focus_distance{focus_distance}
 {
     m_focus_distance = luisa::max(m_focus_distance, 1e-4f);
 }
 
-luisa::unique_ptr<Camera::Instance> ThinLensCamera::build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept
+luisa::unique_ptr<Camera::Instance> ThinLensCamera::build(Renderer& renderer, CommandBuffer& command_buffer, const Film* film, const Filter* filter) const noexcept
 {
-    return luisa::make_unique<Instance>(renderer, command_buffer, this);
+    return luisa::make_unique<Instance>(renderer, command_buffer, this, film, filter);
 }
 
-ThinLensCamera::Instance::Instance(Renderer& renderer, CommandBuffer& command_buffer, const ThinLensCamera* camera) noexcept
-    : Camera::Instance(renderer, command_buffer, camera),
+ThinLensCamera::Instance::Instance(Renderer& renderer, CommandBuffer& command_buffer, const ThinLensCamera* camera, const Film* film, const Filter* filter) noexcept
+    : Camera::Instance(renderer, command_buffer, camera, film, filter),
       m_device_data(renderer.arena_buffer<ThinLensCameraData>(1u))
 {
     auto v                      = camera->focus_distance();
@@ -29,7 +30,7 @@ ThinLensCamera::Instance::Instance(Renderer& renderer, CommandBuffer& command_bu
     auto u                      = 1.0 / (1.0 / f - 1.0 / v);
     auto object_to_sensor_ratio = static_cast<float>(v / u);
     auto lens_radius            = static_cast<float>(.5 * f / camera->aperture());
-    auto resolution             = make_float2(film()->base()->resolution());
+    auto resolution             = make_float2(this->film()->base()->resolution());
     auto pixel_offset           = 0.5f * resolution;
     auto projected_pixel_size =
         resolution.x > resolution.y
@@ -48,6 +49,11 @@ ThinLensCamera::Instance::Instance(Renderer& renderer, CommandBuffer& command_bu
     command_buffer
         << m_device_data.copy_from(&host_data)
         << commit();
+}
+
+const Camera* ThinLensCameraSpec::build(SceneBuilder& builder) const noexcept
+{
+    return builder.emplace<Camera, ThinLensCamera>(_position, _lookat, _up, _shutter_span, _shutter_samples_count, _aperture, _focal_length, _focus_distance);
 }
 
 [[nodiscard]] Var<Ray> ThinLensCamera::Instance::generate_ray_in_camera_space(Expr<float2> pixel, Expr<float> time, Expr<float2> u_lens) const noexcept

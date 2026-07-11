@@ -11,8 +11,8 @@ private:
     float m_c{1.0f / 3.0f};
 
 public:
-    explicit MitchellFilter(const Scene& scene, const CreateInfo& info) noexcept
-        : Filter(scene, info) {}
+    explicit MitchellFilter(float radius) noexcept
+        : Filter{radius} {}
 
     [[nodiscard]] float evaluate(float x) const noexcept override
     {
@@ -34,5 +34,16 @@ public:
         }
         return 0.0f;
     }
+};
+
+class MitchellFilterSpec final : public FilterSpec
+{
+private:
+    float _radius;
+
+public:
+    explicit MitchellFilterSpec(float radius) noexcept : _radius{radius} {}
+    [[nodiscard]] luisa::optional<luisa::string> validate() const noexcept override { return std::isfinite(_radius) && _radius > 0.0f ? luisa::nullopt : spec_validation_error("Filter radius must be finite and positive."); }
+    [[nodiscard]] const Filter* build(SceneBuilder& builder) const noexcept override;
 };
 } // namespace Yutrel

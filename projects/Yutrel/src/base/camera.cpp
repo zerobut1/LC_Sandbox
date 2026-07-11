@@ -2,7 +2,6 @@
 
 #include "base/film.h"
 #include "base/renderer.h"
-#include "base/scene.h"
 #include "cameras/pinhole.h"
 #include "cameras/thin_lens.h"
 
@@ -11,38 +10,33 @@
 
 namespace Yutrel
 {
-luisa::unique_ptr<Camera> Camera::create(Scene& scene, const CreateInfo& info) noexcept
+luisa::unique_ptr<Camera> Camera::create(const CreateInfo& info) noexcept
 {
     switch (info.type)
     {
     case Type::pinhole:
-        return luisa::make_unique<PinholeCamera>(scene, info);
+        return luisa::make_unique<PinholeCamera>(info.position, info.lookat, info.up, info.shutter_span, info.shutter_samples_count, info.fov);
     case Type::thin_lens:
-        return luisa::make_unique<ThinLensCamera>(scene, info);
+        return luisa::make_unique<ThinLensCamera>(info.position, info.lookat, info.up, info.shutter_span, info.shutter_samples_count, info.aperture, info.focal_length, info.focus_distance);
     default:
         LUISA_ERROR("Unsupported camera type {}.", static_cast<uint>(info.type));
         return nullptr;
     }
 }
 
-Camera::Camera(Scene& scene, const CreateInfo& info) noexcept
-    : m_spp(info.spp),
-      m_up(info.up),
-      m_shutter_span(info.shutter_span),
-      m_shutter_samples_count(info.shutter_samples_count)
+Camera::Camera(float3 position, float3 lookat, float3 up, float2 shutter_span, uint shutter_samples_count) noexcept
+    : m_up{up},
+      m_shutter_span{shutter_span},
+      m_shutter_samples_count{shutter_samples_count}
 {
-    m_film = scene.load_film(info.film_info);
-
-    m_filter = scene.load_filter(info.filter_info);
-
-    auto w = normalize(info.position - info.lookat);
-    auto u = normalize(cross(info.up, w));
+    auto w = normalize(position - lookat);
+    auto u = normalize(cross(up, w));
     auto v = cross(w, u);
 
     m_init_transform = make_float4x4(make_float4(u, 0.0f),
                                      make_float4(v, 0.0f),
                                      make_float4(w, 0.0f),
-                                     make_float4(info.position, 1.0f));
+                                     make_float4(position, 1.0f));
 
     if (m_shutter_span.y < m_shutter_span.x) [[unlikely]]
     {
@@ -51,40 +45,30 @@ Camera::Camera(Scene& scene, const CreateInfo& info) noexcept
             m_shutter_span.x,
             m_shutter_span.y);
     }
-    if (m_shutter_span.x != m_shutter_span.y)
-    {
-        if (m_shutter_samples_count == 0u)
-        {
-            m_shutter_samples_count = std::min(m_spp, 256u);
-        }
-        else if (m_shutter_samples_count > m_spp)
-        {
-            LUISA_WARNING(
-                "Too many shutter samples ({}), "
-                "clamping to samples per pixel ({})",
-                m_shutter_samples_count,
-                m_spp);
-            m_shutter_samples_count = m_spp;
-        }
-    }
 }
 
 Camera::~Camera() noexcept = default;
 
-luisa::vector<Camera::ShutterSample> Camera::shutter_samples() const noexcept
+luisa::vector<Camera::ShutterSample> Camera::shutter_samples(uint spp) const noexcept
 {
     if (m_shutter_span.x == m_shutter_span.y)
     {
-        return {ShutterSample{m_shutter_span.x, 1.0f, m_spp}};
+        return {ShutterSample{m_shutter_span.x, 1.0f, spp}};
     }
 
-    luisa::vector<ShutterSample> buckets(m_shutter_samples_count);
+    auto shutter_samples_count = m_shutter_samples_count == 0u ? std::min(spp, 256u) : m_shutter_samples_count;
+    if (shutter_samples_count > spp)
+    {
+        LUISA_WARNING("Too many shutter samples ({}), clamping to samples per pixel ({}).", shutter_samples_count, spp);
+        shutter_samples_count = spp;
+    }
+    luisa::vector<ShutterSample> buckets(shutter_samples_count);
     auto duration = m_shutter_span.y - m_shutter_span.x;
-    auto inv_n    = 1.0f / static_cast<float>(m_shutter_samples_count);
+    auto inv_n    = 1.0f / static_cast<float>(shutter_samples_count);
     std::uniform_real_distribution<float> dist{};
     std::default_random_engine random{std::random_device{}()};
 
-    for (auto sample = 0u; sample < m_shutter_samples_count; sample++)
+    for (auto sample = 0u; sample < shutter_samples_count; sample++)
     {
         auto ts         = static_cast<float>(sample) * inv_n * duration;
         auto te         = static_cast<float>(sample + 1u) * inv_n * duration;
@@ -94,16 +78,16 @@ luisa::vector<Camera::ShutterSample> Camera::shutter_samples() const noexcept
         buckets[sample] = ShutterSample{t, w};
     }
 
-    luisa::vector<uint> indices(m_shutter_samples_count);
+    luisa::vector<uint> indices(shutter_samples_count);
     std::iota(indices.begin(), indices.end(), 0u);
     std::shuffle(indices.begin(), indices.end(), random);
-    auto remainder          = m_spp % m_shutter_samples_count;
-    auto samples_per_bucket = m_spp / m_shutter_samples_count;
+    auto remainder          = spp % shutter_samples_count;
+    auto samples_per_bucket = spp / shutter_samples_count;
     for (auto i = 0u; i < remainder; i++)
     {
         buckets[indices[i]].spp = samples_per_bucket + 1u;
     }
-    for (auto i = remainder; i < m_shutter_samples_count; i++)
+    for (auto i = remainder; i < shutter_samples_count; i++)
     {
         buckets[indices[i]].spp = samples_per_bucket;
     }
@@ -128,7 +112,7 @@ luisa::vector<Camera::ShutterSample> Camera::shutter_samples() const noexcept
     }
     else
     {
-        auto scale = static_cast<float>(m_spp) / sum_weights;
+        auto scale = static_cast<float>(spp) / sum_weights;
         for (auto& s : buckets)
         {
             s.weight = static_cast<float>(s.weight * scale);
@@ -138,11 +122,11 @@ luisa::vector<Camera::ShutterSample> Camera::shutter_samples() const noexcept
     return buckets;
 }
 
-Camera::Instance::Instance(Renderer& renderer, CommandBuffer& command_buffer, const Camera* camera) noexcept
+Camera::Instance::Instance(Renderer& renderer, CommandBuffer& command_buffer, const Camera* camera, const Film* film, const Filter* filter) noexcept
     : m_renderer(renderer),
       m_camera(camera),
-      m_film(camera->film()->build(renderer, command_buffer)),
-      m_filter(camera->filter()->build(renderer)),
+      m_film(film->build(renderer, command_buffer)),
+      m_filter(filter->build(renderer)),
       m_host_transform(camera->init_transform()),
       m_device_transform(renderer.arena_buffer<float4x4>(1u))
 {

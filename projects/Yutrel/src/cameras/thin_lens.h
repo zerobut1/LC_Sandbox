@@ -1,6 +1,9 @@
 #pragma once
 
+#include <cmath>
+
 #include "base/camera.h"
+#include "scene/spec_base.h"
 
 namespace Yutrel
 {
@@ -30,7 +33,7 @@ public:
         BufferView<ThinLensCameraData> m_device_data;
 
     public:
-        explicit Instance(Renderer& renderer, CommandBuffer& command_buffer, const ThinLensCamera* camera) noexcept;
+        Instance(Renderer& renderer, CommandBuffer& command_buffer, const ThinLensCamera* camera, const Film* film, const Filter* filter) noexcept;
         ~Instance() noexcept override = default;
 
     private:
@@ -43,7 +46,7 @@ private:
     float m_focus_distance;
 
 public:
-    explicit ThinLensCamera(Scene& scene, const Camera::CreateInfo& info) noexcept;
+    ThinLensCamera(float3 position, float3 lookat, float3 up, float2 shutter_span, uint shutter_samples_count, float aperture, float focal_length, float focus_distance) noexcept;
     ~ThinLensCamera() noexcept override = default;
 
 private:
@@ -54,7 +57,43 @@ private:
     [[nodiscard]] auto focus_distance() const noexcept { return m_focus_distance; }
 
 public:
-    [[nodiscard]] luisa::unique_ptr<Camera::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept override;
+    [[nodiscard]] luisa::unique_ptr<Camera::Instance> build(Renderer& renderer, CommandBuffer& command_buffer, const Film* film, const Filter* filter) const noexcept override;
+};
+
+class ThinLensCameraSpec final : public CameraSpec
+{
+private:
+    float3 _position;
+    float3 _lookat;
+    float3 _up;
+    float2 _shutter_span;
+    uint _shutter_samples_count;
+    float _aperture;
+    float _focal_length;
+    float _focus_distance;
+
+public:
+    ThinLensCameraSpec(float3 position, float3 lookat, float3 up, float2 shutter_span, uint shutter_samples_count, float aperture, float focal_length, float focus_distance) noexcept
+        : _position{position}, _lookat{lookat}, _up{up}, _shutter_span{shutter_span}, _shutter_samples_count{shutter_samples_count}, _aperture{aperture}, _focal_length{focal_length}, _focus_distance{focus_distance} {}
+
+    [[nodiscard]] luisa::optional<luisa::string> validate() const noexcept override
+    {
+        auto view = _position - _lookat;
+        if (dot(view, view) < 1e-12f || dot(cross(_up, view), cross(_up, view)) < 1e-12f)
+        {
+            return spec_validation_error("Camera position, look-at and up vectors do not form a valid basis.");
+        }
+        if (!std::isfinite(_shutter_span.x) || !std::isfinite(_shutter_span.y) || _shutter_span.y < _shutter_span.x)
+        {
+            return spec_validation_error("Camera shutter span is invalid.");
+        }
+        if (!std::isfinite(_aperture) || !std::isfinite(_focal_length) || !std::isfinite(_focus_distance) || _aperture <= 0.0f || _focal_length <= 0.0f || _focus_distance <= 0.0f)
+        {
+            return spec_validation_error("Thin-lens camera lens parameters must be finite and positive.");
+        }
+        return luisa::nullopt;
+    }
+    [[nodiscard]] const Camera* build(SceneBuilder& builder) const noexcept override;
 };
 
 } // namespace Yutrel

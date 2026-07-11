@@ -11,8 +11,6 @@ namespace Yutrel
 using namespace luisa;
 using namespace luisa::compute;
 
-class Scene;
-
 struct MeshView
 {
     luisa::span<const Vertex> vertices;
@@ -45,7 +43,7 @@ public:
         Light::CreateInfo light_info;
     };
 
-    [[nodiscard]] static luisa::unique_ptr<Shape> create(Scene& scene, const CreateInfo& info) noexcept;
+    [[nodiscard]] static luisa::unique_ptr<Shape> create(const CreateInfo& info) noexcept;
 
 public:
     class Handle;
@@ -58,27 +56,27 @@ public:
     static constexpr auto property_flag_has_medium        = 1u << 4u;
     static constexpr auto property_flag_maybe_non_opaque  = 1u << 5u;
 
-private:
-    const Surface* m_surface;
-    const Light* m_light;
-
 public:
-    explicit Shape(Scene& scene, const CreateInfo& info) noexcept;
+    Shape() noexcept          = default;
     virtual ~Shape() noexcept = default;
 
-    Shape()                        = delete;
     Shape(const Shape&)            = delete;
     Shape& operator=(const Shape&) = delete;
     Shape(Shape&&)                 = delete;
     Shape& operator=(Shape&&)      = delete;
 
 public:
-    [[nodiscard]] const Surface* surface() const noexcept { return m_surface; }
-    [[nodiscard]] const Light* light() const noexcept { return m_light; }
-
     [[nodiscard]] virtual bool is_mesh() const noexcept { return false; }
     [[nodiscard]] virtual MeshView mesh() const noexcept { return {}; }
     [[nodiscard]] virtual uint vertex_properties() const noexcept { return 0u; }
+};
+
+struct ShapeInstance
+{
+    const Shape* shape;
+    const Surface* surface;
+    const Light* light;
+    float4x4 transform{make_float4x4(1.0f)};
 };
 
 class Shape::Handle

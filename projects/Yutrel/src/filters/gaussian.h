@@ -10,10 +10,10 @@ private:
     float m_sigma;
 
 public:
-    explicit GaussianFilter(const Scene& scene, const CreateInfo& info) noexcept
-        : Filter(scene, info)
+    explicit GaussianFilter(float radius) noexcept
+        : Filter{radius}
     {
-        m_sigma = radius() / 3.0f;
+        m_sigma = this->radius() / 3.0f;
     }
 
     [[nodiscard]] float evaluate(float x) const noexcept override
@@ -24,5 +24,16 @@ public:
         };
         return G(x) - G(radius());
     }
+};
+
+class GaussianFilterSpec final : public FilterSpec
+{
+private:
+    float _radius;
+
+public:
+    explicit GaussianFilterSpec(float radius) noexcept : _radius{radius} {}
+    [[nodiscard]] luisa::optional<luisa::string> validate() const noexcept override { return std::isfinite(_radius) && _radius > 0.0f ? luisa::nullopt : spec_validation_error("Filter radius must be finite and positive."); }
+    [[nodiscard]] const Filter* build(SceneBuilder& builder) const noexcept override;
 };
 } // namespace Yutrel

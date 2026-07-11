@@ -1,132 +1,85 @@
 #include "scene.h"
 
+#include "scene/legacy_scene_adapter.h"
+#include "scene/scene_builder.h"
+#include "scene/scene_spec.h"
+
 namespace Yutrel
 {
 struct Scene::Config
 {
-    Integrator::CreateInfo integrator_info;
-    luisa::unique_ptr<Camera> camera;
-    luisa::unique_ptr<Film> film;
-    luisa::unique_ptr<Filter> filter;
-    luisa::unique_ptr<Spectrum> spectrum;
-    luisa::vector<luisa::unique_ptr<Shape>> shapes;
+    luisa::vector<luisa::unique_ptr<Texture>> textures;
     luisa::vector<luisa::unique_ptr<Surface>> surfaces;
     luisa::vector<luisa::unique_ptr<Light>> lights;
-    luisa::vector<luisa::unique_ptr<Texture>> textures;
+    luisa::vector<luisa::unique_ptr<Shape>> shapes;
+    luisa::vector<luisa::unique_ptr<Spectrum>> spectra;
+    luisa::vector<luisa::unique_ptr<Camera>> cameras;
+    luisa::vector<luisa::unique_ptr<Film>> films;
+    luisa::vector<luisa::unique_ptr<Filter>> filters;
+    luisa::vector<luisa::unique_ptr<Sampler>> samplers;
+    luisa::vector<luisa::unique_ptr<Integrator>> integrators;
+    luisa::vector<ShapeInstance> instances;
 
-    luisa::vector<const Shape*> shapes_view;
+    const Spectrum* spectrum{};
+    const Camera* camera{};
+    const Film* film{};
+    const Filter* filter{};
+    const Sampler* sampler{};
+    const Integrator* integrator{};
 };
 
 Scene::Scene(const Context& context) noexcept
-    : m_context(context),
-      m_config(luisa::make_unique<Config>()) {}
+    : m_context{context}, m_config{luisa::make_unique<Config>()}
+{
+}
 
 Scene::~Scene() noexcept = default;
 
-luisa::unique_ptr<Scene> Scene::create(const Context& context, const CreateInfo& info) noexcept
+luisa::unique_ptr<Scene> Scene::create(const Context& context, const CreateInfo& info)
+{
+    auto spec = make_legacy_scene_spec(info);
+    return create(context, spec);
+}
+
+luisa::unique_ptr<Scene> Scene::create(const Context& context, const SceneSpec& spec) noexcept
 {
     auto scene = luisa::make_unique<Scene>(context);
-
-    scene->load_spectrum(info.spectrum_info);
-    scene->m_config->integrator_info = info.integrator_info;
-
-    scene->load_camera(info.camera_info);
-
-    scene->m_config->shapes_view.reserve(info.shape_infos.size());
-    for (auto& shape_info : info.shape_infos)
-    {
-        scene->m_config->shapes_view.emplace_back(scene->load_shape(shape_info));
-    }
+    SceneBuilder{*scene, spec}.build();
     return scene;
 }
 
-void Scene::load_spectrum(const Spectrum::CreateInfo& info) noexcept
+const Texture* Scene::load_texture(const Texture::CreateInfo& info) noexcept { return _store(Texture::create(*this, info)); }
+const Surface* Scene::load_surface(const Surface::CreateInfo& info) noexcept { return _store(Surface::create(*this, info)); }
+const Light* Scene::load_light(const Light::CreateInfo& info) noexcept { return _store(Light::create(*this, info)); }
+
+const Texture* Scene::_store(luisa::unique_ptr<Texture> object) noexcept { return m_config->textures.emplace_back(std::move(object)).get(); }
+const Surface* Scene::_store(luisa::unique_ptr<Surface> object) noexcept { return m_config->surfaces.emplace_back(std::move(object)).get(); }
+const Light* Scene::_store(luisa::unique_ptr<Light> object) noexcept { return m_config->lights.emplace_back(std::move(object)).get(); }
+const Shape* Scene::_store(luisa::unique_ptr<Shape> object) noexcept { return m_config->shapes.emplace_back(std::move(object)).get(); }
+const Spectrum* Scene::_store(luisa::unique_ptr<Spectrum> object) noexcept { return m_config->spectra.emplace_back(std::move(object)).get(); }
+const Camera* Scene::_store(luisa::unique_ptr<Camera> object) noexcept { return m_config->cameras.emplace_back(std::move(object)).get(); }
+const Film* Scene::_store(luisa::unique_ptr<Film> object) noexcept { return m_config->films.emplace_back(std::move(object)).get(); }
+const Filter* Scene::_store(luisa::unique_ptr<Filter> object) noexcept { return m_config->filters.emplace_back(std::move(object)).get(); }
+const Sampler* Scene::_store(luisa::unique_ptr<Sampler> object) noexcept { return m_config->samplers.emplace_back(std::move(object)).get(); }
+const Integrator* Scene::_store(luisa::unique_ptr<Integrator> object) noexcept { return m_config->integrators.emplace_back(std::move(object)).get(); }
+
+void Scene::_set_render_roots(const Spectrum* spectrum, const Camera* camera, const Film* film, const Filter* filter, const Sampler* sampler, const Integrator* integrator) noexcept
 {
-    m_config->spectrum = Spectrum::create(*this, info);
+    m_config->spectrum   = spectrum;
+    m_config->camera     = camera;
+    m_config->film       = film;
+    m_config->filter     = filter;
+    m_config->sampler    = sampler;
+    m_config->integrator = integrator;
 }
 
-void Scene::load_camera(const Camera::CreateInfo& info) noexcept
-{
-    if (m_config->camera)
-    {
-        LUISA_ERROR("Multiple cameras are not supported yet.");
-        return;
-    }
-    m_config->camera = Camera::create(*this, info);
-}
+void Scene::_add_instance(ShapeInstance instance) noexcept { m_config->instances.emplace_back(instance); }
 
-const Film* Scene::load_film(const Film::CreateInfo& info) noexcept
-{
-    if (m_config->film)
-    {
-        LUISA_ERROR("Multiple films are not supported yet.");
-        return nullptr;
-    }
-    return (m_config->film = Film::create(info)).get();
-}
-
-const Filter* Scene::load_filter(const Filter::CreateInfo& info) noexcept
-{
-    return (m_config->filter = Filter::create(*this, info)).get();
-}
-
-const Shape* Scene::load_shape(const Shape::CreateInfo& info) noexcept
-{
-    return m_config->shapes.emplace_back(Shape::create(*this, info)).get();
-}
-
-const Surface* Scene::load_surface(const Surface::CreateInfo& info) noexcept
-{
-    return _store(Surface::create(*this, info));
-}
-
-const Light* Scene::load_light(const Light::CreateInfo& info) noexcept
-{
-    return _store(Light::create(*this, info));
-}
-
-const Texture* Scene::load_texture(const Texture::CreateInfo& info) noexcept
-{
-    return _store(Texture::create(*this, info));
-}
-
-const Texture* Scene::_store(luisa::unique_ptr<Texture> texture) noexcept
-{
-    return m_config->textures.emplace_back(std::move(texture)).get();
-}
-
-const Surface* Scene::_store(luisa::unique_ptr<Surface> surface) noexcept
-{
-    return m_config->surfaces.emplace_back(std::move(surface)).get();
-}
-
-const Light* Scene::_store(luisa::unique_ptr<Light> light) noexcept
-{
-    return m_config->lights.emplace_back(std::move(light)).get();
-}
-
-const Spectrum* Scene::spectrum() const noexcept
-{
-    return m_config->spectrum.get();
-}
-
-const Integrator::CreateInfo& Scene::integrator_info() const noexcept
-{
-    return m_config->integrator_info;
-}
-
-const Camera* Scene::camera() const noexcept
-{
-    return m_config->camera.get();
-}
-
-const Film* Scene::film() const noexcept
-{
-    return m_config->film.get();
-}
-
-luisa::span<const Shape* const> Scene::shapes() const noexcept
-{
-    return m_config->shapes_view;
-}
+const Spectrum* Scene::spectrum() const noexcept { return m_config->spectrum; }
+const Camera* Scene::camera() const noexcept { return m_config->camera; }
+const Film* Scene::film() const noexcept { return m_config->film; }
+const Filter* Scene::filter() const noexcept { return m_config->filter; }
+const Sampler* Scene::sampler() const noexcept { return m_config->sampler; }
+const Integrator* Scene::integrator() const noexcept { return m_config->integrator; }
+luisa::span<const ShapeInstance> Scene::instances() const noexcept { return m_config->instances; }
 } // namespace Yutrel

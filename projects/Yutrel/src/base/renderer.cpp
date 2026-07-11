@@ -56,14 +56,14 @@ luisa::unique_ptr<Renderer> Renderer::create(Device& device, Stream& stream, con
     renderer->m_spectrum = scene.spectrum()->build(*renderer, command_buffer);
     update_bindless_if_dirty();
 
-    renderer->m_camera = scene.camera()->build(*renderer, command_buffer);
+    renderer->m_camera = scene.camera()->build(*renderer, command_buffer, scene.film(), scene.filter());
     update_bindless_if_dirty();
 
     renderer->m_geometry = luisa::make_unique<Geometry>(*renderer);
-    renderer->m_geometry->build(command_buffer, scene.shapes());
+    renderer->m_geometry->build(command_buffer, scene.instances());
     update_bindless_if_dirty();
 
-    renderer->m_integrator = Integrator::create(*renderer, command_buffer, scene.integrator_info());
+    renderer->m_integrator = scene.integrator()->build(*renderer, command_buffer, scene.sampler());
     update_bindless_if_dirty();
 
     command_buffer << synchronize();

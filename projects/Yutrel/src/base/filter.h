@@ -1,7 +1,11 @@
 #pragma once
 
+#include <cmath>
+
 #include <luisa/core/stl.h>
 #include <luisa/dsl/syntax.h>
+
+#include "scene/spec_base.h"
 
 namespace Yutrel
 {
@@ -9,7 +13,6 @@ using namespace luisa;
 using namespace luisa::compute;
 
 class Renderer;
-class Scene;
 
 class Filter
 {
@@ -31,7 +34,7 @@ public:
         float radius{0.5f};
     };
 
-    [[nodiscard]] static luisa::unique_ptr<Filter> create(const Scene& scene, const CreateInfo& info) noexcept;
+    [[nodiscard]] static luisa::unique_ptr<Filter> create(const CreateInfo& info) noexcept;
 
 public:
     struct Sample
@@ -80,8 +83,8 @@ private:
     float m_radius;
 
 public:
-    explicit Filter(const Scene& scene, const CreateInfo& create_info) noexcept
-        : m_radius(create_info.radius) {}
+    explicit Filter(float radius) noexcept
+        : m_radius{radius} {}
     virtual ~Filter() noexcept = default;
 
     Filter(const Filter&) noexcept            = delete;

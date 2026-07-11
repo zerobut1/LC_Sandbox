@@ -47,7 +47,7 @@ public:
     explicit Geometry(Renderer& renderer) noexcept
         : m_renderer{renderer} {}
 
-    void build(CommandBuffer& command_buffer, luisa::span<const Shape* const> shapes) noexcept;
+    void build(CommandBuffer& command_buffer, luisa::span<const ShapeInstance> instances) noexcept;
 
     [[nodiscard]] auto instances() const noexcept { return luisa::span{m_instances}; }
     [[nodiscard]] auto light_instances() const noexcept { return luisa::span{m_instanced_lights}; }
@@ -61,6 +61,6 @@ public:
     [[nodiscard]] ShadingAttribute shading_point(const Shape::Handle& instance, const Var<Triangle>& triangle, const Var<float2>& bary, const Var<float4x4>& shape_to_world) const noexcept;
 
 private:
-    void process_shape(CommandBuffer& command_buffer, const Shape* shape) noexcept;
+    void process_instance(CommandBuffer& command_buffer, const ShapeInstance& instance) noexcept;
 };
 } // namespace Yutrel

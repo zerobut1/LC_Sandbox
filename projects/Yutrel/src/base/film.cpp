@@ -3,18 +3,24 @@
 #include <luisa/luisa-compute.h>
 
 #include "base/renderer.h"
+#include "scene/scene_builder.h"
 
 namespace Yutrel
 {
 luisa::unique_ptr<Film> Film::create(const CreateInfo& info) noexcept
 {
-    return luisa::make_unique<Film>(info);
+    return luisa::make_unique<Film>(info.resolution, info.display_hdr, info.filename);
 }
 
-Film::Film(const CreateInfo& info) noexcept
-    : m_resolution(info.resolution),
-      m_display_hdr(info.display_hdr),
-      m_filename(info.filename) {}
+Film::Film(uint2 resolution, bool display_hdr, std::filesystem::path filename) noexcept
+    : m_resolution{resolution},
+      m_display_hdr{display_hdr},
+      m_filename{std::move(filename)} {}
+
+const Film* RGBFilmSpec::build(SceneBuilder& builder) const noexcept
+{
+    return builder.emplace<Film, Film>(_resolution, _display_hdr, _filename);
+}
 
 Film::~Film() noexcept = default;
 
@@ -100,7 +106,7 @@ void Film::Instance::prepare(CommandBuffer& command_buffer, bool enable_display)
     if (enable_display && !m_window)
     {
         auto&& device = m_renderer.device();
-        m_stream = command_buffer.stream();
+        m_stream      = command_buffer.stream();
 
         auto window_resolution = render_resolution;
 
@@ -115,7 +121,7 @@ void Film::Instance::prepare(CommandBuffer& command_buffer, bool enable_display)
                 .back_buffers = 3,
             });
         m_framebuffer = device.create_image<float>(PixelStorage::FLOAT4, render_resolution);
-        m_background  = m_window->register_texture(m_framebuffer, Sampler::linear_linear_zero());
+        m_background  = m_window->register_texture(m_framebuffer, compute::Sampler::linear_linear_zero());
 
         Kernel2D blit_kernel = [&](Bool is_ldr) noexcept
         {

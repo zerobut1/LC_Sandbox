@@ -11,7 +11,6 @@ namespace Yutrel
 using namespace luisa;
 using namespace luisa::compute;
 
-class Scene;
 class Renderer;
 class CommandBuffer;
 
@@ -42,7 +41,7 @@ public:
         Type type{Type::SRGB};
     };
 
-    static luisa::unique_ptr<Spectrum> create(Scene& scene, const CreateInfo& info) noexcept;
+    static luisa::unique_ptr<Spectrum> create(const CreateInfo& info) noexcept;
 
 public:
     class Instance
@@ -81,7 +80,7 @@ public:
     };
 
 public:
-    explicit Spectrum(Scene& scene, const CreateInfo& info) noexcept;
+    Spectrum() noexcept          = default;
     virtual ~Spectrum() noexcept = default;
 
 public:

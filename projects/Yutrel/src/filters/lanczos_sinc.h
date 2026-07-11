@@ -10,8 +10,8 @@ private:
     float m_tau{3.0f};
 
 public:
-    explicit LanczosSincFilter(const Scene& scene, const CreateInfo& info) noexcept
-        : Filter(scene, info) {}
+    explicit LanczosSincFilter(float radius) noexcept
+        : Filter{radius} {}
 
     [[nodiscard]] float evaluate(float x) const noexcept override
     {
@@ -31,6 +31,17 @@ public:
         }
         return sinc(x) * sinc(x / m_tau);
     }
+};
+
+class LanczosSincFilterSpec final : public FilterSpec
+{
+private:
+    float _radius;
+
+public:
+    explicit LanczosSincFilterSpec(float radius) noexcept : _radius{radius} {}
+    [[nodiscard]] luisa::optional<luisa::string> validate() const noexcept override { return std::isfinite(_radius) && _radius > 0.0f ? luisa::nullopt : spec_validation_error("Filter radius must be finite and positive."); }
+    [[nodiscard]] const Filter* build(SceneBuilder& builder) const noexcept override;
 };
 
 } // namespace Yutrel

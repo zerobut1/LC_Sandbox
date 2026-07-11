@@ -5,29 +5,36 @@
 #include "filters/lanczos_sinc.h"
 #include "filters/mitchell.h"
 #include "filters/triangle.h"
+#include "scene/scene_builder.h"
 #include "utils/sampling.h"
 
 namespace Yutrel
 {
-luisa::unique_ptr<Filter> Filter::create(const Scene& scene, const CreateInfo& info) noexcept
+luisa::unique_ptr<Filter> Filter::create(const CreateInfo& info) noexcept
 {
     switch (info.type)
     {
     case Type::Box:
-        return luisa::make_unique<BoxFilter>(scene, info);
+        return luisa::make_unique<BoxFilter>(info.radius);
     case Type::Triangle:
-        return luisa::make_unique<TriangleFilter>(scene, info);
+        return luisa::make_unique<TriangleFilter>(info.radius);
     case Type::Gaussian:
-        return luisa::make_unique<GaussianFilter>(scene, info);
+        return luisa::make_unique<GaussianFilter>(info.radius);
     case Type::Mitchell:
-        return luisa::make_unique<MitchellFilter>(scene, info);
+        return luisa::make_unique<MitchellFilter>(info.radius);
     case Type::LanczosSinc:
-        return luisa::make_unique<LanczosSincFilter>(scene, info);
+        return luisa::make_unique<LanczosSincFilter>(info.radius);
     default:
         LUISA_ERROR("Unsupported filter type {}.", static_cast<uint>(info.type));
         return nullptr;
     }
 }
+
+const Filter* BoxFilterSpec::build(SceneBuilder& builder) const noexcept { return builder.emplace<Filter, BoxFilter>(_radius); }
+const Filter* TriangleFilterSpec::build(SceneBuilder& builder) const noexcept { return builder.emplace<Filter, TriangleFilter>(_radius); }
+const Filter* GaussianFilterSpec::build(SceneBuilder& builder) const noexcept { return builder.emplace<Filter, GaussianFilter>(_radius); }
+const Filter* MitchellFilterSpec::build(SceneBuilder& builder) const noexcept { return builder.emplace<Filter, MitchellFilter>(_radius); }
+const Filter* LanczosSincFilterSpec::build(SceneBuilder& builder) const noexcept { return builder.emplace<Filter, LanczosSincFilter>(_radius); }
 
 luisa::unique_ptr<Filter::Instance> Filter::build(const Renderer& renderer) const noexcept
 {

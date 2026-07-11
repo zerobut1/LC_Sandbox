@@ -2,29 +2,35 @@
 
 #include "base/film.h"
 #include "base/renderer.h"
+#include "scene/scene_builder.h"
 
 namespace Yutrel
 {
-PinholeCamera::PinholeCamera(Scene& scene, const Camera::CreateInfo& info) noexcept
-    : Camera(scene, info),
-      m_fov(radians(info.fov))
+PinholeCamera::PinholeCamera(float3 position, float3 lookat, float3 up, float2 shutter_span, uint shutter_samples_count, float fov) noexcept
+    : Camera{position, lookat, up, shutter_span, shutter_samples_count},
+      m_fov{radians(fov)}
 {
 }
 
-luisa::unique_ptr<Camera::Instance> PinholeCamera::build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept
+luisa::unique_ptr<Camera::Instance> PinholeCamera::build(Renderer& renderer, CommandBuffer& command_buffer, const Film* film, const Filter* filter) const noexcept
 {
-    return luisa::make_unique<Instance>(renderer, command_buffer, this);
+    return luisa::make_unique<Instance>(renderer, command_buffer, this, film, filter);
 }
 
-PinholeCamera::Instance::Instance(Renderer& renderer, CommandBuffer& command_buffer, const PinholeCamera* camera) noexcept
-    : Camera::Instance(renderer, command_buffer, camera),
+PinholeCamera::Instance::Instance(Renderer& renderer, CommandBuffer& command_buffer, const PinholeCamera* camera, const Film* film, const Filter* filter) noexcept
+    : Camera::Instance(renderer, command_buffer, camera, film, filter),
       m_device_data(renderer.arena_buffer<PinholeCameraData>(1u))
 {
-    PinholeCameraData host_data{make_float2(film()->base()->resolution()), tan(camera->m_fov * 0.5f)};
+    PinholeCameraData host_data{make_float2(this->film()->base()->resolution()), tan(camera->m_fov * 0.5f)};
     m_device_data = renderer.arena_buffer<PinholeCameraData>(1u);
     command_buffer
         << m_device_data.copy_from(&host_data)
         << commit();
+}
+
+const Camera* PinholeCameraSpec::build(SceneBuilder& builder) const noexcept
+{
+    return builder.emplace<Camera, PinholeCamera>(_position, _lookat, _up, _shutter_span, _shutter_samples_count, _fov);
 }
 
 Var<Ray> PinholeCamera::Instance::generate_ray_in_camera_space(Expr<float2> pixel, Expr<float> time, Expr<float2> u_lens) const noexcept

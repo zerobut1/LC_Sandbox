@@ -6,13 +6,13 @@
 
 namespace Yutrel
 {
-void Geometry::build(CommandBuffer& command_buffer, luisa::span<const Shape* const> shapes) noexcept
+void Geometry::build(CommandBuffer& command_buffer, luisa::span<const ShapeInstance> instances) noexcept
 {
     m_accel = m_renderer.device().create_accel({});
 
-    for (auto shape : shapes)
+    for (auto& instance : instances)
     {
-        process_shape(command_buffer, shape);
+        process_instance(command_buffer, instance);
     }
     LUISA_INFO_WITH_LOCATION("Geometry built with {} unique triangles ({} instanced).",
                              m_triangle_count,
@@ -25,10 +25,11 @@ void Geometry::build(CommandBuffer& command_buffer, luisa::span<const Shape* con
         << commit();
 }
 
-void Geometry::process_shape(CommandBuffer& command_buffer, const Shape* shape) noexcept
+void Geometry::process_instance(CommandBuffer& command_buffer, const ShapeInstance& instance) noexcept
 {
-    auto surface = shape->surface();
-    auto light   = shape->light();
+    auto shape   = instance.shape;
+    auto surface = instance.surface;
+    auto light   = instance.light;
 
     if (shape->is_mesh())
     {
@@ -116,7 +117,7 @@ void Geometry::process_shape(CommandBuffer& command_buffer, const Shape* shape) 
             properties |= Shape::property_flag_has_surface;
         }
 
-        m_accel.emplace_back(*mesh.resource, make_float4x4(1.0f));
+        m_accel.emplace_back(*mesh.resource, instance.transform);
 
         // lights
         auto light_tag = 0u;

@@ -98,6 +98,12 @@ static auto test_book_parse_registration = []
     {
         auto scene = PbrtParser::parse("scene/pbrt-book/book-v2.pbrt");
         expect(scene.sampler.type == SamplerDesc::Type::Independent);
+        expect(scene.textures.empty());
+        expect(scene.materials.size() == 3u);
+        for (auto&& material : scene.materials)
+        {
+            expect(material.type == MaterialDesc::Type::Diffuse);
+        }
 
         std::array<std::filesystem::path, 3u> filenames{
             "geometry/mesh_00001.ply",

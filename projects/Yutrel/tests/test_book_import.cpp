@@ -41,8 +41,15 @@ static auto test_book_import_registration = []
         };
         auto spec = PbrtImporter::import(std::move(parsed));
 
+        expect(spec.textures().size() == 3u);
+        expect(spec.surfaces().size() == 3u);
         expect(spec.shapes().size() == 3u);
         expect(spec.instances().size() == 3u);
+
+        auto instances = spec.instances();
+        expect(instances[0u].surface != instances[1u].surface);
+        expect(instances[0u].surface != instances[2u].surface);
+        expect(instances[1u].surface != instances[2u].surface);
 
         std::array<std::filesystem::path, 3u> expected_paths{
             std::filesystem::absolute("scene/pbrt-book/geometry/mesh_00001.ply"),
@@ -66,7 +73,6 @@ static auto test_book_import_registration = []
         });
         expect(shape_index == expected_paths.size());
 
-        auto instances = spec.instances();
         for (auto instance_index = 0u; instance_index < instances.size(); instance_index++)
         {
             for (auto column = 0u; column < 4u; column++)
@@ -94,6 +100,79 @@ static auto test_book_import_registration = []
             expect(is_near(column_length(transform, 1u), 0.5f));
             expect(is_near(column_length(transform, 2u), 0.5f));
         }
+    };
+
+    "reuse_inherited_inline_material"_test = []
+    {
+        auto parsed = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        parsed.shapes[1u].material.inline_index = parsed.shapes[0u].material.inline_index;
+        auto spec = PbrtImporter::import(std::move(parsed));
+        expect(spec.instances()[0u].surface == spec.instances()[1u].surface);
+    };
+
+    "reject_out_of_range_inline_material"_test = []
+    {
+        auto parsed = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        parsed.shapes[0u].material.inline_index = 99u;
+        auto source_located = false;
+        try
+        {
+            (void)PbrtImporter::import(std::move(parsed));
+        }
+        catch (const std::runtime_error& error)
+        {
+            auto message  = std::string{error.what()};
+            source_located = message.find("tests/scenes/book_geometry.pbrt") != std::string::npos &&
+                             message.find("out-of-range inline material 99") != std::string::npos;
+        }
+        expect(source_located);
+    };
+
+    "reject_ambiguous_material_binding"_test = []
+    {
+        auto parsed = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        parsed.shapes[0u].material.named = "named";
+        auto source_located = false;
+        try
+        {
+            (void)PbrtImporter::import(std::move(parsed));
+        }
+        catch (const std::runtime_error& error)
+        {
+            auto message  = std::string{error.what()};
+            source_located = message.find("tests/scenes/book_geometry.pbrt") != std::string::npos &&
+                             message.find("both named and inline material bindings") != std::string::npos;
+        }
+        expect(source_located);
+    };
+
+    "reject_unsupported_inline_material"_test = []
+    {
+        auto parsed = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        parsed.materials[0u].type = MaterialDesc::Type::CoatedDiffuse;
+        auto source_located = false;
+        try
+        {
+            (void)PbrtImporter::import(std::move(parsed));
+        }
+        catch (const std::runtime_error& error)
+        {
+            auto message  = std::string{error.what()};
+            source_located = message.find("tests/scenes/book_geometry.pbrt") != std::string::npos &&
+                             message.find("Unsupported PBRT inline material") != std::string::npos;
+        }
+        expect(source_located);
+    };
+
+    "import_named_material_binding"_test = []
+    {
+        auto parsed = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        parsed.named_materials.emplace("named", parsed.materials[0u]);
+        parsed.shapes[0u].material.named = "named";
+        parsed.shapes[0u].material.inline_index.reset();
+        auto spec = PbrtImporter::import(std::move(parsed));
+        expect(spec.instances().size() == 3u);
+        expect(spec.surfaces().size() == 4u);
     };
 
     "load_book_ply_geometry"_test = []

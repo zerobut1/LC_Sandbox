@@ -194,25 +194,49 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
     {
         fail(luisa::format("PBRT Importer does not implement Texture at {}.", format_source_location(scene.textures.front().source)));
     }
-    if (!scene.materials.empty())
-    {
-        fail(luisa::format("PBRT Importer does not implement inline Material at {}.", format_source_location(scene.materials.front().source)));
-    }
-
     SceneSpecBuilder builder;
-    for (auto& [name, material] : scene.named_materials)
+
+    auto make_material_surface = [&](const MaterialDesc& material, luisa::string_view name) -> SurfaceRef
     {
         if (material.type != MaterialDesc::Type::Diffuse)
         {
-            fail(luisa::format("Unsupported PBRT material '{}'.", name));
+            auto description = name.empty() ? luisa::string{"inline material"} : luisa::format("material '{}'", name);
+            fail(luisa::format(
+                "Unsupported PBRT {} at {}.",
+                description,
+                format_source_location(material.source)));
         }
+
+        auto reflectance = make_float4(
+            material.reflectance.x,
+            material.reflectance.y,
+            material.reflectance.z,
+            1.0f);
+        if (name.empty())
+        {
+            auto texture = builder.add_anonymous_texture<ConstantTextureSpec>(material.source, reflectance);
+            return builder.add_anonymous_surface<DiffuseSurfaceSpec>(material.source, texture, true);
+        }
+
         auto texture = builder.add_texture<ConstantTextureSpec>(
             SpecMeta{.name = luisa::format("{}::reflectance", name), .source = material.source},
-            make_float4(material.reflectance.x, material.reflectance.y, material.reflectance.z, 1.0f));
-        (void)builder.add_surface<DiffuseSurfaceSpec>(
-            SpecMeta{.name = name, .source = material.source},
+            reflectance);
+        return builder.add_surface<DiffuseSurfaceSpec>(
+            SpecMeta{.name = luisa::string{name}, .source = material.source},
             texture,
             true);
+    };
+
+    for (auto& [name, material] : scene.named_materials)
+    {
+        (void)make_material_surface(material, name);
+    }
+
+    luisa::vector<SurfaceRef> inline_surface_refs;
+    inline_surface_refs.reserve(scene.materials.size());
+    for (auto& material : scene.materials)
+    {
+        inline_surface_refs.emplace_back(make_material_surface(material, {}));
     }
 
     luisa::vector<ShapeRef> inline_mesh_refs;
@@ -253,11 +277,32 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
             }
             fail("Unsupported PBRT shape type.");
         }();
-        if (shape.material.named.empty())
+        auto surface = [&]() -> SurfaceRef
         {
-            fail(luisa::format("PBRT Importer does not implement anonymous/default material binding at {}.", format_source_location(shape.source)));
-        }
-        auto surface = builder.reference_surface(shape.material.named, shape.source);
+            auto has_named  = !shape.material.named.empty();
+            auto has_inline = shape.material.inline_index.has_value();
+            if (has_named && has_inline)
+            {
+                fail(luisa::format("PBRT shape has both named and inline material bindings at {}.", format_source_location(shape.source)));
+            }
+            if (has_named)
+            {
+                return builder.reference_surface(shape.material.named, shape.source);
+            }
+            if (has_inline)
+            {
+                auto index = *shape.material.inline_index;
+                if (index >= inline_surface_refs.size())
+                {
+                    fail(luisa::format(
+                        "PBRT shape references out-of-range inline material {} at {}.",
+                        index,
+                        format_source_location(shape.source)));
+                }
+                return inline_surface_refs[index];
+            }
+            fail(luisa::format("PBRT Importer does not implement default material binding at {}.", format_source_location(shape.source)));
+        }();
         luisa::optional<LightRef> light;
         if (shape.area_light)
         {

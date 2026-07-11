@@ -159,6 +159,9 @@ struct MeshDesc
 
 struct ShapeDesc
 {
+    static constexpr uint sphere_default_subdivision = 4u;
+    static constexpr uint sphere_max_subdivision     = 8u;
+
     SourceLocation source;
     enum class Type
     {
@@ -169,6 +172,8 @@ struct ShapeDesc
     Type type{Type::TriangleMesh};
     luisa::optional<uint> mesh_index;
     luisa::optional<std::filesystem::path> filename;
+    float radius{1.0f};
+    uint sphere_subdivision{sphere_default_subdivision};
     luisa::vector<RawParameter> parameters;
     MaterialBinding material;
     luisa::optional<AreaLightDesc> area_light;

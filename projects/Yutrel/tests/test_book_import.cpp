@@ -4,10 +4,12 @@
 #include "pbrt/pbrt_importer.h"
 #include "pbrt/pbrt_parser.h"
 #include "shapes/mesh.h"
+#include "shapes/sphere.h"
 
 #include <array>
 #include <cmath>
 #include <filesystem>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -31,6 +33,51 @@ namespace
 
 static auto test_book_import_registration = []
 {
+    "generate_sphere_geometry"_test = []
+    {
+        Sphere sphere_level_0{2.0f, 0u};
+        auto coarse = sphere_level_0.mesh();
+        expect(coarse.vertices.size() == 12u);
+        expect(coarse.triangles.size() == 20u);
+
+        Sphere sphere_level_4{2.0f};
+        auto mesh = sphere_level_4.mesh();
+        expect(mesh.vertices.size() == 2562u);
+        expect(mesh.triangles.size() == 5120u);
+        expect((sphere_level_4.vertex_properties() & Shape::property_flag_has_vertex_normal) != 0u);
+        expect((sphere_level_4.vertex_properties() & Shape::property_flag_has_vertex_uv) != 0u);
+
+        for (auto vertex : mesh.vertices)
+        {
+            auto p = vertex.position();
+            auto n = vertex.normal();
+            expect(is_near(std::sqrt(luisa::dot(p, p)), 2.0f));
+            expect(is_near(std::sqrt(luisa::dot(n, n)), 1.0f));
+            expect(luisa::dot(p, n) > 0.0f);
+            expect(std::isfinite(vertex.u) && std::isfinite(vertex.v));
+        }
+        for (auto triangle : mesh.triangles)
+        {
+            expect(triangle.i0 < mesh.vertices.size());
+            expect(triangle.i1 < mesh.vertices.size());
+            expect(triangle.i2 < mesh.vertices.size());
+            auto p0 = mesh.vertices[triangle.i0].position();
+            auto p1 = mesh.vertices[triangle.i1].position();
+            auto p2 = mesh.vertices[triangle.i2].position();
+            expect(luisa::dot(luisa::cross(p1 - p0, p2 - p0), p0) > 0.0f);
+        }
+    };
+
+    "validate_sphere_spec"_test = []
+    {
+        expect(!SphereShapeSpec{1.0f}.validate().has_value());
+        expect(SphereShapeSpec{0.0f}.validate().has_value());
+        expect(SphereShapeSpec{-1.0f}.validate().has_value());
+        expect(SphereShapeSpec{std::numeric_limits<float>::infinity()}.validate().has_value());
+        expect(SphereShapeSpec{std::numeric_limits<float>::quiet_NaN()}.validate().has_value());
+        expect(SphereShapeSpec{1.0f, Sphere::max_subdivision + 1u}.validate().has_value());
+    };
+
     "import_book_ply_geometry"_test = []
     {
         auto parsed = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
@@ -108,6 +155,35 @@ static auto test_book_import_registration = []
         parsed.shapes[1u].material.inline_index = parsed.shapes[0u].material.inline_index;
         auto spec = PbrtImporter::import(std::move(parsed));
         expect(spec.instances()[0u].surface == spec.instances()[1u].surface);
+    };
+
+    "import_book_v2_spheres"_test = []
+    {
+        auto parsed = PbrtParser::parse("scene/pbrt-book/book-v2.pbrt");
+        auto spec   = PbrtImporter::import(std::move(parsed));
+        expect(spec.shapes().size() == 5u);
+        expect(spec.instances().size() == 5u);
+        expect(spec.lights().size() == 2u);
+
+        auto instances = spec.instances();
+        auto sphere_0  = dynamic_cast<const SphereShapeSpec*>(&spec.shapes().spec(instances[0u].shape));
+        auto sphere_1  = dynamic_cast<const SphereShapeSpec*>(&spec.shapes().spec(instances[1u].shape));
+        expect(sphere_0 != nullptr);
+        expect(sphere_1 != nullptr);
+        if (sphere_0 != nullptr && sphere_1 != nullptr)
+        {
+            expect(is_near(sphere_0->radius(), 7.5f));
+            expect(is_near(sphere_1->radius(), 7.5f));
+            expect(sphere_0->subdivision() == Sphere::default_subdivision);
+            expect(sphere_1->subdivision() == Sphere::default_subdivision);
+        }
+        expect(instances[0u].surface == instances[1u].surface);
+        expect(instances[0u].light.has_value());
+        expect(instances[1u].light.has_value());
+        expect(instances[0u].light != instances[1u].light);
+        expect(is_near(instances[0u].transform[3u].x, 34.92f));
+        expect(is_near(instances[0u].transform[3u].y, 55.92f));
+        expect(is_near(instances[0u].transform[3u].z, -15.351f));
     };
 
     "reject_out_of_range_inline_material"_test = []

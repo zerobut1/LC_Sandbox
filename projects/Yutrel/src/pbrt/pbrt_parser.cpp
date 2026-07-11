@@ -1060,6 +1060,51 @@ private:
         if (type == "sphere")
         {
             shape.type = ShapeDesc::Type::Sphere;
+            auto radius_count = 0u;
+            auto subdivision_count = 0u;
+            for (auto&& param : params)
+            {
+                if (param.name == "zmin" || param.name == "zmax" || param.name == "phimax")
+                {
+                    fail(param.source, luisa::format("PBRT sphere clipping parameter '{}' is not supported", param.name));
+                }
+                if (param.name == "radius")
+                {
+                    if (param.type != "float")
+                    {
+                        fail(param.source, "sphere parameter 'radius' must have type 'float'");
+                    }
+                    if (radius_count++ != 0u)
+                    {
+                        fail(param.source, "duplicate parameter 'float radius'");
+                    }
+                }
+                else if (param.name == "subdivision")
+                {
+                    if (param.type != "integer")
+                    {
+                        fail(param.source, "sphere parameter 'subdivision' must have type 'integer'");
+                    }
+                    if (subdivision_count++ != 0u)
+                    {
+                        fail(param.source, "duplicate parameter 'integer subdivision'");
+                    }
+                }
+                else
+                {
+                    fail(param.source, luisa::format("unsupported sphere parameter '{} {}'", param.type, param.name));
+                }
+            }
+            shape.radius             = one_float(params, "radius", command, 1.0f);
+            shape.sphere_subdivision = one_uint(params, "subdivision", command, ShapeDesc::sphere_default_subdivision);
+            if (!std::isfinite(shape.radius) || shape.radius <= 0.0f)
+            {
+                fail(command, "sphere radius must be finite and positive");
+            }
+            if (shape.sphere_subdivision > ShapeDesc::sphere_max_subdivision)
+            {
+                fail(command, luisa::format("sphere subdivision level must not exceed {}", ShapeDesc::sphere_max_subdivision));
+            }
         }
         else if (type == "plymesh")
         {

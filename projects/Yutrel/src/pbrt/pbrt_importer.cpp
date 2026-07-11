@@ -19,12 +19,16 @@
 #include "scene/scene_spec_builder.h"
 #include "shapes/inline_mesh.h"
 #include "shapes/mesh.h"
+#include "shapes/sphere.h"
 #include "spectrum/hero.h"
 #include "surfaces/diffuse.h"
 #include "textures/constant.h"
 
 namespace Yutrel
 {
+static_assert(ShapeDesc::sphere_default_subdivision == Sphere::default_subdivision);
+static_assert(ShapeDesc::sphere_max_subdivision == Sphere::max_subdivision);
+
 namespace
 {
 
@@ -239,6 +243,17 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         inline_surface_refs.emplace_back(make_material_surface(material, {}));
     }
 
+    luisa::optional<SurfaceRef> default_surface;
+    auto get_default_surface = [&](const SourceLocation& source) -> SurfaceRef
+    {
+        if (!default_surface)
+        {
+            auto texture = builder.add_anonymous_texture<ConstantTextureSpec>(source, make_float4(0.5f, 0.5f, 0.5f, 1.0f));
+            default_surface = builder.add_anonymous_surface<DiffuseSurfaceSpec>(source, texture, true);
+        }
+        return *default_surface;
+    };
+
     luisa::vector<ShapeRef> inline_mesh_refs;
     inline_mesh_refs.reserve(scene.meshes.size());
     for (auto& mesh : scene.meshes)
@@ -273,7 +288,10 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
                     SpecMeta{.name = luisa::format("plymesh_{}", shape_index), .source = shape.source},
                     resolve_relative_to_scene(scene.source_path, *shape.filename));
             case ShapeDesc::Type::Sphere:
-                fail(luisa::format("PBRT Importer does not implement Shape 'sphere' at {}.", format_source_location(shape.source)));
+                return builder.add_shape<SphereShapeSpec>(
+                    SpecMeta{.name = luisa::format("sphere_{}", shape_index), .source = shape.source},
+                    shape.radius,
+                    shape.sphere_subdivision);
             }
             fail("Unsupported PBRT shape type.");
         }();
@@ -301,7 +319,7 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
                 }
                 return inline_surface_refs[index];
             }
-            fail(luisa::format("PBRT Importer does not implement default material binding at {}.", format_source_location(shape.source)));
+            return get_default_surface(shape.source);
         }();
         luisa::optional<LightRef> light;
         if (shape.area_light)

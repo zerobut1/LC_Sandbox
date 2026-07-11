@@ -1,0 +1,4 @@
+WorldBegin
+Shape "sphere"
+    "float radius" [ 1 ]
+    "float radius" [ 2 ]

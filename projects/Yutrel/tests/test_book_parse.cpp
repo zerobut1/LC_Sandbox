@@ -104,6 +104,13 @@ static auto test_book_parse_registration = []
         {
             expect(material.type == MaterialDesc::Type::Diffuse);
         }
+        expect(scene.shapes.size() == 5u);
+        expect(scene.shapes[0u].type == ShapeDesc::Type::Sphere);
+        expect(scene.shapes[1u].type == ShapeDesc::Type::Sphere);
+        expect(is_near(scene.shapes[0u].radius, 7.5f));
+        expect(is_near(scene.shapes[1u].radius, 7.5f));
+        expect(scene.shapes[0u].sphere_subdivision == 4u);
+        expect(scene.shapes[1u].sphere_subdivision == 4u);
 
         std::array<std::filesystem::path, 3u> filenames{
             "geometry/mesh_00001.ply",
@@ -129,6 +136,40 @@ static auto test_book_parse_registration = []
             filename_index++;
         }
         expect(filename_index == filenames.size());
+    };
+
+    "parse_sphere_parameters"_test = []
+    {
+        auto scene = PbrtParser::parse("tests/scenes/sphere_parameters.pbrt");
+        expect(scene.shapes.size() == 2u);
+        expect(scene.shapes[0u].type == ShapeDesc::Type::Sphere);
+        expect(is_near(scene.shapes[0u].radius, 2.5f));
+        expect(scene.shapes[0u].sphere_subdivision == 3u);
+        expect(scene.shapes[1u].type == ShapeDesc::Type::Sphere);
+        expect(is_near(scene.shapes[1u].radius, 1.0f));
+        expect(scene.shapes[1u].sphere_subdivision == ShapeDesc::sphere_default_subdivision);
+    };
+
+    "reject_invalid_sphere_parameters"_test = []
+    {
+        for (auto path : {
+                 "tests/scenes/sphere_duplicate_radius.pbrt",
+                 "tests/scenes/sphere_invalid_radius.pbrt",
+                 "tests/scenes/sphere_invalid_subdivision.pbrt",
+                 "tests/scenes/sphere_clipped.pbrt",
+             })
+        {
+            auto rejected = false;
+            try
+            {
+                (void)PbrtParser::parse(path);
+            }
+            catch (const std::runtime_error& error)
+            {
+                rejected = std::string{error.what()}.find(path) != std::string::npos;
+            }
+            expect(rejected) << "invalid sphere parameters should produce a source-located parse error";
+        }
     };
 
     "reject_invalid_ply_filenames"_test = []

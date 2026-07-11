@@ -1,0 +1,5 @@
+WorldBegin
+Shape "sphere"
+    "float radius" [ 2.5 ]
+    "integer subdivision" [ 3 ]
+Shape "sphere"

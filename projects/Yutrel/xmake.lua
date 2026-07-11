@@ -12,3 +12,5 @@ target("Yutrel")
     add_packages("assimp")
 
 target_end()
+
+includes("tests")

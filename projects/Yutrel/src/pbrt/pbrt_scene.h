@@ -12,6 +12,27 @@ namespace Yutrel
 {
 using namespace luisa;
 
+using Matrix4 = std::array<float, 16u>;
+
+inline constexpr Matrix4 identity_matrix4{
+    1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
+
+struct RawValue
+{
+    SourceLocation source;
+    luisa::string text;
+    bool quoted{};
+};
+
+struct RawParameter
+{
+    SourceLocation source;
+    luisa::string type;
+    luisa::string name;
+    luisa::vector<RawValue> values;
+    bool bracketed{};
+};
+
 struct CameraDesc
 {
     SourceLocation source;
@@ -21,8 +42,8 @@ struct CameraDesc
     };
     Type type{Type::Perspective};
     float fov{45.0f};
-    std::array<float, 16u> pbrt_transform{
-        1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
+    Matrix4 pbrt_transform{identity_matrix4};
+    luisa::vector<RawParameter> parameters;
 };
 
 struct FilmDesc
@@ -35,6 +56,7 @@ struct FilmDesc
     Type type{Type::RGB};
     uint2 resolution{1024u, 1024u};
     std::filesystem::path filename;
+    luisa::vector<RawParameter> parameters;
 };
 
 struct IntegratorDesc
@@ -46,6 +68,7 @@ struct IntegratorDesc
     };
     Type type{Type::Path};
     uint max_depth{10u};
+    luisa::vector<RawParameter> parameters;
 };
 
 struct SamplerDesc
@@ -54,9 +77,11 @@ struct SamplerDesc
     enum class Type
     {
         Independent,
+        Halton,
     };
     Type type{Type::Independent};
     uint pixel_samples{1u};
+    luisa::vector<RawParameter> parameters;
 };
 
 struct FilterDesc
@@ -69,6 +94,27 @@ struct FilterDesc
     };
     Type type{Type::Triangle};
     float2 radius{1.0f, 1.0f};
+    luisa::vector<RawParameter> parameters;
+};
+
+struct TextureDesc
+{
+    SourceLocation source;
+    enum class ValueType
+    {
+        Float,
+        Spectrum,
+    };
+    enum class Type
+    {
+        ImageMap,
+        Constant,
+        Scale,
+    };
+    luisa::string name;
+    ValueType value_type{ValueType::Float};
+    Type type{Type::Constant};
+    luisa::vector<RawParameter> parameters;
 };
 
 struct MaterialDesc
@@ -77,9 +123,17 @@ struct MaterialDesc
     enum class Type
     {
         Diffuse,
+        CoatedDiffuse,
     };
     Type type{Type::Diffuse};
     float3 reflectance{0.0f, 0.0f, 0.0f};
+    luisa::vector<RawParameter> parameters;
+};
+
+struct MaterialBinding
+{
+    luisa::string named;
+    luisa::optional<uint> inline_index;
 };
 
 struct AreaLightDesc
@@ -91,6 +145,7 @@ struct AreaLightDesc
     };
     Type type{Type::Diffuse};
     float3 emission{0.0f, 0.0f, 0.0f};
+    luisa::vector<RawParameter> parameters;
 };
 
 struct MeshDesc
@@ -105,11 +160,18 @@ struct MeshDesc
 struct ShapeDesc
 {
     SourceLocation source;
-    uint mesh_index{};
-    luisa::string material_name;
+    enum class Type
+    {
+        TriangleMesh,
+        PlyMesh,
+        Sphere,
+    };
+    Type type{Type::TriangleMesh};
+    luisa::optional<uint> mesh_index;
+    luisa::vector<RawParameter> parameters;
+    MaterialBinding material;
     luisa::optional<AreaLightDesc> area_light;
-    std::array<float, 16u> pbrt_transform{
-        1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
+    Matrix4 pbrt_transform{identity_matrix4};
 };
 
 struct PbrtScene
@@ -120,6 +182,8 @@ struct PbrtScene
     IntegratorDesc integrator;
     SamplerDesc sampler;
     FilterDesc filter;
+    luisa::vector<TextureDesc> textures;
+    luisa::vector<MaterialDesc> materials;
     luisa::unordered_map<luisa::string, MaterialDesc> named_materials;
     luisa::vector<MeshDesc> meshes;
     luisa::vector<ShapeDesc> shapes;

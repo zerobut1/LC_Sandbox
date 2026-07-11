@@ -1,6 +1,8 @@
 #include "pbrt_parser.h"
 
 #include <charconv>
+#include <cmath>
+#include <cstdint>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -195,13 +197,38 @@ private:
     }
 };
 
-struct RawParameter
+[[nodiscard]] float& matrix_at(Matrix4& m, uint32_t row, uint32_t column) noexcept { return m[row * 4u + column]; }
+[[nodiscard]] float matrix_at(const Matrix4& m, uint32_t row, uint32_t column) noexcept { return m[row * 4u + column]; }
+
+[[nodiscard]] Matrix4 multiply(const Matrix4& lhs, const Matrix4& rhs) noexcept
 {
-    luisa::string type;
-    luisa::string name;
-    luisa::vector<Token> values;
-    SourceLocation loc;
-};
+    Matrix4 result{};
+    for (auto row = 0u; row < 4u; row++)
+    {
+        for (auto column = 0u; column < 4u; column++)
+        {
+            for (auto i = 0u; i < 4u; i++)
+            {
+                matrix_at(result, row, column) += matrix_at(lhs, row, i) * matrix_at(rhs, i, column);
+            }
+        }
+    }
+    return result;
+}
+
+[[nodiscard]] float dot_host(float3 a, float3 b) noexcept { return a.x * b.x + a.y * b.y + a.z * b.z; }
+[[nodiscard]] float3 cross_host(float3 a, float3 b) noexcept { return make_float3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
+
+[[nodiscard]] float3 normalize_host(float3 v, const Token& command, luisa::string_view what)
+{
+    auto length_squared = dot_host(v, v);
+    if (length_squared < 1e-16f)
+    {
+        fail(command, luisa::format("{} must be non-zero", what));
+    }
+    auto inv_length = 1.0f / std::sqrt(length_squared);
+    return v * inv_length;
+}
 
 class Parser
 {
@@ -218,15 +245,14 @@ private:
 
     struct AttributeState
     {
-        luisa::string material_name;
+        MaterialBinding material;
         luisa::optional<AreaLightDesc> area_light;
-        std::array<float, 16u> transform;
+        Matrix4 transform;
     };
 
     Block m_block{Block::Options};
-    std::array<float, 16u> m_current_transform{
-        1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
-    luisa::string m_current_material;
+    Matrix4 m_current_transform{identity_matrix4};
+    MaterialBinding m_current_material;
     luisa::optional<AreaLightDesc> m_current_area_light;
     luisa::vector<AttributeState> m_attribute_stack;
 
@@ -316,26 +342,41 @@ private:
                 fail(decl, luisa::format("missing parameter name in '{}'", decl.text));
             }
             auto name = decl.text.substr(name_pos);
-            (void)expect(TokenKind::LBracket, luisa::format("expected '[' after parameter '{}'", decl.text));
-            luisa::vector<Token> values;
-            while (!peek(TokenKind::RBracket))
+            luisa::vector<RawValue> values;
+            auto bracketed = peek(TokenKind::LBracket);
+            if (bracketed)
             {
-                if (peek(TokenKind::End))
+                (void)advance();
+                while (!peek(TokenKind::RBracket))
                 {
-                    fail(current(), luisa::format("unterminated value list for parameter '{}'", decl.text));
+                    if (peek(TokenKind::End))
+                    {
+                        fail(current(), luisa::format("unterminated value list for parameter '{}'", decl.text));
+                    }
+                    if (peek(TokenKind::LBracket))
+                    {
+                        fail(current(), luisa::format("unexpected '[' inside parameter '{}'", decl.text));
+                    }
+                    auto value = advance();
+                    values.emplace_back(RawValue{.source = value.loc, .text = std::move(value.text), .quoted = value.kind == TokenKind::String});
                 }
-                if (peek(TokenKind::LBracket))
-                {
-                    fail(current(), luisa::format("unexpected '[' inside parameter '{}'", decl.text));
-                }
-                values.emplace_back(advance());
+                (void)expect(TokenKind::RBracket, "expected ']'");
             }
-            (void)expect(TokenKind::RBracket, "expected ']'");
+            else
+            {
+                if (!peek(TokenKind::Word) && !peek(TokenKind::String))
+                {
+                    fail(current(), luisa::format("expected value for parameter '{}'", decl.text));
+                }
+                auto value = advance();
+                values.emplace_back(RawValue{.source = value.loc, .text = std::move(value.text), .quoted = value.kind == TokenKind::String});
+            }
             params.emplace_back(RawParameter{
-                .type   = std::move(type),
-                .name   = std::move(name),
-                .values = std::move(values),
-                .loc    = decl.loc,
+                .source    = decl.loc,
+                .type      = std::move(type),
+                .name      = std::move(name),
+                .values    = std::move(values),
+                .bracketed = bracketed,
             });
         }
         return params;
@@ -362,11 +403,11 @@ private:
         fail(command, luisa::format("missing parameter '\"{} {}\"'", type, name));
     }
 
-    [[nodiscard]] float parse_float_token(const Token& token) const
+    [[nodiscard]] float parse_float_token(const RawValue& token) const
     {
-        if (token.kind != TokenKind::Word)
+        if (token.quoted)
         {
-            fail(token, luisa::format("expected float, got string '{}'", token.text));
+            fail(token.source, luisa::format("expected float, got string '{}'", token.text));
         }
         try
         {
@@ -374,21 +415,48 @@ private:
             auto v              = std::stof(std::string{token.text}, &parsed_chars);
             if (parsed_chars != token.text.size())
             {
-                fail(token, luisa::format("invalid float '{}'", token.text));
+                fail(token.source, luisa::format("invalid float '{}'", token.text));
             }
             return v;
         }
         catch (const std::exception&)
         {
-            fail(token, luisa::format("invalid float '{}'", token.text));
+            fail(token.source, luisa::format("invalid float '{}'", token.text));
         }
     }
 
-    [[nodiscard]] int parse_int_token(const Token& token) const
+    [[nodiscard]] float parse_float_token(const Token& token) const
     {
-        if (token.kind != TokenKind::Word)
+        return parse_float_token(RawValue{.source = token.loc, .text = token.text, .quoted = token.kind == TokenKind::String});
+    }
+
+    [[nodiscard]] float next_float(const Token& command, luisa::string_view context)
+    {
+        if (!peek(TokenKind::Word))
         {
-            fail(token, luisa::format("expected integer, got string '{}'", token.text));
+            fail(command, luisa::format("{} expects numeric arguments", context));
+        }
+        return parse_float_token(advance());
+    }
+
+    [[nodiscard]] float3 next_float3(const Token& command, luisa::string_view context)
+    {
+        auto x = next_float(command, context);
+        auto y = next_float(command, context);
+        auto z = next_float(command, context);
+        return make_float3(x, y, z);
+    }
+
+    void concat_transform(const Matrix4& transform) noexcept
+    {
+        m_current_transform = multiply(m_current_transform, transform);
+    }
+
+    [[nodiscard]] int parse_int_token(const RawValue& token) const
+    {
+        if (token.quoted)
+        {
+            fail(token.source, luisa::format("expected integer, got string '{}'", token.text));
         }
         int value   = 0;
         auto begin  = token.text.data();
@@ -396,16 +464,16 @@ private:
         auto result = std::from_chars(begin, end, value);
         if (result.ec != std::errc{} || result.ptr != end)
         {
-            fail(token, luisa::format("invalid integer '{}'", token.text));
+            fail(token.source, luisa::format("invalid integer '{}'", token.text));
         }
         return value;
     }
 
-    [[nodiscard]] luisa::string parse_string_token(const Token& token) const
+    [[nodiscard]] luisa::string parse_string_token(const RawValue& token) const
     {
-        if (token.kind != TokenKind::String)
+        if (!token.quoted)
         {
-            fail(token, luisa::format("expected string, got '{}'", token.text));
+            fail(token.source, luisa::format("expected string, got '{}'", token.text));
         }
         return token.text;
     }
@@ -419,12 +487,12 @@ private:
         }
         if (p->values.size() != 1u)
         {
-            fail(p->loc, luisa::format("'integer {}' expects exactly one value", name));
+            fail(p->source, luisa::format("'integer {}' expects exactly one value", name));
         }
         auto v = parse_int_token(p->values.front());
         if (v < 0)
         {
-            fail(p->values.front(), luisa::format("'integer {}' must be non-negative", name));
+            fail(p->values.front().source, luisa::format("'integer {}' must be non-negative", name));
         }
         return static_cast<uint>(v);
     }
@@ -438,7 +506,7 @@ private:
         }
         if (p->values.size() != 1u)
         {
-            fail(p->loc, luisa::format("'float {}' expects exactly one value", name));
+            fail(p->source, luisa::format("'float {}' expects exactly one value", name));
         }
         return parse_float_token(p->values.front());
     }
@@ -452,7 +520,7 @@ private:
         }
         if (p->values.size() != 1u)
         {
-            fail(p->loc, luisa::format("'string {}' expects exactly one value", name));
+            fail(p->source, luisa::format("'string {}' expects exactly one value", name));
         }
         return parse_string_token(p->values.front());
     }
@@ -462,7 +530,7 @@ private:
         auto&& p = require_param(params, "rgb", name, command);
         if (p.values.size() != 3u)
         {
-            fail(p.loc, luisa::format("'rgb {}' expects exactly three values", name));
+            fail(p.source, luisa::format("'rgb {}' expects exactly three values", name));
         }
         return make_float3(parse_float_token(p.values[0u]),
                            parse_float_token(p.values[1u]),
@@ -474,7 +542,7 @@ private:
         auto&& p = require_param(params, type, name, command);
         if (p.values.size() % 3u != 0u)
         {
-            fail(p.loc, luisa::format("'{} {}' value count must be a multiple of 3", type, name));
+            fail(p.source, luisa::format("'{} {}' value count must be a multiple of 3", type, name));
         }
         luisa::vector<float3> values;
         values.reserve(p.values.size() / 3u);
@@ -496,7 +564,7 @@ private:
         }
         if (p->values.size() % 2u != 0u)
         {
-            fail(p->loc, luisa::format("'{} {}' value count must be a multiple of 2", type, name));
+            fail(p->source, luisa::format("'{} {}' value count must be a multiple of 2", type, name));
         }
         luisa::vector<float2> values;
         values.reserve(p->values.size() / 2u);
@@ -513,7 +581,7 @@ private:
         auto&& p = require_param(params, "integer", "indices", command);
         if (p.values.size() % 3u != 0u)
         {
-            fail(p.loc, "'integer indices' value count must be a multiple of 3");
+            fail(p.source, "'integer indices' value count must be a multiple of 3");
         }
         luisa::vector<uint3> values;
         values.reserve(p.values.size() / 3u);
@@ -527,7 +595,7 @@ private:
                 static_cast<size_t>(i1) >= vertex_count ||
                 static_cast<size_t>(i2) >= vertex_count)
             {
-                fail(p.values[i], "triangle index out of bounds");
+                fail(p.values[i].source, "triangle index out of bounds");
             }
             values.emplace_back(make_uint3(static_cast<uint>(i0),
                                            static_cast<uint>(i1),
@@ -545,6 +613,22 @@ private:
         else if (command.text == "Transform")
         {
             parse_transform(command);
+        }
+        else if (command.text == "Scale")
+        {
+            parse_scale(command);
+        }
+        else if (command.text == "Translate")
+        {
+            parse_translate(command);
+        }
+        else if (command.text == "Rotate")
+        {
+            parse_rotate(command);
+        }
+        else if (command.text == "LookAt")
+        {
+            parse_look_at(command);
         }
         else if (command.text == "Sampler")
         {
@@ -569,6 +653,14 @@ private:
         else if (command.text == "MakeNamedMaterial")
         {
             parse_make_named_material(command);
+        }
+        else if (command.text == "Material")
+        {
+            parse_material(command);
+        }
+        else if (command.text == "Texture")
+        {
+            parse_texture(command);
         }
         else if (command.text == "NamedMaterial")
         {
@@ -604,14 +696,16 @@ private:
         {
             fail(command, luisa::format("unsupported Integrator '{}'", type));
         }
-        auto params                 = parse_parameters();
-        m_desc.integrator.source    = command.loc;
-        m_desc.integrator.type      = IntegratorDesc::Type::Path;
-        m_desc.integrator.max_depth = one_uint(params, "maxdepth", command, 10u);
+        auto params                  = parse_parameters();
+        m_desc.integrator.source     = command.loc;
+        m_desc.integrator.type       = IntegratorDesc::Type::Path;
+        m_desc.integrator.max_depth  = one_uint(params, "maxdepth", command, 10u);
+        m_desc.integrator.parameters = std::move(params);
     }
 
     void parse_transform(const Token& command)
     {
+        Matrix4 transform{};
         (void)expect(TokenKind::LBracket, "expected '[' after Transform");
         for (auto i = 0u; i < 16u; i++)
         {
@@ -619,23 +713,97 @@ private:
             {
                 fail(command, "Transform expects exactly 16 floats");
             }
-            m_current_transform[i] = parse_float_token(advance());
+            auto row                          = i % 4u;
+            auto column                       = i / 4u;
+            matrix_at(transform, row, column) = parse_float_token(advance());
         }
         (void)expect(TokenKind::RBracket, "Transform expects exactly 16 floats");
+        m_current_transform = transform;
+    }
+
+    void parse_scale(const Token& command)
+    {
+        Matrix4 transform{identity_matrix4};
+        matrix_at(transform, 0u, 0u) = next_float(command, "Scale");
+        matrix_at(transform, 1u, 1u) = next_float(command, "Scale");
+        matrix_at(transform, 2u, 2u) = next_float(command, "Scale");
+        concat_transform(transform);
+    }
+
+    void parse_translate(const Token& command)
+    {
+        Matrix4 transform{identity_matrix4};
+        matrix_at(transform, 0u, 3u) = next_float(command, "Translate");
+        matrix_at(transform, 1u, 3u) = next_float(command, "Translate");
+        matrix_at(transform, 2u, 3u) = next_float(command, "Translate");
+        concat_transform(transform);
+    }
+
+    void parse_rotate(const Token& command)
+    {
+        constexpr auto pi  = 3.14159265358979323846f;
+        auto angle         = next_float(command, "Rotate") * (pi / 180.0f);
+        auto axis          = normalize_host(next_float3(command, "Rotate"), command, "Rotate axis");
+        auto sin_angle     = std::sin(angle);
+        auto cos_angle     = std::cos(angle);
+        auto one_minus_cos = 1.0f - cos_angle;
+        Matrix4 transform{identity_matrix4};
+        matrix_at(transform, 0u, 0u) = axis.x * axis.x * one_minus_cos + cos_angle;
+        matrix_at(transform, 0u, 1u) = axis.x * axis.y * one_minus_cos - axis.z * sin_angle;
+        matrix_at(transform, 0u, 2u) = axis.x * axis.z * one_minus_cos + axis.y * sin_angle;
+        matrix_at(transform, 1u, 0u) = axis.y * axis.x * one_minus_cos + axis.z * sin_angle;
+        matrix_at(transform, 1u, 1u) = axis.y * axis.y * one_minus_cos + cos_angle;
+        matrix_at(transform, 1u, 2u) = axis.y * axis.z * one_minus_cos - axis.x * sin_angle;
+        matrix_at(transform, 2u, 0u) = axis.z * axis.x * one_minus_cos - axis.y * sin_angle;
+        matrix_at(transform, 2u, 1u) = axis.z * axis.y * one_minus_cos + axis.x * sin_angle;
+        matrix_at(transform, 2u, 2u) = axis.z * axis.z * one_minus_cos + cos_angle;
+        concat_transform(transform);
+    }
+
+    void parse_look_at(const Token& command)
+    {
+        auto eye       = next_float3(command, "LookAt");
+        auto target    = next_float3(command, "LookAt");
+        auto up        = normalize_host(next_float3(command, "LookAt"), command, "LookAt up vector");
+        auto direction = normalize_host(target - eye, command, "LookAt direction");
+        auto right     = normalize_host(cross_host(up, direction), command, "LookAt right vector");
+        auto new_up    = cross_host(direction, right);
+        Matrix4 camera_from_world{identity_matrix4};
+        matrix_at(camera_from_world, 0u, 0u) = right.x;
+        matrix_at(camera_from_world, 0u, 1u) = right.y;
+        matrix_at(camera_from_world, 0u, 2u) = right.z;
+        matrix_at(camera_from_world, 0u, 3u) = -dot_host(right, eye);
+        matrix_at(camera_from_world, 1u, 0u) = new_up.x;
+        matrix_at(camera_from_world, 1u, 1u) = new_up.y;
+        matrix_at(camera_from_world, 1u, 2u) = new_up.z;
+        matrix_at(camera_from_world, 1u, 3u) = -dot_host(new_up, eye);
+        matrix_at(camera_from_world, 2u, 0u) = direction.x;
+        matrix_at(camera_from_world, 2u, 1u) = direction.y;
+        matrix_at(camera_from_world, 2u, 2u) = direction.z;
+        matrix_at(camera_from_world, 2u, 3u) = -dot_host(direction, eye);
+        concat_transform(camera_from_world);
     }
 
     void parse_sampler(const Token& command)
     {
         expect_options(command);
         auto type = expect_string("Sampler type");
-        if (type != "independent")
+        if (type == "independent")
         {
-            fail(command, luisa::format("unsupported Sampler '{}'", type));
+            m_desc.sampler.type = SamplerDesc::Type::Independent;
+        }
+        else if (type == "halton")
+        {
+            m_desc.sampler.type = SamplerDesc::Type::Halton;
+        }
+        else
+        {
+            fail(command, luisa::format("unknown Sampler '{}'", type));
         }
         auto params                  = parse_parameters();
         m_desc.sampler.source        = command.loc;
-        m_desc.sampler.type          = SamplerDesc::Type::Independent;
         m_desc.sampler.pixel_samples = one_uint(params, "pixelsamples", command, 1u);
+        m_desc.sampler.parameters    = std::move(params);
     }
 
     void parse_filter(const Token& command)
@@ -655,9 +823,10 @@ private:
         {
             fail(command, luisa::format("unsupported PixelFilter '{}'", type));
         }
-        auto params          = parse_parameters();
-        m_desc.filter.radius = make_float2(one_float(params, "xradius", command, 1.0f),
-                                           one_float(params, "yradius", command, 1.0f));
+        auto params              = parse_parameters();
+        m_desc.filter.radius     = make_float2(one_float(params, "xradius", command, 1.0f),
+                                               one_float(params, "yradius", command, 1.0f));
+        m_desc.filter.parameters = std::move(params);
     }
 
     void parse_film(const Token& command)
@@ -678,6 +847,7 @@ private:
         {
             m_desc.film.filename = std::filesystem::path{filename};
         }
+        m_desc.film.parameters = std::move(params);
     }
 
     void parse_camera(const Token& command)
@@ -693,6 +863,7 @@ private:
         m_desc.camera.type           = CameraDesc::Type::Perspective;
         m_desc.camera.fov            = one_float(params, "fov", command, 45.0f);
         m_desc.camera.pbrt_transform = m_current_transform;
+        m_desc.camera.parameters     = std::move(params);
     }
 
     void parse_world_begin(const Token& command)
@@ -703,23 +874,7 @@ private:
             fail(command, "WorldBegin does not take parameters");
         }
         m_block             = Block::World;
-        m_current_transform = {
-            1.0f,
-            0.0f,
-            0.0f,
-            0.0f,
-            0.0f,
-            1.0f,
-            0.0f,
-            0.0f,
-            0.0f,
-            0.0f,
-            1.0f,
-            0.0f,
-            0.0f,
-            0.0f,
-            0.0f,
-            1.0f};
+        m_current_transform = identity_matrix4;
     }
 
     void parse_make_named_material(const Token& command)
@@ -732,15 +887,102 @@ private:
             fail(command, luisa::format("named material '{}' is redefined", name));
         }
         auto type = one_string(params, "type", command, {});
-        if (type != "diffuse")
+        MaterialDesc::Type material_type;
+        if (type == "diffuse")
         {
-            fail(command, luisa::format("unsupported named material type '{}'", type));
+            material_type = MaterialDesc::Type::Diffuse;
+        }
+        else if (type == "coateddiffuse")
+        {
+            material_type = MaterialDesc::Type::CoatedDiffuse;
+        }
+        else
+        {
+            fail(command, luisa::format("unknown named material type '{}'", type));
+        }
+        auto reflectance = make_float3(0.0f);
+        if (find_param(params, "rgb", "reflectance") != nullptr)
+        {
+            reflectance = rgb(params, "reflectance", command);
         }
         m_desc.named_materials.emplace(std::move(name), MaterialDesc{
                                                             .source      = command.loc,
-                                                            .type        = MaterialDesc::Type::Diffuse,
-                                                            .reflectance = rgb(params, "reflectance", command),
+                                                            .type        = material_type,
+                                                            .reflectance = reflectance,
+                                                            .parameters  = std::move(params),
                                                         });
+    }
+
+    void parse_material(const Token& command)
+    {
+        expect_world(command);
+        auto type   = expect_string("Material type");
+        auto params = parse_parameters();
+        MaterialDesc::Type material_type;
+        if (type == "diffuse")
+        {
+            material_type = MaterialDesc::Type::Diffuse;
+        }
+        else if (type == "coateddiffuse")
+        {
+            material_type = MaterialDesc::Type::CoatedDiffuse;
+        }
+        else
+        {
+            fail(command, luisa::format("unknown Material '{}'", type));
+        }
+        auto reflectance = make_float3(0.0f);
+        if (find_param(params, "rgb", "reflectance") != nullptr)
+        {
+            reflectance = rgb(params, "reflectance", command);
+        }
+        auto index = static_cast<uint>(m_desc.materials.size());
+        m_desc.materials.emplace_back(MaterialDesc{
+            .source      = command.loc,
+            .type        = material_type,
+            .reflectance = reflectance,
+            .parameters  = std::move(params),
+        });
+        m_current_material = MaterialBinding{.inline_index = index};
+    }
+
+    void parse_texture(const Token& command)
+    {
+        expect_world(command);
+        auto name       = expect_string("Texture name");
+        auto value_type = expect_string("Texture value type");
+        auto type       = expect_string("Texture implementation");
+        auto params     = parse_parameters();
+        TextureDesc desc{.source = command.loc, .name = std::move(name), .parameters = std::move(params)};
+        if (value_type == "float")
+        {
+            desc.value_type = TextureDesc::ValueType::Float;
+        }
+        else if (value_type == "spectrum")
+        {
+            desc.value_type = TextureDesc::ValueType::Spectrum;
+        }
+        else
+        {
+            fail(command, luisa::format("unknown Texture value type '{}'", value_type));
+        }
+        if (type == "imagemap")
+        {
+            desc.type = TextureDesc::Type::ImageMap;
+        }
+        else if (type == "constant")
+        {
+            desc.type = TextureDesc::Type::Constant;
+        }
+        else if (type == "scale")
+        {
+            desc.type = TextureDesc::Type::Scale;
+        }
+        else
+        {
+            fail(command, luisa::format("unknown Texture '{}'", type));
+        }
+        m_desc.textures.emplace_back(std::move(desc));
     }
 
     void parse_named_material(const Token& command)
@@ -751,7 +993,7 @@ private:
         {
             fail(command, "NamedMaterial does not take parameters");
         }
-        m_current_material = std::move(name);
+        m_current_material = MaterialBinding{.named = std::move(name)};
     }
 
     void parse_area_light_source(const Token& command)
@@ -764,9 +1006,10 @@ private:
         }
         auto params = parse_parameters();
         m_current_area_light.emplace(AreaLightDesc{
-            .source   = command.loc,
-            .type     = AreaLightDesc::Type::Diffuse,
-            .emission = rgb(params, "L", command),
+            .source     = command.loc,
+            .type       = AreaLightDesc::Type::Diffuse,
+            .emission   = rgb(params, "L", command),
+            .parameters = std::move(params),
         });
     }
 
@@ -778,9 +1021,9 @@ private:
             fail(command, "AttributeBegin does not take parameters");
         }
         m_attribute_stack.emplace_back(AttributeState{
-            .material_name = m_current_material,
-            .area_light    = m_current_area_light,
-            .transform     = m_current_transform,
+            .material   = m_current_material,
+            .area_light = m_current_area_light,
+            .transform  = m_current_transform,
         });
     }
 
@@ -797,7 +1040,7 @@ private:
         }
         auto state = std::move(m_attribute_stack.back());
         m_attribute_stack.pop_back();
-        m_current_material   = std::move(state.material_name);
+        m_current_material   = std::move(state.material);
         m_current_area_light = std::move(state.area_light);
         m_current_transform  = state.transform;
     }
@@ -805,44 +1048,53 @@ private:
     void parse_shape(const Token& command)
     {
         expect_world(command);
-        auto type = expect_string("Shape type");
-        if (type != "trianglemesh")
-        {
-            fail(command, luisa::format("unsupported Shape '{}'", type));
-        }
-        if (m_current_material.empty())
-        {
-            fail(command, "Shape has no current NamedMaterial");
-        }
-        auto params    = parse_parameters();
-        auto positions = float3_array(params, "point3", "P", command);
-        auto normals   = float3_array(params, "normal", "N", command);
-        auto uvs       = optional_float2_array(params, "point2", "uv");
-        if (!normals.empty() && normals.size() != positions.size())
-        {
-            fail(command, "'normal N' count must match 'point3 P' count");
-        }
-        if (!uvs.empty() && uvs.size() != positions.size())
-        {
-            fail(command, "'point2 uv' count must match 'point3 P' count");
-        }
-        auto indices = triangle_indices(params, command, positions.size());
-
-        auto mesh_index = static_cast<uint>(m_desc.meshes.size());
-        m_desc.meshes.emplace_back(MeshDesc{
-            .source    = command.loc,
-            .positions = std::move(positions),
-            .normals   = std::move(normals),
-            .uvs       = std::move(uvs),
-            .indices   = std::move(indices),
-        });
-        m_desc.shapes.emplace_back(ShapeDesc{
+        auto type   = expect_string("Shape type");
+        auto params = parse_parameters();
+        ShapeDesc shape{
             .source         = command.loc,
-            .mesh_index     = mesh_index,
-            .material_name  = m_current_material,
+            .parameters     = params,
+            .material       = m_current_material,
             .area_light     = m_current_area_light,
             .pbrt_transform = m_current_transform,
-        });
+        };
+        if (type == "sphere")
+        {
+            shape.type = ShapeDesc::Type::Sphere;
+        }
+        else if (type == "plymesh")
+        {
+            shape.type = ShapeDesc::Type::PlyMesh;
+        }
+        else if (type == "trianglemesh")
+        {
+            shape.type     = ShapeDesc::Type::TriangleMesh;
+            auto positions = float3_array(params, "point3", "P", command);
+            auto normals   = float3_array(params, "normal", "N", command);
+            auto uvs       = optional_float2_array(params, "point2", "uv");
+            if (!normals.empty() && normals.size() != positions.size())
+            {
+                fail(command, "'normal N' count must match 'point3 P' count");
+            }
+            if (!uvs.empty() && uvs.size() != positions.size())
+            {
+                fail(command, "'point2 uv' count must match 'point3 P' count");
+            }
+            auto indices = triangle_indices(params, command, positions.size());
+
+            shape.mesh_index = static_cast<uint>(m_desc.meshes.size());
+            m_desc.meshes.emplace_back(MeshDesc{
+                .source    = command.loc,
+                .positions = std::move(positions),
+                .normals   = std::move(normals),
+                .uvs       = std::move(uvs),
+                .indices   = std::move(indices),
+            });
+        }
+        else
+        {
+            fail(command, luisa::format("unknown Shape '{}'", type));
+        }
+        m_desc.shapes.emplace_back(std::move(shape));
     }
 };
 

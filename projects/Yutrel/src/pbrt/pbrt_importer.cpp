@@ -27,8 +27,6 @@ namespace Yutrel
 namespace
 {
 
-using Matrix4 = std::array<float, 16u>;
-
 [[noreturn]] void fail(luisa::string message)
 {
     throw std::runtime_error{message.c_str()};
@@ -36,19 +34,6 @@ using Matrix4 = std::array<float, 16u>;
 
 [[nodiscard]] float& at(Matrix4& m, uint32_t row, uint32_t column) noexcept { return m[row * 4u + column]; }
 [[nodiscard]] float at(const Matrix4& m, uint32_t row, uint32_t column) noexcept { return m[row * 4u + column]; }
-
-[[nodiscard]] Matrix4 transpose(const Matrix4& raw) noexcept
-{
-    Matrix4 result{};
-    for (auto row = 0u; row < 4u; row++)
-    {
-        for (auto column = 0u; column < 4u; column++)
-        {
-            at(result, row, column) = raw[column * 4u + row];
-        }
-    }
-    return result;
-}
 
 [[nodiscard]] Matrix4 inverse(Matrix4 m)
 {
@@ -144,8 +129,7 @@ struct CameraBasis
 
 [[nodiscard]] CameraBasis camera_basis(const std::array<float, 16u>& raw)
 {
-    auto camera_from_world = transpose(raw);
-    auto world_from_camera = inverse(camera_from_world);
+    auto world_from_camera = inverse(raw);
     return CameraBasis{
         .position = transform_point(world_from_camera, make_float3(0.0f)),
         .forward  = normalize_host(transform_vector(world_from_camera, make_float3(0.0f, 0.0f, 1.0f))),
@@ -156,10 +140,10 @@ struct CameraBasis
 [[nodiscard]] float4x4 instance_transform(const std::array<float, 16u>& raw) noexcept
 {
     return make_float4x4(
-        make_float4(raw[0u], raw[1u], raw[2u], raw[3u]),
-        make_float4(raw[4u], raw[5u], raw[6u], raw[7u]),
-        make_float4(raw[8u], raw[9u], raw[10u], raw[11u]),
-        make_float4(raw[12u], raw[13u], raw[14u], raw[15u]));
+        make_float4(raw[0u], raw[4u], raw[8u], raw[12u]),
+        make_float4(raw[1u], raw[5u], raw[9u], raw[13u]),
+        make_float4(raw[2u], raw[6u], raw[10u], raw[14u]),
+        make_float4(raw[3u], raw[7u], raw[11u], raw[15u]));
 }
 
 [[nodiscard]] bool is_exr_path(const std::filesystem::path& path)
@@ -195,7 +179,7 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
     }
     if (scene.sampler.type != SamplerDesc::Type::Independent)
     {
-        fail("Unsupported PBRT sampler type.");
+        fail(luisa::format("PBRT Importer does not implement sampler 'halton' at {}.", format_source_location(scene.sampler.source)));
     }
     if (scene.film.type != FilmDesc::Type::RGB)
     {
@@ -204,6 +188,14 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
     if (scene.camera.type != CameraDesc::Type::Perspective)
     {
         fail("Unsupported PBRT camera type.");
+    }
+    if (!scene.textures.empty())
+    {
+        fail(luisa::format("PBRT Importer does not implement Texture at {}.", format_source_location(scene.textures.front().source)));
+    }
+    if (!scene.materials.empty())
+    {
+        fail(luisa::format("PBRT Importer does not implement inline Material at {}.", format_source_location(scene.materials.front().source)));
     }
 
     SceneSpecBuilder builder;
@@ -236,11 +228,20 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
 
     for (auto& shape : scene.shapes)
     {
-        if (shape.mesh_index >= shape_refs.size())
+        if (shape.type != ShapeDesc::Type::TriangleMesh)
+        {
+            auto type = shape.type == ShapeDesc::Type::PlyMesh ? "plymesh" : "sphere";
+            fail(luisa::format("PBRT Importer does not implement Shape '{}' at {}.", type, format_source_location(shape.source)));
+        }
+        if (!shape.mesh_index || *shape.mesh_index >= shape_refs.size())
         {
             fail(luisa::format("PBRT shape references an out-of-range mesh at {}.", format_source_location(shape.source)));
         }
-        auto surface = builder.reference_surface(shape.material_name, shape.source);
+        if (shape.material.named.empty())
+        {
+            fail(luisa::format("PBRT Importer does not implement anonymous/default material binding at {}.", format_source_location(shape.source)));
+        }
+        auto surface = builder.reference_surface(shape.material.named, shape.source);
         luisa::optional<LightRef> light;
         if (shape.area_light)
         {
@@ -255,7 +256,7 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         }
         builder.add_instance(ShapeInstanceSpec{
             .source    = shape.source,
-            .shape     = shape_refs[shape.mesh_index],
+            .shape     = shape_refs[*shape.mesh_index],
             .surface   = surface,
             .light     = light,
             .transform = instance_transform(shape.pbrt_transform),

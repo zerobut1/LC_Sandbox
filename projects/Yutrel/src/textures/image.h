@@ -52,6 +52,19 @@ public:
     ImageTextureSpec(luisa::filesystem::path path, TextureSampler sampler, Texture::Encoding encoding) noexcept
         : _path{std::move(path)}, _sampler{sampler}, _encoding{encoding} {}
 
+    [[nodiscard]] luisa::optional<luisa::string> validate() const noexcept override
+    {
+        if (_path.empty())
+        {
+            return spec_validation_error("Image texture path cannot be empty.");
+        }
+        std::error_code error;
+        if (!std::filesystem::is_regular_file(_path, error))
+        {
+            return spec_validation_error("Image texture path must reference a regular file.");
+        }
+        return luisa::nullopt;
+    }
     [[nodiscard]] const Texture* build(SceneBuilder& builder) const noexcept override;
 };
 

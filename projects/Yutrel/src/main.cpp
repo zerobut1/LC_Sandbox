@@ -109,15 +109,15 @@ try
         fail("--interactive and --headless cannot be used together.");
     }
 
+    auto scene = load_pbrt_scene_spec(scene_path);
     ApplicationOptions options{
         .bin         = argv[0],
         .backend     = argv[1],
         .interactive = interactive,
         .headless    = headless,
-        .scene       = load_pbrt_scene_spec(scene_path),
     };
 
-    Application app{std::move(options)};
+    Application app{std::move(options), scene};
     app.run();
 
     return 0;

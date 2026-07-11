@@ -25,10 +25,11 @@ class SceneRef
 {
 private:
     uint32_t _index;
+    uint64_t _table_id;
 
 private:
-    explicit SceneRef(uint32_t index) noexcept
-        : _index{index}
+    explicit SceneRef(uint32_t index, uint64_t table_id) noexcept
+        : _index{index}, _table_id{table_id}
     {
     }
 
@@ -38,6 +39,7 @@ public:
     SceneRef() = delete;
 
     [[nodiscard]] uint32_t index() const noexcept { return _index; }
+    [[nodiscard]] uint64_t table_id() const noexcept { return _table_id; }
     auto operator<=>(const SceneRef&) const noexcept = default;
 };
 

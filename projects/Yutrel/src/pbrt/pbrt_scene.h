@@ -108,6 +108,8 @@ struct ShapeDesc
     uint mesh_index{};
     luisa::string material_name;
     luisa::optional<AreaLightDesc> area_light;
+    std::array<float, 16u> pbrt_transform{
+        1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
 };
 
 struct PbrtScene

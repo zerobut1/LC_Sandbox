@@ -24,7 +24,6 @@ public:
     struct Config;
 
 private:
-    const Context& m_context;
     luisa::unique_ptr<Config> m_config;
 
     friend class SceneBuilder;
@@ -44,16 +43,15 @@ private:
     void _add_instance(ShapeInstance instance) noexcept;
 
 public:
-    explicit Scene(const Context& context) noexcept;
+    Scene() noexcept;
     ~Scene() noexcept;
 
-    Scene() noexcept               = delete;
     Scene(const Scene&)            = delete;
     Scene& operator=(const Scene&) = delete;
     Scene(Scene&&)                 = delete;
     Scene& operator=(Scene&&)      = delete;
 
-    [[nodiscard]] static luisa::unique_ptr<Scene> create(const Context& context, const SceneSpec& spec) noexcept;
+    [[nodiscard]] static luisa::unique_ptr<Scene> create(const SceneSpec& spec) noexcept;
 
     [[nodiscard]] const Spectrum* spectrum() const noexcept;
     [[nodiscard]] const Camera* camera() const noexcept;

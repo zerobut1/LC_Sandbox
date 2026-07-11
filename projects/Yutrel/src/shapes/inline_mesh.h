@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cmath>
+
 #include "base/shape.h"
 #include "scene/spec_base.h"
 
@@ -55,6 +57,27 @@ public:
         if ((!_normals.empty() && _normals.size() != _positions.size()) || (!_uvs.empty() && _uvs.size() != _positions.size()))
         {
             return spec_validation_error("Inline mesh vertex attribute count does not match its positions.");
+        }
+        for (auto p : _positions)
+        {
+            if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z))
+            {
+                return spec_validation_error("Inline mesh position must be finite.");
+            }
+        }
+        for (auto n : _normals)
+        {
+            if (!std::isfinite(n.x) || !std::isfinite(n.y) || !std::isfinite(n.z))
+            {
+                return spec_validation_error("Inline mesh normal must be finite.");
+            }
+        }
+        for (auto uv : _uvs)
+        {
+            if (!std::isfinite(uv.x) || !std::isfinite(uv.y))
+            {
+                return spec_validation_error("Inline mesh texture coordinate must be finite.");
+            }
         }
         for (auto triangle : _indices)
         {

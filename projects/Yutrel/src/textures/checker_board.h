@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cmath>
+
 #include "base/texture.h"
 #include "scene/spec_base.h"
 
@@ -48,6 +50,12 @@ public:
     CheckerBoardTextureSpec(float scale, TextureRef even, TextureRef odd) noexcept
         : _scale{scale}, _even{even}, _odd{odd} {}
 
+    [[nodiscard]] luisa::optional<luisa::string> validate() const noexcept override
+    {
+        return std::isfinite(_scale) && _scale > 0.0f
+                   ? luisa::nullopt
+                   : spec_validation_error("Checker-board texture scale must be finite and positive.");
+    }
     void visit_dependencies(SpecDependencyVisitor& visitor) const noexcept override
     {
         visitor.visit(_even);

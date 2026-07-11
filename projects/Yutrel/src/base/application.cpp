@@ -8,7 +8,7 @@
 
 namespace Yutrel
 {
-Application::Application(ApplicationOptions options)
+Application::Application(ApplicationOptions options, const SceneSpec& scene)
     : m_context(options.bin)
 {
     m_interactive = options.interactive;
@@ -17,7 +17,7 @@ Application::Application(ApplicationOptions options)
     m_device = m_context.create_device(options.backend);
     m_stream = m_device.create_stream(StreamTag::GRAPHICS);
 
-    m_scene    = Scene::create(m_context, options.scene);
+    m_scene    = Scene::create(scene);
     m_renderer = Renderer::create(m_device, m_stream, *m_scene);
 }
 

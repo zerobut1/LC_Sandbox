@@ -27,16 +27,16 @@ struct Scene::Config
     const Integrator* integrator{};
 };
 
-Scene::Scene(const Context& context) noexcept
-    : m_context{context}, m_config{luisa::make_unique<Config>()}
+Scene::Scene() noexcept
+    : m_config{luisa::make_unique<Config>()}
 {
 }
 
 Scene::~Scene() noexcept = default;
 
-luisa::unique_ptr<Scene> Scene::create(const Context& context, const SceneSpec& spec) noexcept
+luisa::unique_ptr<Scene> Scene::create(const SceneSpec& spec) noexcept
 {
-    auto scene = luisa::make_unique<Scene>(context);
+    auto scene = luisa::make_unique<Scene>();
     SceneBuilder{*scene, spec}.build();
     return scene;
 }

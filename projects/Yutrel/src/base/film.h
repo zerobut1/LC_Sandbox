@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cctype>
 #include <filesystem>
+#include <limits>
 
 #include <imgui.h>
 #include <luisa/core/stl/memory.h>
@@ -127,9 +129,22 @@ public:
         {
             return spec_validation_error("Film resolution must be non-zero.");
         }
+        if (static_cast<uint64_t>(_resolution.x) * static_cast<uint64_t>(_resolution.y) > std::numeric_limits<uint32_t>::max())
+        {
+            return spec_validation_error("Film pixel count exceeds the supported 32-bit range.");
+        }
         if (_filename.empty())
         {
             return spec_validation_error("Film output path cannot be empty.");
+        }
+        auto extension = _filename.extension().string();
+        for (auto& c : extension)
+        {
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+        if (extension != ".exr")
+        {
+            return spec_validation_error("Film output path must use the .exr extension.");
         }
         return luisa::nullopt;
     }

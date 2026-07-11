@@ -52,7 +52,16 @@ public:
 
     [[nodiscard]] luisa::optional<luisa::string> validate() const noexcept override
     {
-        return _path.empty() ? spec_validation_error("Mesh path cannot be empty.") : luisa::nullopt;
+        if (_path.empty())
+        {
+            return spec_validation_error("Mesh path cannot be empty.");
+        }
+        std::error_code error;
+        if (!std::filesystem::is_regular_file(_path, error))
+        {
+            return spec_validation_error("Mesh path must reference a regular file.");
+        }
+        return luisa::nullopt;
     }
     [[nodiscard]] const Shape* build(SceneBuilder& builder) const noexcept override;
 };

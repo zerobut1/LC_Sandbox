@@ -1,6 +1,7 @@
 #pragma once
 
-#include "base/scene.h"
+#include <cmath>
+
 #include "base/texture.h"
 #include "scene/spec_base.h"
 
@@ -41,6 +42,12 @@ public:
     explicit ConstantTextureSpec(luisa::float4 value) noexcept
         : _value{value} {}
 
+    [[nodiscard]] luisa::optional<luisa::string> validate() const noexcept override
+    {
+        return std::isfinite(_value.x) && std::isfinite(_value.y) && std::isfinite(_value.z) && std::isfinite(_value.w)
+                   ? luisa::nullopt
+                   : spec_validation_error("Constant texture value must be finite.");
+    }
     [[nodiscard]] const Texture* build(SceneBuilder& builder) const noexcept override;
 };
 } // namespace Yutrel

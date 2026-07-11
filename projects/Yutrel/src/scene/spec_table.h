@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
@@ -32,6 +33,10 @@ private:
     };
 
 private:
+    inline static std::atomic_uint64_t _next_table_id{1u};
+
+private:
+    uint64_t _table_id;
     luisa::string _category;
     luisa::vector<Entry> _entries;
     luisa::unordered_map<luisa::string, SceneRef<Spec>> _named_refs;
@@ -39,7 +44,8 @@ private:
 
 public:
     explicit SpecTable(luisa::string category) noexcept
-        : _category{std::move(category)}
+        : _table_id{_next_table_id.fetch_add(1u, std::memory_order_relaxed)},
+          _category{std::move(category)}
     {
     }
 
@@ -69,7 +75,6 @@ public:
     [[nodiscard]] SceneRef<Spec> add(SpecMeta meta, Args&&... args)
     {
         _validate_name(meta.name, meta.source);
-        auto spec = luisa::make_unique<Impl>(std::forward<Args>(args)...);
         if (auto iter = _named_refs.find(meta.name); iter != _named_refs.end())
         {
             auto ref    = iter->second;
@@ -78,13 +83,14 @@ public:
             {
                 _throw_error(meta.source, luisa::format("Duplicate {} spec '{}'; first definition is at {}.", _category, meta.name, format_source_location(entry.meta.source)));
             }
-            entry.meta = std::move(meta);
-            entry.spec = std::move(spec);
+            entry.meta      = std::move(meta);
+            entry.spec      = luisa::make_unique<Impl>(std::forward<Args>(args)...);
+            entry.first_use = luisa::nullopt;
             return ref;
         }
         auto ref = _append(Entry{
             .meta      = std::move(meta),
-            .spec      = std::move(spec),
+            .spec      = luisa::make_unique<Impl>(std::forward<Args>(args)...),
             .first_use = luisa::nullopt,
         });
         _named_refs.emplace(_entries[ref.index()].meta.name, ref);
@@ -105,15 +111,16 @@ public:
 
     [[nodiscard]] bool contains(SceneRef<Spec> ref) const noexcept
     {
-        return ref.index() < _entries.size();
+        return ref.table_id() == _table_id && ref.index() < _entries.size();
     }
 
-    [[nodiscard]] bool contains_index(uint32_t index) const noexcept
+    [[nodiscard]] bool contains(uint64_t table_id, uint32_t index) const noexcept
     {
-        return index < _entries.size();
+        return table_id == _table_id && index < _entries.size();
     }
 
     [[nodiscard]] size_t size() const noexcept { return _entries.size(); }
+    [[nodiscard]] uint64_t table_id() const noexcept { return _table_id; }
     [[nodiscard]] luisa::string_view category() const noexcept { return _category; }
 
     [[nodiscard]] const SpecMeta& meta(SceneRef<Spec> ref) const
@@ -150,7 +157,7 @@ public:
         for (uint32_t index = 0u; index < _entries.size(); index++)
         {
             auto& entry = _entries[index];
-            visitor(SceneRef<Spec>{index}, entry.meta, entry.spec.get());
+            visitor(SceneRef<Spec>{index, _table_id}, entry.meta, entry.spec.get());
         }
     }
 
@@ -161,7 +168,7 @@ private:
         {
             _throw_error(entry.meta.source, luisa::format("Too many {} specs.", _category));
         }
-        auto ref = SceneRef<Spec>{static_cast<uint32_t>(_entries.size())};
+        auto ref = SceneRef<Spec>{static_cast<uint32_t>(_entries.size()), _table_id};
         _entries.emplace_back(std::move(entry));
         return ref;
     }
@@ -170,7 +177,7 @@ private:
     {
         if (!contains(ref))
         {
-            _throw_error({}, luisa::format("{} spec ref index {} is out of bounds (size {}).", _category, ref.index(), _entries.size()));
+            _throw_invalid_ref(ref);
         }
         return _entries[ref.index()];
     }
@@ -179,7 +186,7 @@ private:
     {
         if (!contains(ref))
         {
-            _throw_error({}, luisa::format("{} spec ref index {} is out of bounds (size {}).", _category, ref.index(), _entries.size()));
+            _throw_invalid_ref(ref);
         }
         return _entries[ref.index()];
     }
@@ -190,6 +197,15 @@ private:
         {
             _throw_error(source, luisa::format("{} spec name cannot be empty.", _category));
         }
+    }
+
+    [[noreturn]] void _throw_invalid_ref(SceneRef<Spec> ref) const
+    {
+        if (ref.table_id() != _table_id)
+        {
+            _throw_error({}, luisa::format("{} spec ref belongs to a different scene spec.", _category));
+        }
+        _throw_error({}, luisa::format("{} spec ref index {} is out of bounds (size {}).", _category, ref.index(), _entries.size()));
     }
 
     [[noreturn]] static void _throw_error(const SourceLocation& source, luisa::string message)

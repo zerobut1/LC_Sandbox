@@ -78,6 +78,12 @@ public:
 
     [[nodiscard]] luisa::optional<luisa::string> validate() const noexcept override
     {
+        if (!std::isfinite(_position.x) || !std::isfinite(_position.y) || !std::isfinite(_position.z) ||
+            !std::isfinite(_lookat.x) || !std::isfinite(_lookat.y) || !std::isfinite(_lookat.z) ||
+            !std::isfinite(_up.x) || !std::isfinite(_up.y) || !std::isfinite(_up.z))
+        {
+            return spec_validation_error("Camera basis vectors must be finite.");
+        }
         auto view = _position - _lookat;
         if (dot(view, view) < 1e-12f || dot(cross(_up, view), cross(_up, view)) < 1e-12f)
         {

@@ -220,6 +220,7 @@ private:
     {
         luisa::string material_name;
         luisa::optional<AreaLightDesc> area_light;
+        std::array<float, 16u> transform;
     };
 
     Block m_block{Block::Options};
@@ -611,7 +612,6 @@ private:
 
     void parse_transform(const Token& command)
     {
-        expect_options(command);
         (void)expect(TokenKind::LBracket, "expected '[' after Transform");
         for (auto i = 0u; i < 16u; i++)
         {
@@ -751,10 +751,6 @@ private:
         {
             fail(command, "NamedMaterial does not take parameters");
         }
-        if (m_desc.named_materials.find(name) == m_desc.named_materials.end())
-        {
-            fail(command, luisa::format("NamedMaterial references undefined material '{}'", name));
-        }
         m_current_material = std::move(name);
     }
 
@@ -784,6 +780,7 @@ private:
         m_attribute_stack.emplace_back(AttributeState{
             .material_name = m_current_material,
             .area_light    = m_current_area_light,
+            .transform     = m_current_transform,
         });
     }
 
@@ -802,6 +799,7 @@ private:
         m_attribute_stack.pop_back();
         m_current_material   = std::move(state.material_name);
         m_current_area_light = std::move(state.area_light);
+        m_current_transform  = state.transform;
     }
 
     void parse_shape(const Token& command)
@@ -816,11 +814,6 @@ private:
         {
             fail(command, "Shape has no current NamedMaterial");
         }
-        if (m_desc.named_materials.find(m_current_material) == m_desc.named_materials.end())
-        {
-            fail(command, luisa::format("Shape references undefined material '{}'", m_current_material));
-        }
-
         auto params    = parse_parameters();
         auto positions = float3_array(params, "point3", "P", command);
         auto normals   = float3_array(params, "normal", "N", command);
@@ -844,10 +837,11 @@ private:
             .indices   = std::move(indices),
         });
         m_desc.shapes.emplace_back(ShapeDesc{
-            .source        = command.loc,
-            .mesh_index    = mesh_index,
-            .material_name = m_current_material,
-            .area_light    = m_current_area_light,
+            .source         = command.loc,
+            .mesh_index     = mesh_index,
+            .material_name  = m_current_material,
+            .area_light     = m_current_area_light,
+            .pbrt_transform = m_current_transform,
         });
     }
 };

@@ -153,6 +153,15 @@ struct CameraBasis
     };
 }
 
+[[nodiscard]] float4x4 instance_transform(const std::array<float, 16u>& raw) noexcept
+{
+    return make_float4x4(
+        make_float4(raw[0u], raw[1u], raw[2u], raw[3u]),
+        make_float4(raw[4u], raw[5u], raw[6u], raw[7u]),
+        make_float4(raw[8u], raw[9u], raw[10u], raw[11u]),
+        make_float4(raw[12u], raw[13u], raw[14u], raw[15u]));
+}
+
 [[nodiscard]] bool is_exr_path(const std::filesystem::path& path)
 {
     auto ext = path.extension().string();
@@ -198,7 +207,6 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
     }
 
     SceneSpecBuilder builder;
-    luisa::unordered_map<luisa::string, SurfaceRef> material_surfaces;
     for (auto& [name, material] : scene.named_materials)
     {
         if (material.type != MaterialDesc::Type::Diffuse)
@@ -208,11 +216,10 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         auto texture = builder.add_texture<ConstantTextureSpec>(
             SpecMeta{.name = luisa::format("{}::reflectance", name), .source = material.source},
             make_float4(material.reflectance.x, material.reflectance.y, material.reflectance.z, 1.0f));
-        auto surface = builder.add_surface<DiffuseSurfaceSpec>(
+        (void)builder.add_surface<DiffuseSurfaceSpec>(
             SpecMeta{.name = name, .source = material.source},
             texture,
             true);
-        material_surfaces.emplace(name, surface);
     }
 
     luisa::vector<ShapeRef> shape_refs;
@@ -233,11 +240,7 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         {
             fail(luisa::format("PBRT shape references an out-of-range mesh at {}.", format_source_location(shape.source)));
         }
-        auto material_iter = material_surfaces.find(shape.material_name);
-        if (material_iter == material_surfaces.end())
-        {
-            fail(luisa::format("PBRT shape references undefined material '{}' at {}.", shape.material_name, format_source_location(shape.source)));
-        }
+        auto surface = builder.reference_surface(shape.material_name, shape.source);
         luisa::optional<LightRef> light;
         if (shape.area_light)
         {
@@ -251,10 +254,11 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
             light = builder.add_anonymous_light<DiffuseLightSpec>(shape.area_light->source, emission, 1.0f, false);
         }
         builder.add_instance(ShapeInstanceSpec{
-            .source  = shape.source,
-            .shape   = shape_refs[shape.mesh_index],
-            .surface = material_iter->second,
-            .light   = light,
+            .source    = shape.source,
+            .shape     = shape_refs[shape.mesh_index],
+            .surface   = surface,
+            .light     = light,
+            .transform = instance_transform(shape.pbrt_transform),
         });
     }
 

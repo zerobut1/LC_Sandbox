@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cmath>
+
 #include "base/light.h"
 #include "base/texture.h"
 #include "scene/spec_base.h"
@@ -59,6 +61,12 @@ public:
     DiffuseLightSpec(TextureRef emission, float scale, bool two_sided) noexcept
         : _emission{emission}, _scale{scale}, _two_sided{two_sided} {}
 
+    [[nodiscard]] luisa::optional<luisa::string> validate() const noexcept override
+    {
+        return std::isfinite(_scale) && _scale >= 0.0f
+                   ? luisa::nullopt
+                   : spec_validation_error("Diffuse light scale must be finite and non-negative.");
+    }
     void visit_dependencies(SpecDependencyVisitor& visitor) const noexcept override
     {
         visitor.visit(_emission);

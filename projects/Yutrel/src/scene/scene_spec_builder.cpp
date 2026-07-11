@@ -30,6 +30,7 @@ enum class SpecCategory : uint8_t
 struct SpecNode
 {
     SpecCategory category;
+    uint64_t table_id;
     uint32_t index;
 };
 
@@ -51,16 +52,16 @@ public:
     {
     }
 
-    void visit(TextureRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Texture, ref.index()}); }
-    void visit(SurfaceRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Surface, ref.index()}); }
-    void visit(LightRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Light, ref.index()}); }
-    void visit(ShapeRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Shape, ref.index()}); }
-    void visit(SpectrumRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Spectrum, ref.index()}); }
-    void visit(CameraRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Camera, ref.index()}); }
-    void visit(FilmRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Film, ref.index()}); }
-    void visit(FilterRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Filter, ref.index()}); }
-    void visit(SamplerRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Sampler, ref.index()}); }
-    void visit(IntegratorRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Integrator, ref.index()}); }
+    void visit(TextureRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Texture, ref.table_id(), ref.index()}); }
+    void visit(SurfaceRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Surface, ref.table_id(), ref.index()}); }
+    void visit(LightRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Light, ref.table_id(), ref.index()}); }
+    void visit(ShapeRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Shape, ref.table_id(), ref.index()}); }
+    void visit(SpectrumRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Spectrum, ref.table_id(), ref.index()}); }
+    void visit(CameraRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Camera, ref.table_id(), ref.index()}); }
+    void visit(FilmRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Film, ref.table_id(), ref.index()}); }
+    void visit(FilterRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Filter, ref.table_id(), ref.index()}); }
+    void visit(SamplerRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Sampler, ref.table_id(), ref.index()}); }
+    void visit(IntegratorRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Integrator, ref.table_id(), ref.index()}); }
 };
 
 [[nodiscard]] constexpr size_t category_index(SpecCategory category) noexcept
@@ -228,10 +229,18 @@ void SceneSpecBuilder::_validate() const
     {
         throw std::runtime_error{"SceneSpec render root has not been set."};
     }
+    if (_instances.empty())
+    {
+        throw std::runtime_error{"SceneSpec must contain at least one shape instance."};
+    }
     auto validate_ref = [](const auto& table, auto ref, const SourceLocation& source)
     {
         if (!table.contains(ref))
         {
+            if (ref.table_id() != table.table_id())
+            {
+                throw_validation_error(source, luisa::format("{} spec ref belongs to a different scene spec.", table.category()));
+            }
             throw_validation_error(source, luisa::format("{} spec ref index {} is out of bounds (size {}).", table.category(), ref.index(), table.size()));
         }
     };
@@ -260,6 +269,10 @@ void SceneSpecBuilder::_validate() const
                     throw_validation_error(instance.source, "Shape instance transform contains a non-finite value.");
                 }
             }
+        }
+        if (std::abs(m[0].w) > 1e-6f || std::abs(m[1].w) > 1e-6f || std::abs(m[2].w) > 1e-6f || std::abs(m[3].w - 1.0f) > 1e-6f)
+        {
+            throw_validation_error(instance.source, "Shape instance transform must be affine.");
         }
         auto determinant = m[0].x * (m[1].y * m[2].z - m[1].z * m[2].y) -
                            m[1].x * (m[0].y * m[2].z - m[0].z * m[2].y) +
@@ -328,25 +341,25 @@ void SceneSpecBuilder::_validate() const
         switch (node.category)
         {
         case SpecCategory::Texture:
-            return _textures.contains_index(node.index);
+            return _textures.contains(node.table_id, node.index);
         case SpecCategory::Surface:
-            return _surfaces.contains_index(node.index);
+            return _surfaces.contains(node.table_id, node.index);
         case SpecCategory::Light:
-            return _lights.contains_index(node.index);
+            return _lights.contains(node.table_id, node.index);
         case SpecCategory::Shape:
-            return _shapes.contains_index(node.index);
+            return _shapes.contains(node.table_id, node.index);
         case SpecCategory::Spectrum:
-            return _spectra.contains_index(node.index);
+            return _spectra.contains(node.table_id, node.index);
         case SpecCategory::Camera:
-            return _cameras.contains_index(node.index);
+            return _cameras.contains(node.table_id, node.index);
         case SpecCategory::Film:
-            return _films.contains_index(node.index);
+            return _films.contains(node.table_id, node.index);
         case SpecCategory::Filter:
-            return _filters.contains_index(node.index);
+            return _filters.contains(node.table_id, node.index);
         case SpecCategory::Sampler:
-            return _samplers.contains_index(node.index);
+            return _samplers.contains(node.table_id, node.index);
         case SpecCategory::Integrator:
-            return _integrators.contains_index(node.index);
+            return _integrators.contains(node.table_id, node.index);
         case SpecCategory::Count:
             return false;
         }
@@ -366,7 +379,7 @@ void SceneSpecBuilder::_validate() const
                 throw_validation_error(
                     node.meta.source,
                     luisa::format(
-                        "{} spec '{}' references an out-of-bounds {} spec index {}.",
+                        "{} spec '{}' references an invalid {} spec ref with index {}.",
                         category_name(node.category),
                         node.meta.name,
                         category_name(dependency.category),

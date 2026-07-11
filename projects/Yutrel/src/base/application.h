@@ -6,8 +6,6 @@
 #include <luisa/runtime/stream.h>
 #include <luisa/runtime/swapchain.h>
 
-#include "scene/scene_spec.h"
-
 namespace Yutrel
 {
 using namespace luisa;
@@ -15,6 +13,7 @@ using namespace luisa::compute;
 
 class Renderer;
 class Scene;
+class SceneSpec;
 
 struct ApplicationOptions
 {
@@ -22,7 +21,6 @@ struct ApplicationOptions
     luisa::string_view backend;
     bool interactive{false};
     bool headless{false};
-    SceneSpec scene;
 };
 
 class Application final
@@ -39,7 +37,7 @@ private:
     luisa::unique_ptr<Renderer> m_renderer;
 
 public:
-    explicit Application(ApplicationOptions options);
+    Application(ApplicationOptions options, const SceneSpec& scene);
     ~Application() noexcept;
 
     Application() noexcept                     = delete;

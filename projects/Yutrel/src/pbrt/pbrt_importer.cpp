@@ -24,6 +24,7 @@
 #include "surfaces/diffuse.h"
 #include "textures/constant.h"
 #include "textures/image.h"
+#include "textures/scale.h"
 
 namespace Yutrel
 {
@@ -207,29 +208,74 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
     }
     SceneSpecBuilder builder;
 
+    luisa::unordered_map<luisa::string, const TextureDesc*> texture_declarations;
+    texture_declarations.reserve(scene.textures.size());
     for (auto&& texture : scene.textures)
     {
-        if (texture.value_type != TextureDesc::ValueType::Spectrum || texture.type != TextureDesc::Type::ImageMap)
+        texture_declarations.emplace(texture.name, &texture);
+    }
+
+    for (auto&& texture : scene.textures)
+    {
+        auto meta = SpecMeta{.name = texture.name, .source = texture.source};
+        if (texture.type == TextureDesc::Type::ImageMap)
         {
-            fail(luisa::format(
-                "PBRT Importer only supports spectrum imagemap textures at {}.",
-                format_source_location(texture.source)));
+            auto path = resolve_relative_to_scene(texture.source.file, texture.filename);
+            auto encoding = texture.value_type == TextureDesc::ValueType::Float
+                                ? Texture::Encoding::LINEAR
+                                : is_png_path(path) ? Texture::Encoding::SRGB : Texture::Encoding::LINEAR;
+            (void)builder.add_texture<ImageTextureSpec>(
+                std::move(meta),
+                std::move(path),
+                TextureSampler::linear_point_repeat(),
+                encoding,
+                texture.uv_scale);
+            continue;
         }
-        if (texture.parameters.size() != 1u ||
-            texture.parameters.front().type != "string" ||
-            texture.parameters.front().name != "filename")
+        if (texture.type == TextureDesc::Type::Constant)
         {
-            fail(luisa::format(
-                "PBRT spectrum imagemap texture only supports 'string filename' at {}.",
-                format_source_location(texture.source)));
+            (void)builder.add_texture<ConstantTextureSpec>(
+                std::move(meta), make_float4(texture.constant_value));
+            continue;
         }
-        auto path     = resolve_relative_to_scene(texture.source.file, texture.filename);
-        auto encoding = is_png_path(path) ? Texture::Encoding::SRGB : Texture::Encoding::LINEAR;
-        (void)builder.add_texture<ImageTextureSpec>(
-            SpecMeta{.name = texture.name, .source = texture.source},
-            std::move(path),
-            TextureSampler::linear_point_repeat(),
-            encoding);
+        if (texture.type == TextureDesc::Type::Scale)
+        {
+            auto base_iter = texture_declarations.find(texture.tex);
+            if (base_iter == texture_declarations.end())
+            {
+                fail(luisa::format(
+                    "PBRT scale texture '{}' references unknown base texture '{}' at {}.",
+                    texture.name, texture.tex, format_source_location(texture.source)));
+            }
+            if (base_iter->second->value_type != TextureDesc::ValueType::Float)
+            {
+                fail(luisa::format(
+                    "PBRT scale texture '{}' requires '{}' to be a float texture at {}.",
+                    texture.name, texture.tex, format_source_location(texture.source)));
+            }
+            auto scale_iter = texture_declarations.find(texture.scale);
+            if (scale_iter == texture_declarations.end())
+            {
+                fail(luisa::format(
+                    "PBRT scale texture '{}' references unknown scale texture '{}' at {}.",
+                    texture.name, texture.scale, format_source_location(texture.source)));
+            }
+            auto scale = scale_iter->second;
+            if (scale->value_type != TextureDesc::ValueType::Float ||
+                scale->type != TextureDesc::Type::Constant)
+            {
+                fail(luisa::format(
+                    "PBRT scale texture '{}' requires '{}' to be a float constant texture; dynamic multiplication is unsupported at {}.",
+                    texture.name, texture.scale, format_source_location(texture.source)));
+            }
+            auto base = builder.reference_texture(texture.tex, texture.source);
+            (void)builder.add_texture<ScaleTextureSpec>(
+                std::move(meta), base, make_float4(scale->constant_value), make_float4(0.0f));
+            continue;
+        }
+        fail(luisa::format(
+            "Unsupported PBRT texture '{}' at {}.",
+            texture.name, format_source_location(texture.source)));
     }
 
     auto make_material_surface = [&](const MaterialDesc& material, luisa::string_view name) -> SurfaceRef

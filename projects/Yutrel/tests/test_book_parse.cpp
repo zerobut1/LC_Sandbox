@@ -98,7 +98,7 @@ static auto test_book_parse_registration = []
     {
         auto scene = PbrtParser::parse("scene/pbrt-book/book-v2.pbrt");
         expect(scene.sampler.type == SamplerDesc::Type::Independent);
-        expect(scene.textures.size() == 2u);
+        expect(scene.textures.size() == 5u);
         expect(scene.textures[0u].name == "book_cover");
         expect(scene.textures[0u].value_type == TextureDesc::ValueType::Spectrum);
         expect(scene.textures[0u].type == TextureDesc::Type::ImageMap);
@@ -107,6 +107,19 @@ static auto test_book_parse_registration = []
         expect(scene.textures[1u].value_type == TextureDesc::ValueType::Spectrum);
         expect(scene.textures[1u].type == TextureDesc::Type::ImageMap);
         expect(scene.textures[1u].filename == std::filesystem::path{"texture/book_pages.png"});
+        expect(scene.textures[2u].name == "uneven_bump_raw");
+        expect(scene.textures[2u].value_type == TextureDesc::ValueType::Float);
+        expect(scene.textures[2u].type == TextureDesc::Type::ImageMap);
+        expect(scene.textures[2u].filename == std::filesystem::path{"texture/uneven_bump.png"});
+        expect(is_near(scene.textures[2u].uv_scale.x, 1.5f));
+        expect(is_near(scene.textures[2u].uv_scale.y, 1.5f));
+        expect(scene.textures[3u].name == "uneven_bump_scale");
+        expect(scene.textures[3u].type == TextureDesc::Type::Constant);
+        expect(is_near(scene.textures[3u].constant_value, 0.0002f));
+        expect(scene.textures[4u].name == "uneven_bump");
+        expect(scene.textures[4u].type == TextureDesc::Type::Scale);
+        expect(scene.textures[4u].tex == "uneven_bump_raw");
+        expect(scene.textures[4u].scale == "uneven_bump_scale");
         expect(scene.materials.size() == 3u);
         for (auto&& material : scene.materials)
         {

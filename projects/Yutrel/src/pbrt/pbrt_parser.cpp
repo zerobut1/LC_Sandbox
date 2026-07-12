@@ -1019,6 +1019,64 @@ private:
                 fail(command, "imagemap texture requires a non-empty 'string filename' parameter");
             }
             desc.filename = std::filesystem::path{filename};
+            desc.uv_scale = make_float2(
+                one_float(desc.parameters, "uscale", command, 1.0f),
+                one_float(desc.parameters, "vscale", command, 1.0f));
+        }
+        else if (desc.type == TextureDesc::Type::Constant)
+        {
+            if (desc.value_type != TextureDesc::ValueType::Float)
+            {
+                fail(command, "only float constant textures are currently supported");
+            }
+            (void)require_param(desc.parameters, "float", "value", command);
+            desc.constant_value = one_float(desc.parameters, "value", command, 0.0f);
+        }
+        else if (desc.type == TextureDesc::Type::Scale)
+        {
+            if (desc.value_type != TextureDesc::ValueType::Float)
+            {
+                fail(command, "only float scale textures are currently supported");
+            }
+            auto tex = optional_texture(desc.parameters, "tex");
+            auto scale = optional_texture(desc.parameters, "scale");
+            if (!tex || !scale)
+            {
+                fail(command, "scale texture requires 'texture tex' and 'texture scale' parameters");
+            }
+            desc.tex   = std::move(*tex);
+            desc.scale = std::move(*scale);
+        }
+
+        for (auto i = 0u; i < desc.parameters.size(); i++)
+        {
+            auto&& p = desc.parameters[i];
+            auto supported = desc.type == TextureDesc::Type::ImageMap
+                                 ? (p.type == "string" && p.name == "filename") ||
+                                       (p.type == "float" && (p.name == "uscale" || p.name == "vscale"))
+                                 : desc.type == TextureDesc::Type::Constant
+                                       ? p.type == "float" && p.name == "value"
+                                       : p.type == "texture" && (p.name == "tex" || p.name == "scale");
+            if (!supported)
+            {
+                fail(p.source, luisa::format("unsupported parameter '\"{} {}\"' for this texture", p.type, p.name));
+            }
+            for (auto j = 0u; j < i; j++)
+            {
+                if (desc.parameters[j].type == p.type && desc.parameters[j].name == p.name)
+                {
+                    fail(p.source, luisa::format("duplicate texture parameter '\"{} {}\"'", p.type, p.name));
+                }
+            }
+        }
+        if (desc.type != TextureDesc::Type::ImageMap &&
+            !std::isfinite(desc.constant_value))
+        {
+            fail(command, "texture constant value must be finite");
+        }
+        if (!std::isfinite(desc.uv_scale.x) || !std::isfinite(desc.uv_scale.y))
+        {
+            fail(command, "imagemap texture scale must be finite");
         }
         m_desc.textures.emplace_back(std::move(desc));
     }

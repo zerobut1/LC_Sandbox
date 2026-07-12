@@ -115,6 +115,10 @@ struct TextureDesc
     ValueType value_type{ValueType::Float};
     Type type{Type::Constant};
     std::filesystem::path filename;
+    float2 uv_scale{1.0f, 1.0f};
+    float constant_value{0.0f};
+    luisa::string tex;
+    luisa::string scale;
     luisa::vector<RawParameter> parameters;
 };
 

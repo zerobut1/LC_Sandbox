@@ -6,6 +6,8 @@
 #include "shapes/mesh.h"
 #include "shapes/sphere.h"
 #include "textures/image.h"
+#include "textures/constant.h"
+#include "textures/scale.h"
 
 #include <array>
 #include <cmath>
@@ -187,29 +189,60 @@ static auto test_book_import_registration = []
         expect(is_near(instances[0u].transform[3u].z, -15.351f));
 
         auto image_texture_count = 0u;
-        std::array<std::filesystem::path, 2u> expected_texture_paths{
+        std::array<std::filesystem::path, 3u> expected_texture_paths{
             std::filesystem::absolute("scene/pbrt-book/texture/book_pbrt.png"),
             std::filesystem::absolute("scene/pbrt-book/texture/book_pages.png"),
+            std::filesystem::absolute("scene/pbrt-book/texture/uneven_bump.png"),
         };
-        spec.textures().visit_entries([&](TextureRef, const SpecMeta&, const TextureSpec* texture)
+        auto found_bump_constant = false;
+        auto found_bump_scale = false;
+        spec.textures().visit_entries([&](TextureRef, const SpecMeta& meta, const TextureSpec* texture)
         {
             auto image = dynamic_cast<const ImageTextureSpec*>(texture);
-            if (image == nullptr)
+            if (image != nullptr)
             {
+                expect(image_texture_count < expected_texture_paths.size());
+                if (image_texture_count < expected_texture_paths.size())
+                {
+                    expect(image->path().lexically_normal() == expected_texture_paths[image_texture_count].lexically_normal());
+                }
+                auto expected_uv_scale = meta.name == "uneven_bump_raw" ? 1.5f : 1.0f;
+                expect(is_near(image->uv_scale().x, expected_uv_scale));
+                expect(is_near(image->uv_scale().y, expected_uv_scale));
+                expect(is_near(image->uv_offset().x, 0.0f));
+                expect(is_near(image->uv_offset().y, 0.0f));
+                if (meta.name == "uneven_bump_raw")
+                {
+                    expect(image->encoding() == Texture::Encoding::LINEAR);
+                }
+                image_texture_count++;
                 return;
             }
-            expect(image_texture_count < expected_texture_paths.size());
-            if (image_texture_count < expected_texture_paths.size())
+            if (meta.name == "uneven_bump_scale")
             {
-                expect(image->path().lexically_normal() == expected_texture_paths[image_texture_count].lexically_normal());
+                auto constant = dynamic_cast<const ConstantTextureSpec*>(texture);
+                expect(constant != nullptr);
+                if (constant != nullptr)
+                {
+                    expect(is_near(constant->value().x, 0.0002f));
+                }
+                found_bump_constant = true;
             }
-            expect(is_near(image->uv_scale().x, 1.0f));
-            expect(is_near(image->uv_scale().y, 1.0f));
-            expect(is_near(image->uv_offset().x, 0.0f));
-            expect(is_near(image->uv_offset().y, 0.0f));
-            image_texture_count++;
+            if (meta.name == "uneven_bump")
+            {
+                auto scale = dynamic_cast<const ScaleTextureSpec*>(texture);
+                expect(scale != nullptr);
+                if (scale != nullptr)
+                {
+                    expect(is_near(scale->scale().x, 0.0002f));
+                    expect(is_near(scale->offset().x, 0.0f));
+                }
+                found_bump_scale = true;
+            }
         });
         expect(image_texture_count == expected_texture_paths.size());
+        expect(found_bump_constant);
+        expect(found_bump_scale);
         expect(instances[3u].surface != instances[4u].surface);
     };
 
@@ -225,6 +258,22 @@ static auto test_book_import_registration = []
             Texture::Encoding::SRGB};
         expect(pages.channels() == 1u);
         expect(cover.channels() == 4u);
+    };
+
+    "fold_static_scale_texture"_test = []
+    {
+        ConstantTexture base{make_float4(2.0f, 3.0f, 4.0f, 1.0f)};
+        ScaleTexture scaled{&base, make_float4(0.5f), make_float4(1.0f)};
+        auto value = scaled.evaluate_static();
+        expect(value.has_value());
+        if (value)
+        {
+            expect(is_near(value->x, 2.0f));
+            expect(is_near(value->y, 2.5f));
+            expect(is_near(value->z, 3.0f));
+            expect(is_near(value->w, 1.5f));
+        }
+        expect(scaled.channels() == base.channels());
     };
 
     "reject_unknown_reflectance_texture"_test = []
@@ -245,39 +294,10 @@ static auto test_book_import_registration = []
         expect(rejected);
     };
 
-    "reject_unsupported_texture_types"_test = []
-    {
-        for (auto type : {TextureDesc::Type::ImageMap, TextureDesc::Type::Scale})
-        {
-            auto parsed = PbrtParser::parse("scene/pbrt-book/book-v2.pbrt");
-            parsed.textures[0u].type = type;
-            parsed.textures[0u].value_type = type == TextureDesc::Type::ImageMap
-                                                  ? TextureDesc::ValueType::Float
-                                                  : TextureDesc::ValueType::Spectrum;
-            auto rejected = false;
-            try
-            {
-                (void)PbrtImporter::import(std::move(parsed));
-            }
-            catch (const std::runtime_error& error)
-            {
-                auto message = std::string{error.what()};
-                rejected = message.find("book-v2.pbrt") != std::string::npos &&
-                           message.find("only supports spectrum imagemap") != std::string::npos;
-            }
-            expect(rejected);
-        }
-    };
-
-    "reject_unsupported_imagemap_parameter"_test = []
+    "reject_dynamic_scale_texture"_test = []
     {
         auto parsed = PbrtParser::parse("scene/pbrt-book/book-v2.pbrt");
-        parsed.textures[0u].parameters.emplace_back(RawParameter{
-            .source = parsed.textures[0u].source,
-            .type   = "float",
-            .name   = "uscale",
-            .values = {RawValue{.source = parsed.textures[0u].source, .text = "2"}},
-        });
+        parsed.textures[4u].scale = "book_cover";
         auto rejected = false;
         try
         {
@@ -287,7 +307,27 @@ static auto test_book_import_registration = []
         {
             auto message = std::string{error.what()};
             rejected = message.find("book-v2.pbrt") != std::string::npos &&
-                       message.find("only supports 'string filename'") != std::string::npos;
+                       message.find("float constant") != std::string::npos &&
+                       message.find("dynamic multiplication") != std::string::npos;
+        }
+        expect(rejected);
+    };
+
+    "reject_unknown_scale_texture"_test = []
+    {
+        auto parsed = PbrtParser::parse("scene/pbrt-book/book-v2.pbrt");
+        parsed.textures[4u].scale = "missing_scale";
+        auto rejected = false;
+        try
+        {
+            (void)PbrtImporter::import(std::move(parsed));
+        }
+        catch (const std::runtime_error& error)
+        {
+            auto message = std::string{error.what()};
+            rejected = message.find("book-v2.pbrt") != std::string::npos &&
+                       message.find("missing_scale") != std::string::npos &&
+                       message.find("unknown scale texture") != std::string::npos;
         }
         expect(rejected);
     };

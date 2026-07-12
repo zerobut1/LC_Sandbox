@@ -63,6 +63,7 @@ public:
           _uv_scale{uv_scale}, _uv_offset{uv_offset} {}
 
     [[nodiscard]] const auto& path() const noexcept { return _path; }
+    [[nodiscard]] auto encoding() const noexcept { return _encoding; }
     [[nodiscard]] auto uv_scale() const noexcept { return _uv_scale; }
     [[nodiscard]] auto uv_offset() const noexcept { return _uv_offset; }
 

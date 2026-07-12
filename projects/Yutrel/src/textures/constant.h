@@ -42,6 +42,8 @@ public:
     explicit ConstantTextureSpec(luisa::float4 value) noexcept
         : _value{value} {}
 
+    [[nodiscard]] auto value() const noexcept { return _value; }
+
     [[nodiscard]] luisa::optional<luisa::string> validate() const noexcept override
     {
         return std::isfinite(_value.x) && std::isfinite(_value.y) && std::isfinite(_value.z) && std::isfinite(_value.w)

@@ -525,6 +525,21 @@ private:
         return parse_string_token(p->values.front());
     }
 
+    [[nodiscard]] luisa::optional<luisa::string> optional_texture(
+        luisa::span<const RawParameter> params, luisa::string_view name) const
+    {
+        auto p = find_param(params, "texture", name);
+        if (p == nullptr)
+        {
+            return luisa::nullopt;
+        }
+        if (p->values.size() != 1u)
+        {
+            fail(p->source, luisa::format("'texture {}' expects exactly one value", name));
+        }
+        return parse_string_token(p->values.front());
+    }
+
     [[nodiscard]] float3 rgb(luisa::span<const RawParameter> params, luisa::string_view name, const Token& command) const
     {
         auto&& p = require_param(params, "rgb", name, command);
@@ -901,15 +916,22 @@ private:
             fail(command, luisa::format("unknown named material type '{}'", type));
         }
         auto reflectance = make_float3(0.0f);
-        if (find_param(params, "rgb", "reflectance") != nullptr)
+        auto reflectance_rgb = find_param(params, "rgb", "reflectance");
+        auto reflectance_texture = optional_texture(params, "reflectance");
+        if (reflectance_rgb != nullptr && reflectance_texture)
+        {
+            fail(reflectance_rgb->source, "material reflectance cannot specify both rgb and texture values");
+        }
+        if (reflectance_rgb != nullptr)
         {
             reflectance = rgb(params, "reflectance", command);
         }
         m_desc.named_materials.emplace(std::move(name), MaterialDesc{
-                                                            .source      = command.loc,
-                                                            .type        = material_type,
-                                                            .reflectance = reflectance,
-                                                            .parameters  = std::move(params),
+                                                            .source              = command.loc,
+                                                            .type                = material_type,
+                                                            .reflectance         = reflectance,
+                                                            .reflectance_texture = std::move(reflectance_texture),
+                                                            .parameters          = std::move(params),
                                                         });
     }
 
@@ -932,16 +954,23 @@ private:
             fail(command, luisa::format("unknown Material '{}'", type));
         }
         auto reflectance = make_float3(0.0f);
-        if (find_param(params, "rgb", "reflectance") != nullptr)
+        auto reflectance_rgb = find_param(params, "rgb", "reflectance");
+        auto reflectance_texture = optional_texture(params, "reflectance");
+        if (reflectance_rgb != nullptr && reflectance_texture)
+        {
+            fail(reflectance_rgb->source, "material reflectance cannot specify both rgb and texture values");
+        }
+        if (reflectance_rgb != nullptr)
         {
             reflectance = rgb(params, "reflectance", command);
         }
         auto index = static_cast<uint>(m_desc.materials.size());
         m_desc.materials.emplace_back(MaterialDesc{
-            .source      = command.loc,
-            .type        = material_type,
-            .reflectance = reflectance,
-            .parameters  = std::move(params),
+            .source              = command.loc,
+            .type                = material_type,
+            .reflectance         = reflectance,
+            .reflectance_texture = std::move(reflectance_texture),
+            .parameters          = std::move(params),
         });
         m_current_material = MaterialBinding{.inline_index = index};
     }
@@ -981,6 +1010,15 @@ private:
         else
         {
             fail(command, luisa::format("unknown Texture '{}'", type));
+        }
+        if (desc.type == TextureDesc::Type::ImageMap)
+        {
+            auto filename = one_string(desc.parameters, "filename", command, {});
+            if (filename.empty())
+            {
+                fail(command, "imagemap texture requires a non-empty 'string filename' parameter");
+            }
+            desc.filename = std::filesystem::path{filename};
         }
         m_desc.textures.emplace_back(std::move(desc));
     }

@@ -30,15 +30,21 @@ private:
     LoadedImage m_image;
     TextureSampler m_sampler;
     Encoding m_encoding;
+    float2 m_uv_scale;
+    float2 m_uv_offset;
 
 public:
-    ImageTexture(luisa::filesystem::path path, TextureSampler sampler, Encoding encoding) noexcept;
+    ImageTexture(luisa::filesystem::path path, TextureSampler sampler, Encoding encoding,
+                 float2 uv_scale = make_float2(1.0f), float2 uv_offset = make_float2(0.0f)) noexcept;
     ~ImageTexture() noexcept override = default;
 
 public:
     [[nodiscard]] luisa::unique_ptr<Texture::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept override;
+    [[nodiscard]] uint channels() const noexcept override { return m_image.channels(); }
 
     [[nodiscard]] auto encoding() const noexcept { return m_encoding; }
+    [[nodiscard]] auto uv_scale() const noexcept { return m_uv_scale; }
+    [[nodiscard]] auto uv_offset() const noexcept { return m_uv_offset; }
 };
 
 class ImageTextureSpec final : public TextureSpec
@@ -47,10 +53,18 @@ private:
     luisa::filesystem::path _path;
     TextureSampler _sampler;
     Texture::Encoding _encoding;
+    float2 _uv_scale;
+    float2 _uv_offset;
 
 public:
-    ImageTextureSpec(luisa::filesystem::path path, TextureSampler sampler, Texture::Encoding encoding) noexcept
-        : _path{std::move(path)}, _sampler{sampler}, _encoding{encoding} {}
+    ImageTextureSpec(luisa::filesystem::path path, TextureSampler sampler, Texture::Encoding encoding,
+                     float2 uv_scale = make_float2(1.0f), float2 uv_offset = make_float2(0.0f)) noexcept
+        : _path{std::move(path)}, _sampler{sampler}, _encoding{encoding},
+          _uv_scale{uv_scale}, _uv_offset{uv_offset} {}
+
+    [[nodiscard]] const auto& path() const noexcept { return _path; }
+    [[nodiscard]] auto uv_scale() const noexcept { return _uv_scale; }
+    [[nodiscard]] auto uv_offset() const noexcept { return _uv_offset; }
 
     [[nodiscard]] luisa::optional<luisa::string> validate() const noexcept override
     {

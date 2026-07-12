@@ -98,12 +98,23 @@ static auto test_book_parse_registration = []
     {
         auto scene = PbrtParser::parse("scene/pbrt-book/book-v2.pbrt");
         expect(scene.sampler.type == SamplerDesc::Type::Independent);
-        expect(scene.textures.empty());
+        expect(scene.textures.size() == 2u);
+        expect(scene.textures[0u].name == "book_cover");
+        expect(scene.textures[0u].value_type == TextureDesc::ValueType::Spectrum);
+        expect(scene.textures[0u].type == TextureDesc::Type::ImageMap);
+        expect(scene.textures[0u].filename == std::filesystem::path{"texture/book_pbrt.png"});
+        expect(scene.textures[1u].name == "book_pages");
+        expect(scene.textures[1u].value_type == TextureDesc::ValueType::Spectrum);
+        expect(scene.textures[1u].type == TextureDesc::Type::ImageMap);
+        expect(scene.textures[1u].filename == std::filesystem::path{"texture/book_pages.png"});
         expect(scene.materials.size() == 3u);
         for (auto&& material : scene.materials)
         {
             expect(material.type == MaterialDesc::Type::Diffuse);
         }
+        expect(!scene.materials[0u].reflectance_texture.has_value());
+        expect(scene.materials[1u].reflectance_texture == luisa::optional<luisa::string>{"book_pages"});
+        expect(scene.materials[2u].reflectance_texture == luisa::optional<luisa::string>{"book_cover"});
         expect(scene.shapes.size() == 5u);
         expect(scene.shapes[0u].type == ShapeDesc::Type::Sphere);
         expect(scene.shapes[1u].type == ShapeDesc::Type::Sphere);
@@ -136,6 +147,38 @@ static auto test_book_parse_registration = []
             filename_index++;
         }
         expect(filename_index == filenames.size());
+    };
+
+    "reject_imagemap_without_filename"_test = []
+    {
+        auto rejected = false;
+        try
+        {
+            (void)PbrtParser::parse("tests/scenes/imagemap_missing_filename.pbrt");
+        }
+        catch (const std::runtime_error& error)
+        {
+            auto message = std::string{error.what()};
+            rejected = message.find("imagemap_missing_filename.pbrt") != std::string::npos &&
+                       message.find("filename") != std::string::npos;
+        }
+        expect(rejected);
+    };
+
+    "reject_conflicting_material_reflectance"_test = []
+    {
+        auto rejected = false;
+        try
+        {
+            (void)PbrtParser::parse("tests/scenes/material_reflectance_conflict.pbrt");
+        }
+        catch (const std::runtime_error& error)
+        {
+            auto message = std::string{error.what()};
+            rejected = message.find("material_reflectance_conflict.pbrt") != std::string::npos &&
+                       message.find("both rgb and texture") != std::string::npos;
+        }
+        expect(rejected);
     };
 
     "parse_sphere_parameters"_test = []

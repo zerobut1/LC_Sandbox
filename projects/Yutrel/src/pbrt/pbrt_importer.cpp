@@ -23,6 +23,7 @@
 #include "spectrum/hero.h"
 #include "surfaces/diffuse.h"
 #include "textures/constant.h"
+#include "textures/image.h"
 
 namespace Yutrel
 {
@@ -161,6 +162,16 @@ struct CameraBasis
     return ext == ".exr";
 }
 
+[[nodiscard]] bool is_png_path(const std::filesystem::path& path)
+{
+    auto ext = path.extension().string();
+    for (auto& c : ext)
+    {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return ext == ".png";
+}
+
 [[nodiscard]] std::filesystem::path resolve_relative_to_scene(const std::filesystem::path& scene_path, const std::filesystem::path& path)
 {
     if (path.empty())
@@ -194,11 +205,32 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
     {
         fail("Unsupported PBRT camera type.");
     }
-    if (!scene.textures.empty())
-    {
-        fail(luisa::format("PBRT Importer does not implement Texture at {}.", format_source_location(scene.textures.front().source)));
-    }
     SceneSpecBuilder builder;
+
+    for (auto&& texture : scene.textures)
+    {
+        if (texture.value_type != TextureDesc::ValueType::Spectrum || texture.type != TextureDesc::Type::ImageMap)
+        {
+            fail(luisa::format(
+                "PBRT Importer only supports spectrum imagemap textures at {}.",
+                format_source_location(texture.source)));
+        }
+        if (texture.parameters.size() != 1u ||
+            texture.parameters.front().type != "string" ||
+            texture.parameters.front().name != "filename")
+        {
+            fail(luisa::format(
+                "PBRT spectrum imagemap texture only supports 'string filename' at {}.",
+                format_source_location(texture.source)));
+        }
+        auto path     = resolve_relative_to_scene(texture.source.file, texture.filename);
+        auto encoding = is_png_path(path) ? Texture::Encoding::SRGB : Texture::Encoding::LINEAR;
+        (void)builder.add_texture<ImageTextureSpec>(
+            SpecMeta{.name = texture.name, .source = texture.source},
+            std::move(path),
+            TextureSampler::linear_point_repeat(),
+            encoding);
+    }
 
     auto make_material_surface = [&](const MaterialDesc& material, luisa::string_view name) -> SurfaceRef
     {
@@ -211,20 +243,30 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
                 format_source_location(material.source)));
         }
 
-        auto reflectance = make_float4(
-            material.reflectance.x,
-            material.reflectance.y,
-            material.reflectance.z,
-            1.0f);
+        auto texture = [&]() -> TextureRef
+        {
+            if (material.reflectance_texture)
+            {
+                return builder.reference_texture(*material.reflectance_texture, material.source);
+            }
+            auto reflectance = make_float4(
+                material.reflectance.x,
+                material.reflectance.y,
+                material.reflectance.z,
+                1.0f);
+            if (name.empty())
+            {
+                return builder.add_anonymous_texture<ConstantTextureSpec>(material.source, reflectance);
+            }
+            return builder.add_texture<ConstantTextureSpec>(
+                SpecMeta{.name = luisa::format("{}::reflectance", name), .source = material.source},
+                reflectance);
+        }();
         if (name.empty())
         {
-            auto texture = builder.add_anonymous_texture<ConstantTextureSpec>(material.source, reflectance);
             return builder.add_anonymous_surface<DiffuseSurfaceSpec>(material.source, texture, true);
         }
 
-        auto texture = builder.add_texture<ConstantTextureSpec>(
-            SpecMeta{.name = luisa::format("{}::reflectance", name), .source = material.source},
-            reflectance);
         return builder.add_surface<DiffuseSurfaceSpec>(
             SpecMeta{.name = luisa::string{name}, .source = material.source},
             texture,

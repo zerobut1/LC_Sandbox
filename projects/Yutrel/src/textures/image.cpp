@@ -6,9 +6,12 @@
 
 namespace Yutrel
 {
-ImageTexture::ImageTexture(luisa::filesystem::path path, TextureSampler sampler, Encoding encoding) noexcept
+ImageTexture::ImageTexture(luisa::filesystem::path path, TextureSampler sampler, Encoding encoding,
+                           float2 uv_scale, float2 uv_offset) noexcept
     : m_sampler{sampler},
-      m_encoding{encoding}
+      m_encoding{encoding},
+      m_uv_scale{uv_scale},
+      m_uv_offset{uv_offset}
 {
     m_image = LoadedImage::load(path);
     if (!m_image) [[unlikely]]
@@ -29,7 +32,9 @@ luisa::unique_ptr<Texture::Instance> ImageTexture::build(Renderer& renderer, Com
 
 Float4 ImageTexture::Instance::evaluate(const Interaction& it, Expr<float> time) const noexcept
 {
-    auto v = renderer().tex2d(m_texture_id).sample(it.uv);
+    auto texture = base<ImageTexture>();
+    auto uv      = it.uv * texture->uv_scale() + texture->uv_offset();
+    auto v       = renderer().tex2d(m_texture_id).sample(uv);
 
     return decode(v);
 }
@@ -54,7 +59,7 @@ Float4 ImageTexture::Instance::decode(Expr<float4> rgba) const noexcept
 
 const Texture* ImageTextureSpec::build(SceneBuilder& builder) const noexcept
 {
-    return builder.emplace<Texture, ImageTexture>(_path, _sampler, _encoding);
+    return builder.emplace<Texture, ImageTexture>(_path, _sampler, _encoding, _uv_scale, _uv_offset);
 }
 
 } // namespace Yutrel

@@ -114,6 +114,7 @@ struct TextureDesc
     luisa::string name;
     ValueType value_type{ValueType::Float};
     Type type{Type::Constant};
+    std::filesystem::path filename;
     luisa::vector<RawParameter> parameters;
 };
 
@@ -127,6 +128,7 @@ struct MaterialDesc
     };
     Type type{Type::Diffuse};
     float3 reflectance{0.0f, 0.0f, 0.0f};
+    luisa::optional<luisa::string> reflectance_texture;
     luisa::vector<RawParameter> parameters;
 };
 

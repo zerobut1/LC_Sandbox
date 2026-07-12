@@ -5,6 +5,7 @@
 #include "pbrt/pbrt_parser.h"
 #include "shapes/mesh.h"
 #include "shapes/sphere.h"
+#include "textures/image.h"
 
 #include <array>
 #include <cmath>
@@ -184,6 +185,129 @@ static auto test_book_import_registration = []
         expect(is_near(instances[0u].transform[3u].x, 34.92f));
         expect(is_near(instances[0u].transform[3u].y, 55.92f));
         expect(is_near(instances[0u].transform[3u].z, -15.351f));
+
+        auto image_texture_count = 0u;
+        std::array<std::filesystem::path, 2u> expected_texture_paths{
+            std::filesystem::absolute("scene/pbrt-book/texture/book_pbrt.png"),
+            std::filesystem::absolute("scene/pbrt-book/texture/book_pages.png"),
+        };
+        spec.textures().visit_entries([&](TextureRef, const SpecMeta&, const TextureSpec* texture)
+        {
+            auto image = dynamic_cast<const ImageTextureSpec*>(texture);
+            if (image == nullptr)
+            {
+                return;
+            }
+            expect(image_texture_count < expected_texture_paths.size());
+            if (image_texture_count < expected_texture_paths.size())
+            {
+                expect(image->path().lexically_normal() == expected_texture_paths[image_texture_count].lexically_normal());
+            }
+            expect(is_near(image->uv_scale().x, 1.0f));
+            expect(is_near(image->uv_scale().y, 1.0f));
+            expect(is_near(image->uv_offset().x, 0.0f));
+            expect(is_near(image->uv_offset().y, 0.0f));
+            image_texture_count++;
+        });
+        expect(image_texture_count == expected_texture_paths.size());
+        expect(instances[3u].surface != instances[4u].surface);
+    };
+
+    "detect_image_texture_channels"_test = []
+    {
+        ImageTexture pages{
+            "scene/pbrt-book/texture/book_pages.png",
+            TextureSampler::linear_point_repeat(),
+            Texture::Encoding::SRGB};
+        ImageTexture cover{
+            "scene/pbrt-book/texture/book_pbrt.png",
+            TextureSampler::linear_point_repeat(),
+            Texture::Encoding::SRGB};
+        expect(pages.channels() == 1u);
+        expect(cover.channels() == 4u);
+    };
+
+    "reject_unknown_reflectance_texture"_test = []
+    {
+        auto parsed = PbrtParser::parse("scene/pbrt-book/book-v2.pbrt");
+        parsed.materials[1u].reflectance_texture.emplace("missing_texture");
+        auto rejected = false;
+        try
+        {
+            (void)PbrtImporter::import(std::move(parsed));
+        }
+        catch (const std::runtime_error& error)
+        {
+            auto message = std::string{error.what()};
+            rejected = message.find("book-v2.pbrt") != std::string::npos &&
+                       message.find("missing_texture") != std::string::npos;
+        }
+        expect(rejected);
+    };
+
+    "reject_unsupported_texture_types"_test = []
+    {
+        for (auto type : {TextureDesc::Type::ImageMap, TextureDesc::Type::Scale})
+        {
+            auto parsed = PbrtParser::parse("scene/pbrt-book/book-v2.pbrt");
+            parsed.textures[0u].type = type;
+            parsed.textures[0u].value_type = type == TextureDesc::Type::ImageMap
+                                                  ? TextureDesc::ValueType::Float
+                                                  : TextureDesc::ValueType::Spectrum;
+            auto rejected = false;
+            try
+            {
+                (void)PbrtImporter::import(std::move(parsed));
+            }
+            catch (const std::runtime_error& error)
+            {
+                auto message = std::string{error.what()};
+                rejected = message.find("book-v2.pbrt") != std::string::npos &&
+                           message.find("only supports spectrum imagemap") != std::string::npos;
+            }
+            expect(rejected);
+        }
+    };
+
+    "reject_unsupported_imagemap_parameter"_test = []
+    {
+        auto parsed = PbrtParser::parse("scene/pbrt-book/book-v2.pbrt");
+        parsed.textures[0u].parameters.emplace_back(RawParameter{
+            .source = parsed.textures[0u].source,
+            .type   = "float",
+            .name   = "uscale",
+            .values = {RawValue{.source = parsed.textures[0u].source, .text = "2"}},
+        });
+        auto rejected = false;
+        try
+        {
+            (void)PbrtImporter::import(std::move(parsed));
+        }
+        catch (const std::runtime_error& error)
+        {
+            auto message = std::string{error.what()};
+            rejected = message.find("book-v2.pbrt") != std::string::npos &&
+                       message.find("only supports 'string filename'") != std::string::npos;
+        }
+        expect(rejected);
+    };
+
+    "reject_missing_image_texture_file"_test = []
+    {
+        auto parsed = PbrtParser::parse("scene/pbrt-book/book-v2.pbrt");
+        parsed.textures[0u].filename = "texture/missing.png";
+        auto rejected = false;
+        try
+        {
+            (void)PbrtImporter::import(std::move(parsed));
+        }
+        catch (const std::runtime_error& error)
+        {
+            auto message = std::string{error.what()};
+            rejected = message.find("book-v2.pbrt") != std::string::npos &&
+                       message.find("regular file") != std::string::npos;
+        }
+        expect(rejected);
     };
 
     "reject_out_of_range_inline_material"_test = []

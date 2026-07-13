@@ -258,6 +258,47 @@ static auto test_book_import_registration = []
         expect(found_bump_constant);
         expect(found_bump_scale);
         expect(instances[3u].surface != instances[4u].surface);
+        expect(dynamic_cast<const CoatedDiffuseSurfaceSpec*>(
+                   &spec.surfaces().spec(instances[4u].surface)) != nullptr);
+    };
+
+    "import_coated_diffuse_materials"_test = []
+    {
+        auto parsed = PbrtParser::parse("tests/scenes/coated_diffuse_materials.pbrt");
+        auto spec   = PbrtImporter::import(std::move(parsed));
+        expect(spec.instances().size() == 2u);
+        expect(spec.surfaces().size() == 2u);
+        expect(dynamic_cast<const CoatedDiffuseSurfaceSpec*>(
+                   &spec.surfaces().spec(spec.instances()[0u].surface)) != nullptr);
+        expect(dynamic_cast<const CoatedDiffuseSurfaceSpec*>(
+                   &spec.surfaces().spec(spec.instances()[1u].surface)) != nullptr);
+
+        auto found_named_reflectance = false;
+        auto found_named_roughness   = false;
+        auto found_inline_roughness  = false;
+        spec.textures().visit_entries([&](TextureRef, const SpecMeta& meta, const TextureSpec* texture)
+        {
+            auto constant = dynamic_cast<const ConstantTextureSpec*>(texture);
+            if (constant == nullptr)
+            {
+                return;
+            }
+            if (meta.name == "coated-default::reflectance")
+            {
+                found_named_reflectance = is_near(constant->value().x, 0.5f);
+            }
+            else if (meta.name == "coated-default::roughness")
+            {
+                found_named_roughness = is_near(constant->value().x, 0.0f);
+            }
+            else if (is_near(constant->value().x, 0.25f))
+            {
+                found_inline_roughness = true;
+            }
+        });
+        expect(found_named_reflectance);
+        expect(found_named_roughness);
+        expect(found_inline_roughness);
     };
 
     "detect_image_texture_channels"_test = []
@@ -400,22 +441,14 @@ static auto test_book_import_registration = []
         expect(source_located);
     };
 
-    "reject_unsupported_inline_material"_test = []
+    "import_inline_coated_diffuse_material"_test = []
     {
         auto parsed = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
         parsed.materials[0u].type = MaterialDesc::Type::CoatedDiffuse;
-        auto source_located = false;
-        try
-        {
-            (void)PbrtImporter::import(std::move(parsed));
-        }
-        catch (const std::runtime_error& error)
-        {
-            auto message  = std::string{error.what()};
-            source_located = message.find("tests/scenes/book_geometry.pbrt") != std::string::npos &&
-                             message.find("Unsupported PBRT inline material") != std::string::npos;
-        }
-        expect(source_located);
+        parsed.materials[0u].roughness = 0.1f;
+        auto spec = PbrtImporter::import(std::move(parsed));
+        expect(dynamic_cast<const CoatedDiffuseSurfaceSpec*>(
+                   &spec.surfaces().spec(spec.instances()[0u].surface)) != nullptr);
     };
 
     "import_named_material_binding"_test = []

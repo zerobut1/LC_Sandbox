@@ -21,6 +21,7 @@
 #include "shapes/mesh.h"
 #include "shapes/sphere.h"
 #include "spectrum/hero.h"
+#include "surfaces/coated_diffuse.h"
 #include "surfaces/diffuse.h"
 #include "textures/constant.h"
 #include "textures/image.h"
@@ -280,43 +281,55 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
 
     auto make_material_surface = [&](const MaterialDesc& material, luisa::string_view name) -> SurfaceRef
     {
-        if (material.type != MaterialDesc::Type::Diffuse)
+        auto add_constant_texture = [&](luisa::string_view parameter, float4 value) -> TextureRef
         {
-            auto description = name.empty() ? luisa::string{"inline material"} : luisa::format("material '{}'", name);
-            fail(luisa::format(
-                "Unsupported PBRT {} at {}.",
-                description,
-                format_source_location(material.source)));
-        }
+            if (name.empty())
+            {
+                return builder.add_anonymous_texture<ConstantTextureSpec>(material.source, value);
+            }
+            return builder.add_texture<ConstantTextureSpec>(
+                SpecMeta{.name = luisa::format("{}::{}", name, parameter), .source = material.source},
+                value);
+        };
 
-        auto texture = [&]() -> TextureRef
+        auto reflectance = [&]() -> TextureRef
         {
             if (material.reflectance_texture)
             {
                 return builder.reference_texture(*material.reflectance_texture, material.source);
             }
-            auto reflectance = make_float4(
+            return add_constant_texture("reflectance", make_float4(
                 material.reflectance.x,
                 material.reflectance.y,
                 material.reflectance.z,
-                1.0f);
+                1.0f));
+        }();
+
+        if (material.type == MaterialDesc::Type::Diffuse)
+        {
             if (name.empty())
             {
-                return builder.add_anonymous_texture<ConstantTextureSpec>(material.source, reflectance);
+                return builder.add_anonymous_surface<DiffuseSurfaceSpec>(material.source, reflectance, true);
             }
-            return builder.add_texture<ConstantTextureSpec>(
-                SpecMeta{.name = luisa::format("{}::reflectance", name), .source = material.source},
-                reflectance);
-        }();
-        if (name.empty())
-        {
-            return builder.add_anonymous_surface<DiffuseSurfaceSpec>(material.source, texture, true);
+            return builder.add_surface<DiffuseSurfaceSpec>(
+                SpecMeta{.name = luisa::string{name}, .source = material.source},
+                reflectance,
+                true);
         }
 
-        return builder.add_surface<DiffuseSurfaceSpec>(
+        auto roughness = add_constant_texture("roughness", make_float4(material.roughness));
+        CoatedDiffuseSurfaceParams params{
+            .reflectance = reflectance,
+            .roughness   = roughness,
+        };
+        if (name.empty())
+        {
+            return builder.add_anonymous_surface<CoatedDiffuseSurfaceSpec>(
+                material.source, std::move(params));
+        }
+        return builder.add_surface<CoatedDiffuseSurfaceSpec>(
             SpecMeta{.name = luisa::string{name}, .source = material.source},
-            texture,
-            true);
+            std::move(params));
     };
 
     for (auto& [name, material] : scene.named_materials)

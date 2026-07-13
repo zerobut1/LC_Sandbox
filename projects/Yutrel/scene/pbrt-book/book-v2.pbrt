@@ -72,7 +72,7 @@ AttributeBegin
 AttributeEnd
 
 AttributeBegin
-    Material "diffuse"
+    Material "coateddiffuse"
         "texture displacement" [ "uneven_bump" ]
         "texture reflectance" [ "book_cover" ]
         "float roughness" [ 0.0003 ]

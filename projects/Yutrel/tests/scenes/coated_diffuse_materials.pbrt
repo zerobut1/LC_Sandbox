@@ -1,0 +1,26 @@
+Sampler "independent"
+    "integer pixelsamples" [ 1 ]
+Film "rgb"
+    "string filename" [ "coated-diffuse.exr" ]
+    "integer xresolution" [ 16 ]
+    "integer yresolution" [ 16 ]
+Camera "perspective"
+
+WorldBegin
+
+MakeNamedMaterial "coated-default"
+    "string type" [ "coateddiffuse" ]
+
+AttributeBegin
+    NamedMaterial "coated-default"
+    Shape "sphere"
+AttributeEnd
+
+AttributeBegin
+    Material "coateddiffuse"
+        "rgb reflectance" [ 0.2 0.4 0.6 ]
+        "float roughness" [ 0.25 ]
+        "texture displacement" [ "ignored-displacement" ]
+    Translate 3 0 0
+    Shape "sphere"
+AttributeEnd

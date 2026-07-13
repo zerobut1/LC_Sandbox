@@ -133,6 +133,7 @@ struct MaterialDesc
     Type type{Type::Diffuse};
     float3 reflectance{0.0f, 0.0f, 0.0f};
     luisa::optional<luisa::string> reflectance_texture;
+    float roughness{0.0f};
     luisa::vector<RawParameter> parameters;
 };
 

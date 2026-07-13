@@ -892,6 +892,36 @@ private:
         m_current_transform = identity_matrix4;
     }
 
+    [[nodiscard]] MaterialDesc parse_material_desc(
+        const Token& command, MaterialDesc::Type material_type,
+        luisa::vector<RawParameter> params)
+    {
+        auto reflectance = material_type == MaterialDesc::Type::CoatedDiffuse
+                               ? make_float3(0.5f)
+                               : make_float3(0.0f);
+        auto reflectance_rgb     = find_param(params, "rgb", "reflectance");
+        auto reflectance_texture = optional_texture(params, "reflectance");
+        if (reflectance_rgb != nullptr && reflectance_texture)
+        {
+            fail(reflectance_rgb->source, "material reflectance cannot specify both rgb and texture values");
+        }
+        if (reflectance_rgb != nullptr)
+        {
+            reflectance = rgb(params, "reflectance", command);
+        }
+        auto roughness = material_type == MaterialDesc::Type::CoatedDiffuse
+                             ? one_float(params, "roughness", command, 0.0f)
+                             : 0.0f;
+        return MaterialDesc{
+            .source              = command.loc,
+            .type                = material_type,
+            .reflectance         = reflectance,
+            .reflectance_texture = std::move(reflectance_texture),
+            .roughness           = roughness,
+            .parameters          = std::move(params),
+        };
+    }
+
     void parse_make_named_material(const Token& command)
     {
         expect_world(command);
@@ -915,24 +945,9 @@ private:
         {
             fail(command, luisa::format("unknown named material type '{}'", type));
         }
-        auto reflectance = make_float3(0.0f);
-        auto reflectance_rgb = find_param(params, "rgb", "reflectance");
-        auto reflectance_texture = optional_texture(params, "reflectance");
-        if (reflectance_rgb != nullptr && reflectance_texture)
-        {
-            fail(reflectance_rgb->source, "material reflectance cannot specify both rgb and texture values");
-        }
-        if (reflectance_rgb != nullptr)
-        {
-            reflectance = rgb(params, "reflectance", command);
-        }
-        m_desc.named_materials.emplace(std::move(name), MaterialDesc{
-                                                            .source              = command.loc,
-                                                            .type                = material_type,
-                                                            .reflectance         = reflectance,
-                                                            .reflectance_texture = std::move(reflectance_texture),
-                                                            .parameters          = std::move(params),
-                                                        });
+        m_desc.named_materials.emplace(
+            std::move(name),
+            parse_material_desc(command, material_type, std::move(params)));
     }
 
     void parse_material(const Token& command)
@@ -953,25 +968,9 @@ private:
         {
             fail(command, luisa::format("unknown Material '{}'", type));
         }
-        auto reflectance = make_float3(0.0f);
-        auto reflectance_rgb = find_param(params, "rgb", "reflectance");
-        auto reflectance_texture = optional_texture(params, "reflectance");
-        if (reflectance_rgb != nullptr && reflectance_texture)
-        {
-            fail(reflectance_rgb->source, "material reflectance cannot specify both rgb and texture values");
-        }
-        if (reflectance_rgb != nullptr)
-        {
-            reflectance = rgb(params, "reflectance", command);
-        }
         auto index = static_cast<uint>(m_desc.materials.size());
-        m_desc.materials.emplace_back(MaterialDesc{
-            .source              = command.loc,
-            .type                = material_type,
-            .reflectance         = reflectance,
-            .reflectance_texture = std::move(reflectance_texture),
-            .parameters          = std::move(params),
-        });
+        m_desc.materials.emplace_back(
+            parse_material_desc(command, material_type, std::move(params)));
         m_current_material = MaterialBinding{.inline_index = index};
     }
 

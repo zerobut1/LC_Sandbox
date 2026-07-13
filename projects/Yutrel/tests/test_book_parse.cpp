@@ -121,13 +121,21 @@ static auto test_book_parse_registration = []
         expect(scene.textures[4u].tex == "uneven_bump_raw");
         expect(scene.textures[4u].scale == "uneven_bump_scale");
         expect(scene.materials.size() == 3u);
-        for (auto&& material : scene.materials)
-        {
-            expect(material.type == MaterialDesc::Type::Diffuse);
-        }
+        expect(scene.materials[0u].type == MaterialDesc::Type::Diffuse);
+        expect(scene.materials[1u].type == MaterialDesc::Type::Diffuse);
+        expect(scene.materials[2u].type == MaterialDesc::Type::CoatedDiffuse);
         expect(!scene.materials[0u].reflectance_texture.has_value());
         expect(scene.materials[1u].reflectance_texture == luisa::optional<luisa::string>{"book_pages"});
         expect(scene.materials[2u].reflectance_texture == luisa::optional<luisa::string>{"book_cover"});
+        expect(is_near(scene.materials[2u].roughness, 0.0003f));
+        auto displacement = find_parameter(scene.materials[2u].parameters, "displacement");
+        expect(displacement != nullptr);
+        if (displacement != nullptr)
+        {
+            expect(displacement->type == "texture");
+            expect(displacement->values.size() == 1u);
+            expect(displacement->values.front().text == "uneven_bump");
+        }
         expect(scene.shapes.size() == 5u);
         expect(scene.shapes[0u].type == ShapeDesc::Type::Sphere);
         expect(scene.shapes[1u].type == ShapeDesc::Type::Sphere);
@@ -204,6 +212,28 @@ static auto test_book_parse_registration = []
         expect(scene.shapes[1u].type == ShapeDesc::Type::Sphere);
         expect(is_near(scene.shapes[1u].radius, 1.0f));
         expect(scene.shapes[1u].sphere_subdivision == ShapeDesc::sphere_default_subdivision);
+    };
+
+    "parse_coated_diffuse_materials"_test = []
+    {
+        auto scene = PbrtParser::parse("tests/scenes/coated_diffuse_materials.pbrt");
+        expect(scene.materials.size() == 1u);
+        expect(scene.named_materials.size() == 1u);
+
+        auto&& inline_material = scene.materials.front();
+        expect(inline_material.type == MaterialDesc::Type::CoatedDiffuse);
+        expect(is_near(inline_material.reflectance.x, 0.2f));
+        expect(is_near(inline_material.reflectance.y, 0.4f));
+        expect(is_near(inline_material.reflectance.z, 0.6f));
+        expect(is_near(inline_material.roughness, 0.25f));
+        expect(find_parameter(inline_material.parameters, "displacement") != nullptr);
+
+        auto&& named_material = scene.named_materials.at("coated-default");
+        expect(named_material.type == MaterialDesc::Type::CoatedDiffuse);
+        expect(is_near(named_material.reflectance.x, 0.5f));
+        expect(is_near(named_material.reflectance.y, 0.5f));
+        expect(is_near(named_material.reflectance.z, 0.5f));
+        expect(is_near(named_material.roughness, 0.0f));
     };
 
     "reject_invalid_sphere_parameters"_test = []

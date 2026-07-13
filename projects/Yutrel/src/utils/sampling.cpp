@@ -29,6 +29,13 @@ Float2 sample_uniform_disk_concentric(Expr<float2> u) noexcept
     return impl(u);
 }
 
+Float2 sample_uniform_disk_polar(Expr<float2> u) noexcept
+{
+    auto r   = sqrt(u.x);
+    auto phi = 2.0f * pi * u.y;
+    return r * make_float2(cos(phi), sin(phi));
+}
+
 Float3 sample_cosine_hemisphere(Expr<float2> u) noexcept
 {
     static Callable impl = [](Float2 u) noexcept
@@ -50,6 +57,11 @@ Float3 sample_uniform_sphere(Expr<float2> u) noexcept
         return make_float3(r * cos(phi), r * sin(phi), z);
     };
     return impl(u);
+}
+
+Float sample_exponential(Expr<float> u, Expr<float> a) noexcept
+{
+    return -log(1.0f - u) / a;
 }
 
 std::pair<luisa::vector<AliasEntry>, luisa::vector<float>>

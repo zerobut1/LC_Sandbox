@@ -8,6 +8,7 @@
 #include "textures/image.h"
 #include "textures/constant.h"
 #include "textures/scale.h"
+#include "surfaces/coated_diffuse.h"
 
 #include <array>
 #include <cmath>
@@ -36,6 +37,19 @@ namespace
 
 static auto test_book_import_registration = []
 {
+    "validate_coated_diffuse_spec"_test = []
+    {
+        expect(!CoatedDiffuseSurfaceSpec{CoatedDiffuseSurfaceParams{}}.validate().has_value());
+
+        auto zero_depth = CoatedDiffuseSurfaceParams{};
+        zero_depth.max_depth = 0u;
+        expect(CoatedDiffuseSurfaceSpec{std::move(zero_depth)}.validate().has_value());
+
+        auto zero_samples = CoatedDiffuseSurfaceParams{};
+        zero_samples.samples = 0u;
+        expect(CoatedDiffuseSurfaceSpec{std::move(zero_samples)}.validate().has_value());
+    };
+
     "generate_sphere_geometry"_test = []
     {
         Sphere sphere_level_0{2.0f, 0u};

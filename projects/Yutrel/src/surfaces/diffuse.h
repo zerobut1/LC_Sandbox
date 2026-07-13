@@ -3,6 +3,7 @@
 #include "base/interaction.h"
 #include "base/surface.h"
 #include "scene/spec_base.h"
+#include "utils/scattering.h"
 
 namespace Yutrel
 {
@@ -41,6 +42,9 @@ public:
 
 class Diffuse::Closure : public Surface::Closure
 {
+private:
+    luisa::unique_ptr<BxDF> m_bxdf;
+
 public:
     struct Context
     {
@@ -52,6 +56,9 @@ public:
     using Surface::Closure::Closure;
 
     [[nodiscard]] virtual const Interaction& it() const noexcept override { return context<Context>().it; };
+
+    void pre_eval() noexcept override;
+    void post_eval() noexcept override;
 
     [[nodiscard]] Surface::Sample sample_impl(Expr<float3> wo, Expr<float> u_lobe, Expr<float2> u) const noexcept override;
     [[nodiscard]] Surface::Evaluation evaluate_impl(Expr<float3> wo, Expr<float3> wi) const noexcept override;

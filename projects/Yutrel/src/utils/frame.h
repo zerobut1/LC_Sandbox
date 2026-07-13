@@ -33,4 +33,5 @@ public:
 [[nodiscard]] inline auto cos_theta(Expr<float3> w) { return w.z; }
 [[nodiscard]] inline auto cos2_theta(Expr<float3> w) { return sqr(w.z); }
 [[nodiscard]] inline auto abs_cos_theta(Expr<float3> w) { return abs(w.z); }
+[[nodiscard]] inline auto same_hemisphere(Expr<float3> w, Expr<float3> wp) noexcept { return w.z * wp.z > 0.0f; }
 } // namespace Yutrel

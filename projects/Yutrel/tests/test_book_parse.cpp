@@ -420,6 +420,40 @@ static auto test_book_parse_registration = []
             expect(rejected) << "invalid plymesh filename should produce a source-located parse error";
         }
     };
+
+    "parse_teapot_infinite_environment"_test = []
+    {
+        auto scene = PbrtParser::parse("scene/teapot/scene-yutrel.pbrt");
+        expect(scene.infinite_light.has_value());
+        if (!scene.infinite_light) { return; }
+        auto&& light = *scene.infinite_light;
+        expect(light.filename == std::filesystem::path{"textures/envmap.pfm"});
+        expect(is_near(light.scale, 1.0f));
+        expect(is_near(light.pbrt_transform[0u], -0.386527f));
+        expect(is_near(light.pbrt_transform[1u], -0.922278f));
+        expect(is_near(light.pbrt_transform[8u], 0.922278f));
+        expect(is_near(light.pbrt_transform[9u], -0.386527f));
+    };
+
+    "parse_cornell_without_environment"_test = []
+    {
+        auto scene = PbrtParser::parse("scene/cornell-box/scene-yutrel.pbrt");
+        expect(!scene.infinite_light.has_value());
+    };
+
+    "reject_invalid_infinite_lights"_test = []
+    {
+        for (auto path : {
+                 "tests/scenes/infinite_missing_filename.pbrt",
+                 "tests/scenes/infinite_invalid_scale.pbrt",
+                 "tests/scenes/infinite_duplicate.pbrt",
+                 "tests/scenes/infinite_unknown_type.pbrt",
+                 "tests/scenes/infinite_unsupported_parameter.pbrt",
+             })
+        {
+            expect(parse_error_contains(path, {path, "LightSource"}));
+        }
+    };
     return 0;
 }();
 

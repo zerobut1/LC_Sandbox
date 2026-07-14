@@ -63,6 +63,12 @@ luisa::unique_ptr<Renderer> Renderer::create(Device& device, Stream& stream, con
     renderer->m_geometry->build(command_buffer, scene.instances());
     update_bindless_if_dirty();
 
+    if (!scene.environment()->is_black())
+    {
+        renderer->m_environment = scene.environment()->build(*renderer, command_buffer);
+        update_bindless_if_dirty();
+    }
+
     renderer->m_integrator = scene.integrator()->build(*renderer, command_buffer, scene.sampler());
     update_bindless_if_dirty();
 

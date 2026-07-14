@@ -1,0 +1,2 @@
+WorldBegin
+LightSource "infinite" "string filename" "env.pfm" "float scale" -1

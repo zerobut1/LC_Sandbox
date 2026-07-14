@@ -173,6 +173,15 @@ struct AreaLightDesc
     luisa::vector<RawParameter> parameters;
 };
 
+struct InfiniteLightDesc
+{
+    SourceLocation source;
+    std::filesystem::path filename;
+    float scale{1.0f};
+    Matrix4 pbrt_transform{identity_matrix4};
+    luisa::vector<RawParameter> parameters;
+};
+
 struct MeshDesc
 {
     SourceLocation source;
@@ -218,6 +227,7 @@ struct PbrtScene
     luisa::unordered_map<luisa::string, MaterialDesc> named_materials;
     luisa::vector<MeshDesc> meshes;
     luisa::vector<ShapeDesc> shapes;
+    luisa::optional<InfiniteLightDesc> infinite_light;
 };
 
 } // namespace Yutrel

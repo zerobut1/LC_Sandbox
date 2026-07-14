@@ -1,6 +1,12 @@
 #include "image_io.h"
 
 #include <array>
+#include <bit>
+#include <cctype>
+#include <cmath>
+#include <fstream>
+#include <limits>
+#include <stdexcept>
 
 #include <stb/stb_image.h>
 #include <stb/stb_image_write.h>
@@ -11,6 +17,186 @@
 
 namespace Yutrel
 {
+namespace
+{
+
+struct PFMImage
+{
+    float* pixels{};
+    uint2 size{};
+    uint channels{};
+};
+
+[[nodiscard]] luisa::string read_pfm_token(std::istream& stream, const std::filesystem::path& path) noexcept
+{
+    luisa::string token;
+    while (stream)
+    {
+        stream >> std::ws;
+        if (stream.peek() == '#')
+        {
+            stream.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            continue;
+        }
+        stream >> token;
+        if (!token.empty())
+        {
+            return token;
+        }
+    }
+    LUISA_ERROR_WITH_LOCATION("Unexpected end of PFM header in '{}'.", path.string());
+}
+
+[[nodiscard]] uint32_t byte_swap_32(uint32_t v) noexcept
+{
+    return ((v & 0x000000ffu) << 24u) |
+           ((v & 0x0000ff00u) << 8u) |
+           ((v & 0x00ff0000u) >> 8u) |
+           ((v & 0xff000000u) >> 24u);
+}
+
+[[nodiscard]] PFMImage load_pfm(const std::filesystem::path& path) noexcept
+{
+    std::ifstream stream{path, std::ios::binary};
+    if (!stream)
+    {
+        LUISA_ERROR_WITH_LOCATION("Failed to open PFM image '{}'.", path.string());
+    }
+
+    auto magic = read_pfm_token(stream, path);
+    auto channels = magic == "PF" ? 3u : magic == "Pf" ? 1u : 0u;
+    if (channels == 0u)
+    {
+        LUISA_ERROR_WITH_LOCATION("Invalid PFM magic '{}' in '{}'.", magic, path.string());
+    }
+
+    uint64_t width{}, height{};
+    double scale{};
+    try
+    {
+        auto width_token = read_pfm_token(stream, path);
+        auto height_token = read_pfm_token(stream, path);
+        auto scale_token = read_pfm_token(stream, path);
+        auto width_string = std::string{width_token.c_str()};
+        auto height_string = std::string{height_token.c_str()};
+        auto scale_string = std::string{scale_token.c_str()};
+        size_t width_chars{}, height_chars{}, scale_chars{};
+        width = std::stoull(width_string, &width_chars);
+        height = std::stoull(height_string, &height_chars);
+        scale = std::stod(scale_string, &scale_chars);
+        if (width_chars != width_string.size() ||
+            height_chars != height_string.size() ||
+            scale_chars != scale_string.size())
+        {
+            throw std::invalid_argument{"trailing characters"};
+        }
+    }
+    catch (...)
+    {
+        LUISA_ERROR_WITH_LOCATION("Invalid PFM header in '{}'.", path.string());
+    }
+    if (width == 0u || height == 0u ||
+        width > std::numeric_limits<uint>::max() || height > std::numeric_limits<uint>::max() ||
+        !std::isfinite(scale) || scale == 0.0)
+    {
+        LUISA_ERROR_WITH_LOCATION("Invalid PFM dimensions or scale in '{}'.", path.string());
+    }
+
+    auto file_channels = static_cast<uint64_t>(channels);
+    if (width > std::numeric_limits<size_t>::max() / height ||
+        width * height > std::numeric_limits<size_t>::max() / file_channels ||
+        width * height * file_channels > std::numeric_limits<size_t>::max() / sizeof(float))
+    {
+        LUISA_ERROR_WITH_LOCATION("PFM image '{}' is too large.", path.string());
+    }
+    auto file_value_count = static_cast<size_t>(width * height * file_channels);
+    auto output_channels = channels == 3u ? 4u : 1u;
+    if (width * height > std::numeric_limits<size_t>::max() / output_channels ||
+        width * height * output_channels > std::numeric_limits<size_t>::max() / sizeof(float))
+    {
+        LUISA_ERROR_WITH_LOCATION("PFM image '{}' is too large.", path.string());
+    }
+    auto output_value_count = static_cast<size_t>(width * height * output_channels);
+    auto file_byte_count = file_value_count * sizeof(float);
+    if (file_byte_count > static_cast<size_t>(std::numeric_limits<std::streamsize>::max()))
+    {
+        LUISA_ERROR_WITH_LOCATION("PFM image '{}' is too large to read.", path.string());
+    }
+
+    // The PFM header is terminated by exactly one whitespace character before binary data.
+    char separator{};
+    stream.get(separator);
+    if (!stream || !std::isspace(static_cast<unsigned char>(separator)))
+    {
+        LUISA_ERROR_WITH_LOCATION("Malformed PFM header terminator in '{}'.", path.string());
+    }
+    if (separator == '\r' && stream.peek() == '\n')
+    {
+        (void)stream.get();
+    }
+
+    luisa::vector<float> file_pixels(file_value_count);
+    stream.read(reinterpret_cast<char*>(file_pixels.data()), static_cast<std::streamsize>(file_byte_count));
+    if (stream.gcount() != static_cast<std::streamsize>(file_byte_count))
+    {
+        LUISA_ERROR_WITH_LOCATION("Short read while loading PFM image '{}'.", path.string());
+    }
+
+    constexpr auto host_little_endian = std::endian::native == std::endian::little;
+    auto file_little_endian = scale < 0.0;
+    auto magnitude = static_cast<float>(std::abs(scale));
+    auto output = luisa::allocate_with_allocator<float>(output_value_count);
+    for (auto file_y = 0u; file_y < height; file_y++)
+    {
+        auto output_y = height - 1u - file_y;
+        for (auto x = 0u; x < width; x++)
+        {
+            auto src = static_cast<size_t>((file_y * width + x) * channels);
+            auto dst = static_cast<size_t>((output_y * width + x) * output_channels);
+            for (auto c = 0u; c < channels; c++)
+            {
+                uint32_t bits{};
+                std::memcpy(&bits, file_pixels.data() + src + c, sizeof(bits));
+                if (host_little_endian != file_little_endian)
+                {
+                    bits = byte_swap_32(bits);
+                }
+                float value{};
+                std::memcpy(&value, &bits, sizeof(value));
+                value *= magnitude;
+                if (!std::isfinite(value))
+                {
+                    luisa::deallocate_with_allocator(output);
+                    LUISA_ERROR_WITH_LOCATION("PFM image '{}' contains NaN or Inf.", path.string());
+                }
+                output[dst + c] = value;
+            }
+            if (channels == 3u)
+            {
+                output[dst + 3u] = 1.0f;
+            }
+        }
+    }
+    return {.pixels = output,
+            .size = make_uint2(static_cast<uint>(width), static_cast<uint>(height)),
+            .channels = output_channels};
+}
+
+[[nodiscard]] uint pfm_channel_count(const std::filesystem::path& path) noexcept
+{
+    std::ifstream stream{path, std::ios::binary};
+    if (!stream)
+    {
+        LUISA_ERROR_WITH_LOCATION("Failed to open PFM image '{}'.", path.string());
+    }
+    auto magic = read_pfm_token(stream, path);
+    if (magic == "PF") { return 4u; }
+    if (magic == "Pf") { return 1u; }
+    LUISA_ERROR_WITH_LOCATION("Invalid PFM magic '{}' in '{}'.", magic, path.string());
+}
+
+} // namespace
+
 void LoadedImage::_destroy() noexcept
 {
     if (*this)
@@ -268,6 +454,21 @@ inline LoadedImage LoadedImage::_load_float(const std::filesystem::path& path, s
             luisa::deallocate_with_allocator(static_cast<float*>(p));
         }};
     }
+    if (ext == ".pfm")
+    {
+        auto image = load_pfm(path);
+        if (image.channels != expected_channels)
+        {
+            luisa::deallocate_with_allocator(image.pixels);
+            LUISA_ERROR_WITH_LOCATION(
+                "Expected {} channels from PFM image '{}' with {} channels.",
+                expected_channels, filename, image.channels);
+        }
+        return {image.pixels, storage, image.size, [](void* p) noexcept
+        {
+            luisa::deallocate_with_allocator(static_cast<float*>(p));
+        }};
+    }
     int w, h, nc;
     auto pixels = stbi_loadf(filename.c_str(), &w, &h, &nc, static_cast<int>(expected_channels));
     if (pixels == nullptr) [[unlikely]]
@@ -518,6 +719,10 @@ LoadedImage::storage_type LoadedImage::parse_storage(const std::filesystem::path
     {
         storage = storage_type::HALF4;
     }
+    else if (ext == ".pfm")
+    {
+        storage = pfm_channel_count(path) == 1u ? storage_type::FLOAT1 : storage_type::FLOAT4;
+    }
     else
     {
         auto p    = path_string.c_str();
@@ -671,6 +876,10 @@ LoadedImage LoadedImage::load(const std::filesystem::path& path) noexcept
     if (ext == ".hdr")
     {
         return load(path, storage_type::HALF4);
+    }
+    if (ext == ".pfm")
+    {
+        return load(path, parse_storage(path));
     }
     auto p    = path_string.c_str();
     auto file = fopen(p, "rb");

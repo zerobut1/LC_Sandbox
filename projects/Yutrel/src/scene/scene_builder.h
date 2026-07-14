@@ -45,6 +45,7 @@ private:
     BuildCache<Texture> _textures;
     BuildCache<Surface> _surfaces;
     BuildCache<Light> _lights;
+    BuildCache<Environment> _environments;
     BuildCache<Shape> _shapes;
     BuildCache<Spectrum> _spectra;
     BuildCache<Camera> _cameras;
@@ -65,6 +66,7 @@ public:
     [[nodiscard]] const Texture* resolve(TextureRef ref) noexcept;
     [[nodiscard]] const Surface* resolve(SurfaceRef ref) noexcept;
     [[nodiscard]] const Light* resolve(LightRef ref) noexcept;
+    [[nodiscard]] const Environment* resolve(EnvironmentRef ref) noexcept;
     [[nodiscard]] const Shape* resolve(ShapeRef ref) noexcept;
     [[nodiscard]] const Spectrum* resolve(SpectrumRef ref) noexcept;
     [[nodiscard]] const Camera* resolve(CameraRef ref) noexcept;
@@ -89,6 +91,7 @@ private:
     void _store(luisa::unique_ptr<Texture> texture) noexcept;
     void _store(luisa::unique_ptr<Surface> surface) noexcept;
     void _store(luisa::unique_ptr<Light> light) noexcept;
+    void _store(luisa::unique_ptr<Environment> environment) noexcept;
     void _store(luisa::unique_ptr<Shape> shape) noexcept;
     void _store(luisa::unique_ptr<Spectrum> spectrum) noexcept;
     void _store(luisa::unique_ptr<Camera> camera) noexcept;

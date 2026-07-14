@@ -26,6 +26,7 @@ struct ShapeInstanceSpec
 struct RenderSpec
 {
     SpectrumRef spectrum;
+    EnvironmentRef environment;
     CameraRef camera;
     FilmRef film;
     FilterRef filter;
@@ -39,6 +40,7 @@ private:
     SpecTable<TextureSpec> _textures;
     SpecTable<SurfaceSpec> _surfaces;
     SpecTable<LightSpec> _lights;
+    SpecTable<EnvironmentSpec> _environments;
     SpecTable<ShapeSpec> _shapes;
     SpecTable<SpectrumSpec> _spectra;
     SpecTable<CameraSpec> _cameras;
@@ -54,6 +56,7 @@ private:
         SpecTable<TextureSpec> textures,
         SpecTable<SurfaceSpec> surfaces,
         SpecTable<LightSpec> lights,
+        SpecTable<EnvironmentSpec> environments,
         SpecTable<ShapeSpec> shapes,
         SpecTable<SpectrumSpec> spectra,
         SpecTable<CameraSpec> cameras,
@@ -66,6 +69,7 @@ private:
         : _textures{std::move(textures)},
           _surfaces{std::move(surfaces)},
           _lights{std::move(lights)},
+          _environments{std::move(environments)},
           _shapes{std::move(shapes)},
           _spectra{std::move(spectra)},
           _cameras{std::move(cameras)},
@@ -91,6 +95,7 @@ public:
     [[nodiscard]] const SpecTable<TextureSpec>& textures() const noexcept { return _textures; }
     [[nodiscard]] const SpecTable<SurfaceSpec>& surfaces() const noexcept { return _surfaces; }
     [[nodiscard]] const SpecTable<LightSpec>& lights() const noexcept { return _lights; }
+    [[nodiscard]] const SpecTable<EnvironmentSpec>& environments() const noexcept { return _environments; }
     [[nodiscard]] const SpecTable<ShapeSpec>& shapes() const noexcept { return _shapes; }
     [[nodiscard]] const SpecTable<SpectrumSpec>& spectra() const noexcept { return _spectra; }
     [[nodiscard]] const SpecTable<CameraSpec>& cameras() const noexcept { return _cameras; }

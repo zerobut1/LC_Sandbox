@@ -14,6 +14,8 @@
 #include "cameras/pinhole.h"
 #include "filters/gaussian.h"
 #include "filters/triangle.h"
+#include "environments/null.h"
+#include "environments/pbrt_equal_area.h"
 #include "lights/diffuse.h"
 #include "samplers/independent.h"
 #include "scene/scene_spec_builder.h"
@@ -155,6 +157,14 @@ struct CameraBasis
         make_float4(raw[3u], raw[7u], raw[11u], raw[15u]));
 }
 
+[[nodiscard]] float3x3 environment_transform(const Matrix4& raw) noexcept
+{
+    return make_float3x3(
+        make_float3(raw[0u], raw[4u], raw[8u]),
+        make_float3(raw[1u], raw[5u], raw[9u]),
+        make_float3(raw[2u], raw[6u], raw[10u]));
+}
+
 [[nodiscard]] bool is_exr_path(const std::filesystem::path& path)
 {
     auto ext = path.extension().string();
@@ -209,6 +219,27 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         fail("Unsupported PBRT camera type.");
     }
     SceneSpecBuilder builder;
+
+    auto environment = [&]() -> EnvironmentRef
+    {
+        if (!scene.infinite_light)
+        {
+            return builder.add_environment<NullEnvironmentSpec>(
+                SpecMeta{.name = "pbrt_null_environment", .source = SourceLocation{scene.source_path}});
+        }
+        auto&& desc = *scene.infinite_light;
+        auto path = resolve_relative_to_scene(desc.source.file, desc.filename);
+        auto texture = builder.add_anonymous_texture<ImageTextureSpec>(
+            desc.source,
+            std::move(path),
+            TextureSampler::point_edge(),
+            Texture::Encoding::LINEAR);
+        return builder.add_environment<PBRTEqualAreaEnvironmentSpec>(
+            SpecMeta{.name = "pbrt_equal_area_environment", .source = desc.source},
+            texture,
+            desc.scale,
+            environment_transform(desc.pbrt_transform));
+    }();
 
     luisa::unordered_map<luisa::string, const TextureDesc*> texture_declarations;
     texture_declarations.reserve(scene.textures.size());
@@ -532,6 +563,7 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
     auto integrator = builder.add_integrator<PathIntegratorSpec>(SpecMeta{.name = "pbrt_integrator", .source = scene.integrator.source}, scene.integrator.max_depth, 0u, 0.95f);
     builder.set_render(RenderSpec{
         .spectrum   = spectrum,
+        .environment = environment,
         .camera     = camera,
         .film       = film,
         .filter     = filter,

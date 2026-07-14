@@ -13,6 +13,7 @@ SceneBuilder::SceneBuilder(Scene& scene, const SceneSpec& spec) noexcept
       _textures{spec.textures().size()},
       _surfaces{spec.surfaces().size()},
       _lights{spec.lights().size()},
+      _environments{spec.environments().size()},
       _shapes{spec.shapes().size()},
       _spectra{spec.spectra().size()},
       _cameras{spec.cameras().size()},
@@ -38,6 +39,11 @@ void SceneBuilder::_store(luisa::unique_ptr<Light> light) noexcept
     (void)_scene._store(std::move(light));
 }
 
+void SceneBuilder::_store(luisa::unique_ptr<Environment> environment) noexcept
+{
+    (void)_scene._store(std::move(environment));
+}
+
 void SceneBuilder::_store(luisa::unique_ptr<Shape> object) noexcept { (void)_scene._store(std::move(object)); }
 void SceneBuilder::_store(luisa::unique_ptr<Spectrum> object) noexcept { (void)_scene._store(std::move(object)); }
 void SceneBuilder::_store(luisa::unique_ptr<Camera> object) noexcept { (void)_scene._store(std::move(object)); }
@@ -50,12 +56,13 @@ void SceneBuilder::build() noexcept
 {
     auto& render    = _spec.render();
     auto spectrum   = resolve(render.spectrum);
+    auto environment = resolve(render.environment);
     auto camera     = resolve(render.camera);
     auto film       = resolve(render.film);
     auto filter     = resolve(render.filter);
     auto sampler    = resolve(render.sampler);
     auto integrator = resolve(render.integrator);
-    _scene._set_render_roots(spectrum, camera, film, filter, sampler, integrator);
+    _scene._set_render_roots(spectrum, environment, camera, film, filter, sampler, integrator);
 
     for (auto& instance : _spec.instances())
     {
@@ -81,6 +88,11 @@ const Surface* SceneBuilder::resolve(SurfaceRef ref) noexcept
 const Light* SceneBuilder::resolve(LightRef ref) noexcept
 {
     return _resolve(ref, _spec.lights(), _lights);
+}
+
+const Environment* SceneBuilder::resolve(EnvironmentRef ref) noexcept
+{
+    return _resolve(ref, _spec.environments(), _environments);
 }
 
 const Shape* SceneBuilder::resolve(ShapeRef ref) noexcept

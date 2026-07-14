@@ -16,12 +16,13 @@ luisa::unique_ptr<LightSampler> LightSampler::create(Renderer& renderer, Command
 LightSampler::LightSampler(Renderer& renderer, CommandBuffer& command_buffer) noexcept
     : m_renderer(renderer)
 {
-    if (!renderer.lights().empty())
+    auto light_instances = renderer.geometry()->light_instances();
+    if (!light_instances.empty())
     {
-        auto [view, buffer_id] = renderer.bindless_arena_buffer<Light::Handle>(renderer.lights().size());
+        auto [view, buffer_id] = renderer.bindless_arena_buffer<Light::Handle>(light_instances.size());
         m_light_buffer_id      = buffer_id;
         command_buffer
-            << view.copy_from(renderer.geometry()->light_instances().data())
+            << view.copy_from(light_instances.data())
             << commit();
     }
 }
@@ -30,7 +31,8 @@ LightSampler::Evaluation LightSampler::evaluate_hit(const Interaction& it, Expr<
 {
     auto eval = Light::Evaluation::zero(swl.dimension());
 
-    if (renderer().lights().empty()) [[unlikely]]
+    auto light_instances = renderer().geometry()->light_instances();
+    if (light_instances.empty()) [[unlikely]]
     {
         LUISA_WARNING_WITH_LOCATION("No lights in scene.");
         return eval;
@@ -40,14 +42,28 @@ LightSampler::Evaluation LightSampler::evaluate_hit(const Interaction& it, Expr<
         auto closure = light->closure(swl, time);
         eval         = closure->evaluate(it, p_from);
     });
-    auto n = static_cast<float>(renderer().lights().size());
-    eval.pdf *= 1.0f / n;
+    auto n = static_cast<float>(light_instances.size());
+    auto area_probability = renderer().environment() == nullptr ? 1.0f : 0.5f;
+    eval.pdf *= area_probability / n;
+    return eval;
+}
+
+LightSampler::Evaluation LightSampler::evaluate_miss(
+    Expr<float3> wi, const SampledWavelengths& swl, Expr<float> time) const noexcept
+{
+    if (renderer().environment() == nullptr)
+    {
+        return Evaluation::zero(swl.dimension());
+    }
+    auto eval = renderer().environment()->evaluate(wi, swl, time);
+    auto environment_probability = renderer().lights().empty() ? 1.0f : 0.5f;
+    eval.pdf *= environment_probability;
     return eval;
 }
 
 LightSampler::Sample LightSampler::sample(const Interaction& it_from, Expr<float> u_select, Expr<float2> u_light, const SampledWavelengths& swl, Expr<float> time) const noexcept
 {
-    if (renderer().lights().empty())
+    if (!renderer().has_lighting())
     {
         return Sample::zero(swl.dimension());
     }
@@ -58,8 +74,24 @@ LightSampler::Sample LightSampler::sample(const Interaction& it_from, Expr<float
 
 LightSampler::Selection LightSampler::select(const Interaction& it_from, Expr<float> u, Expr<float> time) const noexcept
 {
-    LUISA_ASSERT(!renderer().lights().empty(), "No lights in scene.");
-    auto n = static_cast<float>(renderer().lights().size());
+    LUISA_ASSERT(renderer().has_lighting(), "No lighting in scene.");
+    if (renderer().environment() != nullptr)
+    {
+        auto light_instances = renderer().geometry()->light_instances();
+        if (light_instances.empty())
+        {
+            return {.tag = selection_environment, .prob = 1.0f};
+        }
+        auto n = static_cast<float>(light_instances.size());
+        auto select_environment = u < 0.5f;
+        auto light_u = clamp((u - 0.5f) * 2.0f, 0.0f, 1.0f);
+        auto light_tag = cast<uint>(clamp(light_u * n, 0.0f, n - 1.0f));
+        return {
+            .tag = ite(select_environment, selection_environment, light_tag),
+            .prob = ite(select_environment, 0.5f, 0.5f / n),
+        };
+    }
+    auto n = static_cast<float>(renderer().geometry()->light_instances().size());
 
     return {.tag = cast<uint>(clamp(u * n, 0.0f, n - 1.0f)), .prob = 1.0f / n};
 }
@@ -67,7 +99,22 @@ LightSampler::Selection LightSampler::select(const Interaction& it_from, Expr<fl
 LightSampler::Sample LightSampler::sample_selection(const Interaction& it_from, const Selection& sel, Expr<float2> u, const SampledWavelengths& swl, Expr<float> time) const noexcept
 {
     auto sample = Sample::zero(swl.dimension());
-    if (!renderer().lights().empty())
+    if (renderer().environment() != nullptr)
+    {
+        if (renderer().geometry()->light_instances().empty())
+        {
+            return sample_environment(it_from, sel, u, swl, time);
+        }
+        $if(sel.tag == selection_environment)
+        {
+            sample = sample_environment(it_from, sel, u, swl, time);
+        }
+        $else
+        {
+            sample = sample_light(it_from, sel, u, swl, time);
+        };
+    }
+    else if (!renderer().geometry()->light_instances().empty())
     {
         sample = sample_light(it_from, sel, u, swl, time);
     }
@@ -103,7 +150,7 @@ auto LightSampler::sample_area(Expr<float3> p_from, Expr<uint> tag, Expr<float2>
 
 LightSampler::Sample LightSampler::sample_light(const Interaction& it_from, const Selection& sel, Expr<float2> u, const SampledWavelengths& swl, Expr<float> time) const noexcept
 {
-    LUISA_ASSERT(!renderer().lights().empty(), "No lights in the scene.");
+    LUISA_ASSERT(!renderer().geometry()->light_instances().empty(), "No lights in the scene.");
     auto it   = sample_area(it_from.p_g, sel.tag, u);
     auto eval = Light::Evaluation::zero(swl.dimension());
     renderer().lights().dispatch(it->shape.light_tag(), [&](auto light) noexcept
@@ -117,6 +164,16 @@ LightSampler::Sample LightSampler::sample_light(const Interaction& it_from, cons
     return Sample::from_light(light_sample, it_from);
 }
 
+LightSampler::Sample LightSampler::sample_environment(
+    const Interaction& it_from, const Selection& sel, Expr<float2> u,
+    const SampledWavelengths& swl, Expr<float> time) const noexcept
+{
+    LUISA_ASSERT(renderer().environment() != nullptr, "No environment in the scene.");
+    auto environment_sample = renderer().environment()->sample(swl, time, u);
+    environment_sample.eval.pdf *= sel.prob;
+    return Sample::from_environment(environment_sample, it_from);
+}
+
 LightSampler::Sample LightSampler::Sample::zero(uint dimension) noexcept
 {
     return Sample{.eval = Evaluation::zero(dimension), .shadow_ray = {}};
@@ -125,5 +182,11 @@ LightSampler::Sample LightSampler::Sample::zero(uint dimension) noexcept
 LightSampler::Sample LightSampler::Sample::from_light(const Light::Sample& s, const Interaction& it_from) noexcept
 {
     return Sample{.eval = s.eval, .shadow_ray = it_from.spawn_ray_to(s.p)};
+}
+
+LightSampler::Sample LightSampler::Sample::from_environment(
+    const Environment::Sample& s, const Interaction& it_from) noexcept
+{
+    return Sample{.eval = s.eval, .shadow_ray = it_from.spawn_ray(s.wi)};
 }
 } // namespace Yutrel

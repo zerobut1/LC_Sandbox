@@ -697,6 +697,10 @@ private:
         {
             parse_area_light_source(command);
         }
+        else if (command.text == "LightSource")
+        {
+            parse_light_source(command);
+        }
         else
         {
             fail(command, luisa::format("unsupported PBRT command '{}'", command.text));
@@ -1214,6 +1218,61 @@ private:
             .source     = command.loc,
             .type       = AreaLightDesc::Type::Diffuse,
             .emission   = rgb(params, "L", command),
+            .parameters = std::move(params),
+        });
+    }
+
+    void parse_light_source(const Token& command)
+    {
+        expect_world(command);
+        auto type = expect_string("LightSource type");
+        if (type != "infinite")
+        {
+            fail(command, luisa::format("unsupported LightSource '{}'", type));
+        }
+        if (m_desc.infinite_light)
+        {
+            fail(command, "only one infinite LightSource is supported");
+        }
+        auto params = parse_parameters();
+        for (auto i = 0u; i < params.size(); i++)
+        {
+            auto&& param = params[i];
+            auto supported = (param.type == "string" && param.name == "filename") ||
+                             (param.type == "float" && param.name == "scale");
+            if (!supported)
+            {
+                fail(param.source, luisa::format(
+                    "unsupported parameter '\"{} {}\"' for infinite LightSource",
+                    param.type, param.name));
+            }
+            for (auto j = 0u; j < i; j++)
+            {
+                if (params[j].type == param.type && params[j].name == param.name)
+                {
+                    fail(param.source, luisa::format(
+                        "duplicate infinite LightSource parameter '\"{} {}\"'",
+                        param.type, param.name));
+                }
+            }
+        }
+        auto filename = one_string(params, "filename", command, {});
+        if (filename.empty())
+        {
+            fail(command, "infinite LightSource requires a non-empty 'string filename' parameter");
+        }
+        auto scale = one_float(params, "scale", command, 1.0f);
+        if (!std::isfinite(scale) || scale < 0.0f)
+        {
+            auto p = find_param(params, "float", "scale");
+            fail(p == nullptr ? command.loc : p->source,
+                 "infinite LightSource scale must be finite and non-negative");
+        }
+        m_desc.infinite_light.emplace(InfiniteLightDesc{
+            .source = command.loc,
+            .filename = std::filesystem::path{std::move(filename)},
+            .scale = scale,
+            .pbrt_transform = m_current_transform,
             .parameters = std::move(params),
         });
     }

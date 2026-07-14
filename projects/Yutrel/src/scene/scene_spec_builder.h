@@ -13,6 +13,7 @@ private:
     SpecTable<TextureSpec> _textures{"texture"};
     SpecTable<SurfaceSpec> _surfaces{"surface"};
     SpecTable<LightSpec> _lights{"light"};
+    SpecTable<EnvironmentSpec> _environments{"environment"};
     SpecTable<ShapeSpec> _shapes{"shape"};
     SpecTable<SpectrumSpec> _spectra{"spectrum"};
     SpecTable<CameraSpec> _cameras{"camera"};
@@ -84,6 +85,24 @@ public:
     }
 
     [[nodiscard]] LightRef reference_light(luisa::string name, SourceLocation use_site);
+
+    template <typename Impl, typename... Args>
+        requires std::derived_from<Impl, EnvironmentSpec>
+    [[nodiscard]] EnvironmentRef add_environment(SpecMeta meta, Args&&... args)
+    {
+        _ensure_mutable();
+        return _environments.add<Impl>(std::move(meta), std::forward<Args>(args)...);
+    }
+
+    template <typename Impl, typename... Args>
+        requires std::derived_from<Impl, EnvironmentSpec>
+    [[nodiscard]] EnvironmentRef add_anonymous_environment(SourceLocation source, Args&&... args)
+    {
+        _ensure_mutable();
+        return _environments.add_anonymous<Impl>(std::move(source), std::forward<Args>(args)...);
+    }
+
+    [[nodiscard]] EnvironmentRef reference_environment(luisa::string name, SourceLocation use_site);
 
     template <typename Impl, typename... Args>
         requires std::derived_from<Impl, ShapeSpec>

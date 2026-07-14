@@ -3,6 +3,7 @@
 #include <luisa/luisa-compute.h>
 
 #include "base/camera.h"
+#include "base/environment.h"
 #include "base/integrator.h"
 #include "base/light.h"
 #include "base/spectrum.h"
@@ -34,6 +35,7 @@ private:
     luisa::unordered_map<const Texture*, luisa::unique_ptr<Texture::Instance>> m_textures;
 
     luisa::unique_ptr<Spectrum::Instance> m_spectrum;
+    luisa::unique_ptr<Environment::Instance> m_environment;
     luisa::unique_ptr<Camera::Instance> m_camera;
     luisa::unique_ptr<Integrator::Instance> m_integrator;
     luisa::unique_ptr<Geometry> m_geometry;
@@ -130,11 +132,13 @@ public:
     [[nodiscard]] auto& bindless_array() noexcept { return m_bindless_array; }
     [[nodiscard]] auto& bindless_array() const noexcept { return m_bindless_array; }
     [[nodiscard]] auto spectrum() const noexcept { return m_spectrum.get(); }
+    [[nodiscard]] auto environment() const noexcept { return m_environment.get(); }
     [[nodiscard]] auto camera() const noexcept { return m_camera.get(); }
     [[nodiscard]] auto integrator() const noexcept { return m_integrator.get(); }
     [[nodiscard]] auto geometry() const noexcept { return m_geometry.get(); }
     [[nodiscard]] auto& surfaces() const noexcept { return m_surfaces; }
     [[nodiscard]] auto& lights() const noexcept { return m_lights; }
+    [[nodiscard]] bool has_lighting() const noexcept { return !m_lights.empty() || m_environment != nullptr; }
 
     [[nodiscard]] const Texture::Instance* build_texture(CommandBuffer& command_buffer, const Texture* texture) noexcept;
 

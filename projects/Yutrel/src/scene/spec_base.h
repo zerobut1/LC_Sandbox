@@ -18,6 +18,7 @@ class SceneBuilder;
 class Texture;
 class Surface;
 class Light;
+class Environment;
 class Shape;
 class Spectrum;
 class Camera;
@@ -34,6 +35,7 @@ public:
     virtual void visit(TextureRef ref) noexcept    = 0;
     virtual void visit(SurfaceRef ref) noexcept    = 0;
     virtual void visit(LightRef ref) noexcept      = 0;
+    virtual void visit(EnvironmentRef ref) noexcept = 0;
     virtual void visit(ShapeRef ref) noexcept      = 0;
     virtual void visit(SpectrumRef ref) noexcept   = 0;
     virtual void visit(CameraRef ref) noexcept     = 0;
@@ -68,6 +70,15 @@ public:
     [[nodiscard]] virtual luisa::optional<luisa::string> validate() const noexcept { return luisa::nullopt; }
     virtual void visit_dependencies(SpecDependencyVisitor&) const noexcept {}
     [[nodiscard]] virtual const Light* build(SceneBuilder& builder) const noexcept = 0;
+};
+
+class EnvironmentSpec
+{
+public:
+    virtual ~EnvironmentSpec() noexcept = default;
+    [[nodiscard]] virtual luisa::optional<luisa::string> validate() const noexcept { return luisa::nullopt; }
+    virtual void visit_dependencies(SpecDependencyVisitor&) const noexcept {}
+    [[nodiscard]] virtual const Environment* build(SceneBuilder& builder) const noexcept = 0;
 };
 
 class ShapeSpec

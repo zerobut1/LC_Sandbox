@@ -83,6 +83,7 @@ public:
 
     [[nodiscard]] virtual luisa::optional<float4> evaluate_static() const noexcept { return luisa::nullopt; }
     [[nodiscard]] virtual uint channels() const noexcept { return 4u; }
+    [[nodiscard]] virtual uint2 resolution() const noexcept { return make_uint2(1u); }
     // TODO
     // is black
     // is constant

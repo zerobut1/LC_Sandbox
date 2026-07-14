@@ -235,7 +235,15 @@ Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> f
         // miss
         $if(!it->valid())
         {
-            // no environment light for now
+            if (renderer().environment() != nullptr)
+            {
+                auto eval = light_sampler()->evaluate_miss(ray->direction(), swl, time);
+                auto weight = ite(
+                    depth == 0u,
+                    1.0f,
+                    balance_heuristic(pdf_bsdf, eval.pdf));
+                Li += beta * eval.L * weight;
+            }
             $break;
         };
 
@@ -265,7 +273,11 @@ Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> f
         };
 
         // cast shadow ray
-        auto occluded = renderer().geometry()->intersect_any(light_sample.shadow_ray);
+        auto occluded = def(false);
+        if (renderer().has_lighting())
+        {
+            occluded = renderer().geometry()->intersect_any(light_sample.shadow_ray);
+        }
 
         auto u_lobe = sampler()->generate_1d();
         auto u_bsdf = sampler()->generate_2d();

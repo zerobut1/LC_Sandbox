@@ -1,0 +1,3 @@
+WorldBegin
+LightSource "infinite" "string filename" "a.pfm"
+LightSource "infinite" "string filename" "b.pfm"

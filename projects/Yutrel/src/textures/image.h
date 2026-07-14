@@ -41,6 +41,7 @@ public:
 public:
     [[nodiscard]] luisa::unique_ptr<Texture::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept override;
     [[nodiscard]] uint channels() const noexcept override { return m_image.channels(); }
+    [[nodiscard]] uint2 resolution() const noexcept override { return m_image.size(); }
 
     [[nodiscard]] auto encoding() const noexcept { return m_encoding; }
     [[nodiscard]] auto uv_scale() const noexcept { return m_uv_scale; }

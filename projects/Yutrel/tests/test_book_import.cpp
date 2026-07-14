@@ -3,6 +3,8 @@
 #include "base/film.h"
 #include "base/shape.h"
 #include "cameras/pinhole.h"
+#include "environments/null.h"
+#include "environments/pbrt_equal_area.h"
 #include "pbrt/pbrt_importer.h"
 #include "pbrt/pbrt_parser.h"
 #include "shapes/mesh.h"
@@ -704,6 +706,60 @@ static auto test_book_import_registration = []
                              message.find("regular file") != std::string::npos;
         }
         expect(source_located);
+    };
+
+    "import_null_environment_for_cornell_box"_test = []
+    {
+        auto parsed = PbrtParser::parse("scene/cornell-box/scene-yutrel.pbrt");
+        auto spec = PbrtImporter::import(std::move(parsed));
+        expect(spec.environments().size() == 1u);
+        expect(dynamic_cast<const NullEnvironmentSpec*>(
+                   &spec.environments().spec(spec.render().environment)) != nullptr);
+    };
+
+    "import_pbrt_equal_area_environment_for_teapot"_test = []
+    {
+        auto parsed = PbrtParser::parse("scene/teapot/scene-yutrel.pbrt");
+        auto spec = PbrtImporter::import(std::move(parsed));
+        auto environment = dynamic_cast<const PBRTEqualAreaEnvironmentSpec*>(
+            &spec.environments().spec(spec.render().environment));
+        expect(environment != nullptr);
+        if (environment == nullptr) { return; }
+        expect(is_near(environment->scale(), 1.0f));
+        expect(!environment->validate().has_value());
+
+        auto image = dynamic_cast<const ImageTextureSpec*>(
+            &spec.textures().spec(environment->emission()));
+        expect(image != nullptr);
+        if (image == nullptr) { return; }
+        expect(image->path().filename() == std::filesystem::path{"envmap.pfm"});
+        expect(image->sampler() == TextureSampler::point_edge());
+        expect(image->encoding() == Texture::Encoding::LINEAR);
+
+        auto transform = environment->transform_to_world();
+        expect(is_near(transform[0].x, -0.386527f));
+        expect(is_near(transform[0].y, 0.0f));
+        expect(is_near(transform[0].z, 0.922278f));
+        expect(is_near(transform[1].x, -0.922278f));
+        expect(is_near(transform[1].z, -0.386527f));
+        expect(is_near(transform[2].y, 1.0f));
+
+        expect(PBRTEqualAreaEnvironmentSpec{
+                   environment->emission(), 1.0f, make_float3x3(2.0f)}
+                   .validate()
+                   .has_value());
+        expect(!PBRTEqualAreaEnvironmentSpec{
+                    environment->emission(), 1.0f,
+                    make_float3x3(
+                        make_float3(-1.0f, 0.0f, 0.0f),
+                        make_float3(0.0f, 1.0f, 0.0f),
+                        make_float3(0.0f, 0.0f, 1.0f))}
+                    .validate()
+                    .has_value());
+        expect(PBRTEqualAreaEnvironmentSpec{
+                   environment->emission(), -1.0f, make_float3x3(1.0f)}
+                   .validate()
+                   .has_value());
     };
     return 0;
 }();

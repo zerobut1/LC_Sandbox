@@ -14,6 +14,10 @@ using namespace luisa::compute;
 [[nodiscard]] Float3 sample_uniform_sphere(Expr<float2> u) noexcept;
 [[nodiscard]] Float sample_exponential(Expr<float> u, Expr<float> a) noexcept;
 
+// Clarberg's equal-area square/sphere mapping, matching PBRT-v4.
+[[nodiscard]] Float3 equal_area_square_to_sphere(Expr<float2> uv) noexcept;
+[[nodiscard]] Float2 equal_area_sphere_to_square(Expr<float3> w) noexcept;
+
 struct AliasEntry
 {
     float prob;

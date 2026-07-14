@@ -17,6 +17,7 @@ enum class SpecCategory : uint8_t
     Texture,
     Surface,
     Light,
+    Environment,
     Shape,
     Spectrum,
     Camera,
@@ -55,6 +56,7 @@ public:
     void visit(TextureRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Texture, ref.table_id(), ref.index()}); }
     void visit(SurfaceRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Surface, ref.table_id(), ref.index()}); }
     void visit(LightRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Light, ref.table_id(), ref.index()}); }
+    void visit(EnvironmentRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Environment, ref.table_id(), ref.index()}); }
     void visit(ShapeRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Shape, ref.table_id(), ref.index()}); }
     void visit(SpectrumRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Spectrum, ref.table_id(), ref.index()}); }
     void visit(CameraRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Camera, ref.table_id(), ref.index()}); }
@@ -79,6 +81,8 @@ public:
         return "surface";
     case SpecCategory::Light:
         return "light";
+    case SpecCategory::Environment:
+        return "environment";
     case SpecCategory::Shape:
         return "shape";
     case SpecCategory::Spectrum:
@@ -123,6 +127,12 @@ LightRef SceneSpecBuilder::reference_light(luisa::string name, SourceLocation us
 {
     _ensure_mutable();
     return _lights.reference(std::move(name), std::move(use_site));
+}
+
+EnvironmentRef SceneSpecBuilder::reference_environment(luisa::string name, SourceLocation use_site)
+{
+    _ensure_mutable();
+    return _environments.reference(std::move(name), std::move(use_site));
 }
 
 ShapeRef SceneSpecBuilder::reference_shape(luisa::string name, SourceLocation use_site)
@@ -192,6 +202,7 @@ SceneSpec SceneSpecBuilder::finish()
         std::move(_textures),
         std::move(_surfaces),
         std::move(_lights),
+        std::move(_environments),
         std::move(_shapes),
         std::move(_spectra),
         std::move(_cameras),
@@ -217,6 +228,7 @@ void SceneSpecBuilder::_validate() const
     _textures.validate_definitions();
     _surfaces.validate_definitions();
     _lights.validate_definitions();
+    _environments.validate_definitions();
     _shapes.validate_definitions();
     _spectra.validate_definitions();
     _cameras.validate_definitions();
@@ -246,6 +258,7 @@ void SceneSpecBuilder::_validate() const
     };
     SourceLocation root_source{};
     validate_ref(_spectra, _render->spectrum, root_source);
+    validate_ref(_environments, _render->environment, root_source);
     validate_ref(_cameras, _render->camera, root_source);
     validate_ref(_films, _render->film, root_source);
     validate_ref(_filters, _render->filter, root_source);
@@ -288,6 +301,7 @@ void SceneSpecBuilder::_validate() const
         _textures.size(),
         _surfaces.size(),
         _lights.size(),
+        _environments.size(),
         _shapes.size(),
         _spectra.size(),
         _cameras.size(),
@@ -328,6 +342,7 @@ void SceneSpecBuilder::_validate() const
     append_table(SpecCategory::Texture, _textures);
     append_table(SpecCategory::Surface, _surfaces);
     append_table(SpecCategory::Light, _lights);
+    append_table(SpecCategory::Environment, _environments);
     append_table(SpecCategory::Shape, _shapes);
     append_table(SpecCategory::Spectrum, _spectra);
     append_table(SpecCategory::Camera, _cameras);
@@ -346,6 +361,8 @@ void SceneSpecBuilder::_validate() const
             return _surfaces.contains(node.table_id, node.index);
         case SpecCategory::Light:
             return _lights.contains(node.table_id, node.index);
+        case SpecCategory::Environment:
+            return _environments.contains(node.table_id, node.index);
         case SpecCategory::Shape:
             return _shapes.contains(node.table_id, node.index);
         case SpecCategory::Spectrum:

@@ -9,6 +9,7 @@ namespace Yutrel
 class TextureSpec;
 class SurfaceSpec;
 class LightSpec;
+class EnvironmentSpec;
 class ShapeSpec;
 class SpectrumSpec;
 class CameraSpec;
@@ -46,6 +47,7 @@ public:
 using TextureRef    = SceneRef<TextureSpec>;
 using SurfaceRef    = SceneRef<SurfaceSpec>;
 using LightRef      = SceneRef<LightSpec>;
+using EnvironmentRef = SceneRef<EnvironmentSpec>;
 using ShapeRef      = SceneRef<ShapeSpec>;
 using SpectrumRef   = SceneRef<SpectrumSpec>;
 using CameraRef     = SceneRef<CameraSpec>;

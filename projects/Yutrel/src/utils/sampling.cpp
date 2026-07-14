@@ -64,9 +64,73 @@ Float sample_exponential(Expr<float> u, Expr<float> a) noexcept
     return -log(1.0f - u) / a;
 }
 
+Float3 equal_area_square_to_sphere(Expr<float2> uv) noexcept
+{
+    static Callable impl = [](Float2 p) noexcept
+    {
+        auto u  = 2.0f * p.x - 1.0f;
+        auto v  = 2.0f * p.y - 1.0f;
+        auto up = abs(u);
+        auto vp = abs(v);
+
+        auto signed_distance = 1.0f - (up + vp);
+        auto d               = abs(signed_distance);
+        auto r               = 1.0f - d;
+        auto phi             = ite(r == 0.0f, 1.0f, (vp - up) / r + 1.0f) * pi_over_four;
+        auto z               = copysign(1.0f - r * r, signed_distance);
+        auto cos_phi         = copysign(cos(phi), u);
+        auto sin_phi         = copysign(sin(phi), v);
+        auto radial          = r * sqrt(max(2.0f - r * r, 0.0f));
+        return make_float3(cos_phi * radial, sin_phi * radial, z);
+    };
+    return impl(uv);
+}
+
+Float2 equal_area_sphere_to_square(Expr<float3> w) noexcept
+{
+    static Callable impl = [](Float3 d) noexcept
+    {
+        d      = normalize(d);
+        auto x = abs(d.x);
+        auto y = abs(d.y);
+        auto z = abs(d.z);
+        auto r = sqrt(max(1.0f - z, 0.0f));
+
+        auto a = max(x, y);
+        auto b = min(x, y);
+        b      = ite(a == 0.0f, 0.0f, b / a);
+
+        constexpr auto t1 = 0.406758566246788489601959989e-5f;
+        constexpr auto t2 = 0.636226545274016134946890922156f;
+        constexpr auto t3 = 0.61572017898280213493197203466e-2f;
+        constexpr auto t4 = -0.247333733281268944196501420480f;
+        constexpr auto t5 = 0.881770664775316294736387951347e-1f;
+        constexpr auto t6 = 0.419038818029165735901852432784e-1f;
+        constexpr auto t7 = -0.251390972343483509333252996350e-1f;
+        auto phi          = ((((((t7 * b + t6) * b + t5) * b + t4) * b + t3) * b + t2) * b + t1);
+        phi               = ite(x < y, 1.0f - phi, phi);
+
+        auto vv         = phi * r;
+        auto uu         = r - vv;
+        auto south      = d.z < 0.0f;
+        auto southern_u = 1.0f - vv;
+        auto southern_v = 1.0f - uu;
+        uu              = ite(south, southern_u, uu);
+        vv              = ite(south, southern_v, vv);
+        uu              = copysign(uu, d.x);
+        vv              = copysign(vv, d.y);
+        return clamp(0.5f * (make_float2(uu, vv) + 1.0f), 0.0f, 1.0f);
+    };
+    return impl(w);
+}
+
 std::pair<luisa::vector<AliasEntry>, luisa::vector<float>>
 create_alias_table(luisa::span<const float> values) noexcept
 {
+    if (values.empty()) [[unlikely]]
+    {
+        return {};
+    }
 
     auto sum = 0.0;
     for (auto v : values)
@@ -78,19 +142,22 @@ create_alias_table(luisa::span<const float> values) noexcept
     {
         auto n = static_cast<double>(values.size());
         std::fill(pdf.begin(), pdf.end(), static_cast<float>(1.0 / n));
-    }
-    else [[likely]]
-    {
-        auto inv_sum = 1.0 / sum;
-        std::transform(
-            values.begin(),
-            values.end(),
-            pdf.begin(),
-            [inv_sum](auto v) noexcept
+        luisa::vector<AliasEntry> table(values.size());
+        for (auto i = 0u; i < values.size(); i++)
         {
-            return static_cast<float>(std::abs(v) * inv_sum);
-        });
+            table[i] = {1.0f, i};
+        }
+        return std::make_pair(std::move(table), std::move(pdf));
     }
+    auto inv_sum = 1.0 / sum;
+    std::transform(
+        values.begin(),
+        values.end(),
+        pdf.begin(),
+        [inv_sum](auto v) noexcept
+    {
+        return static_cast<float>(std::abs(v) * inv_sum);
+    });
 
     auto ratio = static_cast<double>(values.size()) / sum;
     static thread_local luisa::vector<uint> over;

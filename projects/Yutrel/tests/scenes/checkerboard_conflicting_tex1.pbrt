@@ -1,0 +1,4 @@
+WorldBegin
+Texture "invalid" "spectrum" "checkerboard"
+    "rgb tex1" [ 1 1 1 ]
+    "texture tex1" [ "other" ]

@@ -7,6 +7,7 @@
 #include "pbrt/pbrt_parser.h"
 #include "shapes/mesh.h"
 #include "shapes/sphere.h"
+#include "textures/checker_board.h"
 #include "textures/image.h"
 #include "textures/constant.h"
 #include "textures/scale.h"
@@ -425,6 +426,109 @@ static auto test_book_import_registration = []
             expect(is_near(value->w, 1.5f));
         }
         expect(scaled.channels() == base.channels());
+    };
+
+    "import_checkerboard_textures"_test = []
+    {
+        auto parsed = PbrtParser::parse("tests/scenes/checkerboard_textures.pbrt");
+        auto spec   = PbrtImporter::import(std::move(parsed));
+
+        const CheckerBoardTextureSpec* floor = nullptr;
+        const CheckerBoardTextureSpec* defaults = nullptr;
+        const CheckerBoardTextureSpec* reference = nullptr;
+        spec.textures().visit_entries([&](TextureRef, const SpecMeta& meta, const TextureSpec* texture)
+        {
+            auto checker = dynamic_cast<const CheckerBoardTextureSpec*>(texture);
+            if (meta.name == "floor-checker")
+            {
+                floor = checker;
+            }
+            else if (meta.name == "float-defaults")
+            {
+                defaults = checker;
+            }
+            else if (meta.name == "float-reference")
+            {
+                reference = checker;
+            }
+        });
+
+        expect(floor != nullptr);
+        expect(defaults != nullptr);
+        expect(reference != nullptr);
+        if (floor != nullptr)
+        {
+            expect(is_near(floor->uv_scale().x, 20.0f));
+            expect(is_near(floor->uv_scale().y, 20.0f));
+            auto tex1 = dynamic_cast<const ConstantTextureSpec*>(&spec.textures().spec(floor->tex1()));
+            auto tex2 = dynamic_cast<const ConstantTextureSpec*>(&spec.textures().spec(floor->tex2()));
+            expect(tex1 != nullptr);
+            expect(tex2 != nullptr);
+            if (tex1 != nullptr && tex2 != nullptr)
+            {
+                expect(is_near(tex1->value().x, 0.325f));
+                expect(is_near(tex2->value().x, 0.725f));
+            }
+        }
+        if (defaults != nullptr)
+        {
+            auto tex1 = dynamic_cast<const ConstantTextureSpec*>(&spec.textures().spec(defaults->tex1()));
+            auto tex2 = dynamic_cast<const ConstantTextureSpec*>(&spec.textures().spec(defaults->tex2()));
+            expect(tex1 != nullptr);
+            expect(tex2 != nullptr);
+            if (tex1 != nullptr && tex2 != nullptr)
+            {
+                expect(is_near(tex1->value().x, 1.0f));
+                expect(is_near(tex2->value().x, 0.0f));
+            }
+        }
+        if (reference != nullptr)
+        {
+            auto tex1 = dynamic_cast<const ConstantTextureSpec*>(&spec.textures().spec(reference->tex1()));
+            auto tex2 = dynamic_cast<const ConstantTextureSpec*>(&spec.textures().spec(reference->tex2()));
+            expect(tex1 != nullptr);
+            expect(tex2 != nullptr);
+            if (tex1 != nullptr && tex2 != nullptr)
+            {
+                expect(is_near(tex1->value().x, 0.75f));
+                expect(is_near(tex2->value().x, 0.25f));
+            }
+        }
+    };
+
+    "reject_invalid_checkerboard_references"_test = []
+    {
+        auto unknown = PbrtParser::parse("tests/scenes/checkerboard_textures.pbrt");
+        unknown.textures[0u].tex1.texture.emplace("missing-texture");
+        auto rejected_unknown = false;
+        try
+        {
+            (void)PbrtImporter::import(std::move(unknown));
+        }
+        catch (const std::runtime_error& error)
+        {
+            auto message = std::string{error.what()};
+            rejected_unknown = message.find("checkerboard_textures.pbrt") != std::string::npos &&
+                               message.find("unknown tex1 texture") != std::string::npos &&
+                               message.find("missing-texture") != std::string::npos;
+        }
+        expect(rejected_unknown);
+
+        auto mismatch = PbrtParser::parse("tests/scenes/checkerboard_textures.pbrt");
+        mismatch.textures[0u].tex1.texture.emplace("float-source");
+        auto rejected_mismatch = false;
+        try
+        {
+            (void)PbrtImporter::import(std::move(mismatch));
+        }
+        catch (const std::runtime_error& error)
+        {
+            auto message = std::string{error.what()};
+            rejected_mismatch = message.find("checkerboard_textures.pbrt") != std::string::npos &&
+                                message.find("tex1 'float-source'") != std::string::npos &&
+                                message.find("spectrum texture") != std::string::npos;
+        }
+        expect(rejected_mismatch);
     };
 
     "reject_unknown_reflectance_texture"_test = []

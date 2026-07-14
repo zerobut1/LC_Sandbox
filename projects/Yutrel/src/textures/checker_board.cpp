@@ -6,33 +6,29 @@
 
 namespace Yutrel
 {
-CheckerBoard::CheckerBoard(float scale, const Texture* even, const Texture* odd) noexcept
-    : m_scale{scale},
-      m_even{even},
-      m_odd{odd} {}
+CheckerBoard::CheckerBoard(float2 uv_scale, const Texture* tex1, const Texture* tex2) noexcept
+    : m_uv_scale{uv_scale},
+      m_tex1{tex1},
+      m_tex2{tex2} {}
 
 luisa::unique_ptr<Texture::Instance> CheckerBoard::build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept
 {
-    auto even = renderer.build_texture(command_buffer, m_even);
-    auto odd  = renderer.build_texture(command_buffer, m_odd);
-    return luisa::make_unique<CheckerBoard::Instance>(renderer, this, even, odd);
+    auto tex1 = renderer.build_texture(command_buffer, m_tex1);
+    auto tex2 = renderer.build_texture(command_buffer, m_tex2);
+    return luisa::make_unique<CheckerBoard::Instance>(renderer, this, tex1, tex2);
 }
 
 Float4 CheckerBoard::Instance::evaluate(const Interaction& it, Expr<float> time) const noexcept
 {
-    auto inv_scale = 1.0f / base<CheckerBoard>()->scale();
-    auto position  = it.p_g;
-
-    auto x_integer = static_cast<Int>(floor(inv_scale * position.x));
-    auto y_integer = static_cast<Int>(floor(inv_scale * position.y));
-    auto z_integer = static_cast<Int>(floor(inv_scale * position.z));
-
-    auto is_even = (x_integer + y_integer + z_integer) % 2 == 0;
-    return ite(is_even, m_even->evaluate(it, time), m_odd->evaluate(it, time));
+    auto uv       = it.uv * base<CheckerBoard>()->uv_scale();
+    auto u        = static_cast<Int>(floor(uv.x));
+    auto v        = static_cast<Int>(floor(uv.y));
+    auto use_tex2 = (u + v) % 2 != 0;
+    return ite(use_tex2, m_tex2->evaluate(it, time), m_tex1->evaluate(it, time));
 }
 
 const Texture* CheckerBoardTextureSpec::build(SceneBuilder& builder) const noexcept
 {
-    return builder.emplace<Texture, CheckerBoard>(_scale, builder.resolve(_even), builder.resolve(_odd));
+    return builder.emplace<Texture, CheckerBoard>(_uv_scale, builder.resolve(_tex1), builder.resolve(_tex2));
 }
 } // namespace Yutrel

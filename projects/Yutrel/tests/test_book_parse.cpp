@@ -223,6 +223,62 @@ static auto test_book_parse_registration = []
         expect(scene.textures[2u].filter == TextureDesc::Filter::Bilinear);
     };
 
+    "parse_checkerboard_textures"_test = []
+    {
+        auto scene = PbrtParser::parse("tests/scenes/checkerboard_textures.pbrt");
+        expect(scene.textures.size() == 4u);
+
+        auto&& floor = scene.textures[0u];
+        expect(floor.type == TextureDesc::Type::Checkerboard);
+        expect(floor.value_type == TextureDesc::ValueType::Spectrum);
+        expect(is_near(floor.uv_scale.x, 20.0f));
+        expect(is_near(floor.uv_scale.y, 20.0f));
+        expect(!floor.tex1.texture.has_value());
+        expect(!floor.tex2.texture.has_value());
+        expect(is_near(floor.tex1.constant.x, 0.325f));
+        expect(is_near(floor.tex1.constant.y, 0.31f));
+        expect(is_near(floor.tex1.constant.z, 0.25f));
+        expect(is_near(floor.tex2.constant.x, 0.725f));
+        expect(is_near(floor.tex2.constant.y, 0.71f));
+        expect(is_near(floor.tex2.constant.z, 0.68f));
+
+        auto&& defaults = scene.textures[1u];
+        expect(defaults.type == TextureDesc::Type::Checkerboard);
+        expect(defaults.value_type == TextureDesc::ValueType::Float);
+        expect(is_near(defaults.uv_scale.x, 1.0f));
+        expect(is_near(defaults.uv_scale.y, 1.0f));
+        expect(is_near(defaults.tex1.constant.x, 1.0f));
+        expect(is_near(defaults.tex2.constant.x, 0.0f));
+
+        auto&& reference = scene.textures[2u];
+        expect(reference.type == TextureDesc::Type::Checkerboard);
+        expect(reference.tex1.texture == luisa::optional<luisa::string>{"float-source"});
+        expect(!reference.tex2.texture.has_value());
+        expect(is_near(reference.tex2.constant.x, 0.25f));
+    };
+
+    "reject_invalid_checkerboard_parameters"_test = []
+    {
+        expect(parse_error_contains(
+            "tests/scenes/checkerboard_dimension_3.pbrt",
+            {"checkerboard_dimension_3.pbrt", "dimension 3", "only 2D"}));
+        expect(parse_error_contains(
+            "tests/scenes/checkerboard_mapping_spherical.pbrt",
+            {"checkerboard_mapping_spherical.pbrt", "mapping 'spherical'", "only 'uv'"}));
+        expect(parse_error_contains(
+            "tests/scenes/checkerboard_conflicting_tex1.pbrt",
+            {"checkerboard_conflicting_tex1.pbrt", "tex1", "both texture and rgb"}));
+        expect(parse_error_contains(
+            "tests/scenes/checkerboard_duplicate_uscale.pbrt",
+            {"checkerboard_duplicate_uscale.pbrt", "duplicate texture parameter", "float uscale"}));
+        expect(parse_error_contains(
+            "tests/scenes/checkerboard_invalid_input_type.pbrt",
+            {"checkerboard_invalid_input_type.pbrt", "unsupported parameter", "float tex1"}));
+        expect(parse_error_contains(
+            "tests/scenes/checkerboard_nonfinite_scale.pbrt",
+            {"checkerboard_nonfinite_scale.pbrt", "UV scale", "finite"}));
+    };
+
     "reject_unsupported_imagemap_filters"_test = []
     {
         struct Case

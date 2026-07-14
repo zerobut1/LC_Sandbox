@@ -1,0 +1,4 @@
+WorldBegin
+Texture "invalid" "float" "checkerboard"
+    "float uscale" [ 2 ]
+    "float uscale" [ 3 ]

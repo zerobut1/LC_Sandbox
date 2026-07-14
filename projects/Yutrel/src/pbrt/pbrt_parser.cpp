@@ -1009,6 +1009,10 @@ private:
         {
             desc.type = TextureDesc::Type::Scale;
         }
+        else if (type == "checkerboard")
+        {
+            desc.type = TextureDesc::Type::Checkerboard;
+        }
         else
         {
             fail(command, luisa::format("unknown Texture '{}'", type));
@@ -1064,16 +1068,94 @@ private:
             desc.tex   = std::move(*tex);
             desc.scale = std::move(*scale);
         }
+        else if (desc.type == TextureDesc::Type::Checkerboard)
+        {
+            auto dimension = one_uint(desc.parameters, "dimension", command, 2u);
+            if (dimension != 2u)
+            {
+                auto p = find_param(desc.parameters, "integer", "dimension");
+                fail(p == nullptr ? command.loc : p->source,
+                     luisa::format("unsupported checkerboard dimension {}; only 2D is supported", dimension));
+            }
+            auto mapping = one_string(desc.parameters, "mapping", command, "uv");
+            if (mapping != "uv")
+            {
+                auto p = find_param(desc.parameters, "string", "mapping");
+                fail(p == nullptr ? command.loc : p->source,
+                     luisa::format("unsupported checkerboard mapping '{}'; only 'uv' is supported", mapping));
+            }
+            desc.uv_scale = make_float2(
+                one_float(desc.parameters, "uscale", command, 1.0f),
+                one_float(desc.parameters, "vscale", command, 1.0f));
+
+            auto parse_input = [&](luisa::string_view input_name, float default_value)
+            {
+                TextureInputDesc input;
+                auto texture = optional_texture(desc.parameters, input_name);
+                auto constant_type = desc.value_type == TextureDesc::ValueType::Float ? "float" : "rgb";
+                auto constant = find_param(desc.parameters, constant_type, input_name);
+                if (texture && constant != nullptr)
+                {
+                    fail(constant->source,
+                         luisa::format("checkerboard '{}' cannot be specified as both texture and {}",
+                                       input_name, constant_type));
+                }
+                if (texture)
+                {
+                    input.texture = std::move(*texture);
+                }
+                else if (constant != nullptr)
+                {
+                    if (desc.value_type == TextureDesc::ValueType::Float)
+                    {
+                        input.constant = make_float4(one_float(desc.parameters, input_name, command, default_value));
+                    }
+                    else
+                    {
+                        input.constant = make_float4(rgb(desc.parameters, input_name, command), 1.0f);
+                    }
+                }
+                else if (desc.value_type == TextureDesc::ValueType::Float)
+                {
+                    input.constant = make_float4(default_value);
+                }
+                else
+                {
+                    input.constant = make_float4(make_float3(default_value), 1.0f);
+                }
+                return input;
+            };
+            desc.tex1 = parse_input("tex1", 1.0f);
+            desc.tex2 = parse_input("tex2", 0.0f);
+        }
 
         for (auto i = 0u; i < desc.parameters.size(); i++)
         {
             auto&& p = desc.parameters[i];
-            auto supported = desc.type == TextureDesc::Type::ImageMap
-                                 ? (p.type == "string" && (p.name == "filename" || p.name == "filter")) ||
-                                       (p.type == "float" && (p.name == "uscale" || p.name == "vscale"))
-                                 : desc.type == TextureDesc::Type::Constant
-                                       ? p.type == "float" && p.name == "value"
-                                       : p.type == "texture" && (p.name == "tex" || p.name == "scale");
+            auto supported = false;
+            if (desc.type == TextureDesc::Type::ImageMap)
+            {
+                supported = (p.type == "string" && (p.name == "filename" || p.name == "filter")) ||
+                            (p.type == "float" && (p.name == "uscale" || p.name == "vscale"));
+            }
+            else if (desc.type == TextureDesc::Type::Constant)
+            {
+                supported = p.type == "float" && p.name == "value";
+            }
+            else if (desc.type == TextureDesc::Type::Scale)
+            {
+                supported = p.type == "texture" && (p.name == "tex" || p.name == "scale");
+            }
+            else if (desc.type == TextureDesc::Type::Checkerboard)
+            {
+                auto input = p.name == "tex1" || p.name == "tex2";
+                auto input_type = p.type == "texture" ||
+                                  (desc.value_type == TextureDesc::ValueType::Float ? p.type == "float" : p.type == "rgb");
+                supported = (input && input_type) ||
+                            (p.type == "float" && (p.name == "uscale" || p.name == "vscale")) ||
+                            (p.type == "integer" && p.name == "dimension") ||
+                            (p.type == "string" && p.name == "mapping");
+            }
             if (!supported)
             {
                 fail(p.source, luisa::format("unsupported parameter '\"{} {}\"' for this texture", p.type, p.name));
@@ -1086,14 +1168,24 @@ private:
                 }
             }
         }
-        if (desc.type != TextureDesc::Type::ImageMap &&
-            !std::isfinite(desc.constant_value))
+        if (desc.type == TextureDesc::Type::Constant && !std::isfinite(desc.constant_value))
         {
             fail(command, "texture constant value must be finite");
         }
-        if (!std::isfinite(desc.uv_scale.x) || !std::isfinite(desc.uv_scale.y))
+        if ((desc.type == TextureDesc::Type::ImageMap || desc.type == TextureDesc::Type::Checkerboard) &&
+            (!std::isfinite(desc.uv_scale.x) || !std::isfinite(desc.uv_scale.y)))
         {
-            fail(command, "imagemap texture scale must be finite");
+            fail(command, "texture UV scale must be finite");
+        }
+        if (desc.type == TextureDesc::Type::Checkerboard)
+        {
+            auto finite = [](float4 v) noexcept
+            { return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z) && std::isfinite(v.w); };
+            if ((!desc.tex1.texture && !finite(desc.tex1.constant)) ||
+                (!desc.tex2.texture && !finite(desc.tex2.constant)))
+            {
+                fail(command, "checkerboard texture constants must be finite");
+            }
         }
         m_desc.textures.emplace_back(std::move(desc));
     }

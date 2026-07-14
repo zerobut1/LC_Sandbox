@@ -7,59 +7,63 @@
 
 namespace Yutrel
 {
-class CheckerBoard : public Texture
+class CheckerBoard final : public Texture
 {
 public:
     class Instance final : public Texture::Instance
     {
     private:
-        const Texture::Instance* m_even;
-        const Texture::Instance* m_odd;
+        const Texture::Instance* m_tex1;
+        const Texture::Instance* m_tex2;
 
     public:
         explicit Instance(const Renderer& renderer, const Texture* texture,
-                          const Texture::Instance* even, const Texture::Instance* odd) noexcept
-            : Texture::Instance(renderer, texture), m_even(even), m_odd(odd) {}
+                          const Texture::Instance* tex1, const Texture::Instance* tex2) noexcept
+            : Texture::Instance(renderer, texture), m_tex1(tex1), m_tex2(tex2) {}
         ~Instance() noexcept override = default;
 
         Float4 evaluate(const Interaction& it, Expr<float> time) const noexcept override;
     };
 
 private:
-    float m_scale;
-    const Texture* m_even;
-    const Texture* m_odd;
+    float2 m_uv_scale;
+    const Texture* m_tex1;
+    const Texture* m_tex2;
 
 public:
-    CheckerBoard(float scale, const Texture* even, const Texture* odd) noexcept;
+    CheckerBoard(float2 uv_scale, const Texture* tex1, const Texture* tex2) noexcept;
     ~CheckerBoard() noexcept override = default;
 
 public:
     [[nodiscard]] luisa::unique_ptr<Texture::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept override;
-    [[nodiscard]] auto scale() const noexcept { return m_scale; }
+    [[nodiscard]] auto uv_scale() const noexcept { return m_uv_scale; }
 };
 
 class CheckerBoardTextureSpec final : public TextureSpec
 {
 private:
-    float _scale;
-    TextureRef _even;
-    TextureRef _odd;
+    float2 _uv_scale;
+    TextureRef _tex1;
+    TextureRef _tex2;
 
 public:
-    CheckerBoardTextureSpec(float scale, TextureRef even, TextureRef odd) noexcept
-        : _scale{scale}, _even{even}, _odd{odd} {}
+    CheckerBoardTextureSpec(float2 uv_scale, TextureRef tex1, TextureRef tex2) noexcept
+        : _uv_scale{uv_scale}, _tex1{tex1}, _tex2{tex2} {}
+
+    [[nodiscard]] auto uv_scale() const noexcept { return _uv_scale; }
+    [[nodiscard]] auto tex1() const noexcept { return _tex1; }
+    [[nodiscard]] auto tex2() const noexcept { return _tex2; }
 
     [[nodiscard]] luisa::optional<luisa::string> validate() const noexcept override
     {
-        return std::isfinite(_scale) && _scale > 0.0f
+        return std::isfinite(_uv_scale.x) && std::isfinite(_uv_scale.y)
                    ? luisa::nullopt
-                   : spec_validation_error("Checker-board texture scale must be finite and positive.");
+                   : spec_validation_error("Checkerboard texture UV scale must be finite.");
     }
     void visit_dependencies(SpecDependencyVisitor& visitor) const noexcept override
     {
-        visitor.visit(_even);
-        visitor.visit(_odd);
+        visitor.visit(_tex1);
+        visitor.visit(_tex2);
     }
 
     [[nodiscard]] const Texture* build(SceneBuilder& builder) const noexcept override;

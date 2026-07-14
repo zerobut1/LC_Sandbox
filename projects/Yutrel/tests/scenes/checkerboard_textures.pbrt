@@ -1,0 +1,30 @@
+Sampler "independent"
+    "integer pixelsamples" [ 1 ]
+Film "rgb"
+    "string filename" [ "checkerboard.exr" ]
+    "integer xresolution" [ 16 ]
+    "integer yresolution" [ 16 ]
+Camera "perspective"
+
+WorldBegin
+
+Texture "floor-checker" "spectrum" "checkerboard"
+    "rgb tex1" [ 0.325 0.31 0.25 ]
+    "rgb tex2" [ 0.725 0.71 0.68 ]
+    "float uscale" [ 20 ]
+    "float vscale" [ 20 ]
+
+Texture "float-defaults" "float" "checkerboard"
+
+Texture "float-reference" "float" "checkerboard"
+    "texture tex1" [ "float-source" ]
+    "float tex2" [ 0.25 ]
+    "integer dimension" [ 2 ]
+    "string mapping" [ "uv" ]
+
+Texture "float-source" "float" "constant"
+    "float value" [ 0.75 ]
+
+Material "diffuse"
+    "texture reflectance" [ "floor-checker" ]
+Shape "sphere"

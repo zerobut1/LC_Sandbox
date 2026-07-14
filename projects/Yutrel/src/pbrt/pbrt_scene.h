@@ -100,6 +100,12 @@ struct FilterDesc
     luisa::vector<RawParameter> parameters;
 };
 
+struct TextureInputDesc
+{
+    luisa::optional<luisa::string> texture;
+    float4 constant{0.0f};
+};
+
 struct TextureDesc
 {
     SourceLocation source;
@@ -113,6 +119,7 @@ struct TextureDesc
         ImageMap,
         Constant,
         Scale,
+        Checkerboard,
     };
     enum class Filter
     {
@@ -128,6 +135,8 @@ struct TextureDesc
     float constant_value{0.0f};
     luisa::string tex;
     luisa::string scale;
+    TextureInputDesc tex1;
+    TextureInputDesc tex2;
     luisa::vector<RawParameter> parameters;
 };
 

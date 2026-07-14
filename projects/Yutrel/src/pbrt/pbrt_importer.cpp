@@ -23,6 +23,7 @@
 #include "spectrum/hero.h"
 #include "surfaces/coated_diffuse.h"
 #include "surfaces/diffuse.h"
+#include "textures/checker_board.h"
 #include "textures/constant.h"
 #include "textures/image.h"
 #include "textures/scale.h"
@@ -275,6 +276,36 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
             auto base = builder.reference_texture(texture.tex, texture.source);
             (void)builder.add_texture<ScaleTextureSpec>(
                 std::move(meta), base, make_float4(scale->constant_value), make_float4(0.0f));
+            continue;
+        }
+        if (texture.type == TextureDesc::Type::Checkerboard)
+        {
+            auto resolve_input = [&](const TextureInputDesc& input, luisa::string_view parameter) -> TextureRef
+            {
+                if (!input.texture)
+                {
+                    return builder.add_anonymous_texture<ConstantTextureSpec>(texture.source, input.constant);
+                }
+                auto iter = texture_declarations.find(*input.texture);
+                if (iter == texture_declarations.end())
+                {
+                    fail(luisa::format(
+                        "PBRT checkerboard texture '{}' references unknown {} texture '{}' at {}.",
+                        texture.name, parameter, *input.texture, format_source_location(texture.source)));
+                }
+                if (iter->second->value_type != texture.value_type)
+                {
+                    auto expected = texture.value_type == TextureDesc::ValueType::Float ? "float" : "spectrum";
+                    fail(luisa::format(
+                        "PBRT checkerboard texture '{}' requires {} '{}' to be a {} texture at {}.",
+                        texture.name, parameter, *input.texture, expected, format_source_location(texture.source)));
+                }
+                return builder.reference_texture(*input.texture, texture.source);
+            };
+            auto tex1 = resolve_input(texture.tex1, "tex1");
+            auto tex2 = resolve_input(texture.tex2, "tex2");
+            (void)builder.add_texture<CheckerBoardTextureSpec>(
+                std::move(meta), texture.uv_scale, tex1, tex2);
             continue;
         }
         fail(luisa::format(

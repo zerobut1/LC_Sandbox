@@ -114,9 +114,15 @@ struct TextureDesc
         Constant,
         Scale,
     };
+    enum class Filter
+    {
+        Point,
+        Bilinear,
+    };
     luisa::string name;
     ValueType value_type{ValueType::Float};
     Type type{Type::Constant};
+    Filter filter{Filter::Bilinear};
     std::filesystem::path filename;
     float2 uv_scale{1.0f, 1.0f};
     float constant_value{0.0f};

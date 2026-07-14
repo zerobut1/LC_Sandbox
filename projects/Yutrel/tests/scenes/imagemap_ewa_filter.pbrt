@@ -1,0 +1,5 @@
+WorldBegin
+
+Texture "ewa-filter" "spectrum" "imagemap"
+    "string filter" "ewa"
+    "string filename" [ "filter.png" ]

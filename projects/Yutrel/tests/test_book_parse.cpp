@@ -7,8 +7,10 @@
 
 #include <array>
 #include <cmath>
+#include <initializer_list>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 
 using namespace Yutrel;
 using namespace boost::ut;
@@ -32,6 +34,29 @@ namespace
         }
     }
     return nullptr;
+}
+
+[[nodiscard]] bool parse_error_contains(
+    const std::filesystem::path& path,
+    std::initializer_list<std::string_view> expected)
+{
+    try
+    {
+        (void)PbrtParser::parse(path);
+    }
+    catch (const std::runtime_error& error)
+    {
+        auto message = std::string{error.what()};
+        for (auto text : expected)
+        {
+            if (message.find(text) == std::string::npos)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+    return false;
 }
 
 static auto test_book_parse_registration = []
@@ -118,14 +143,17 @@ static auto test_book_parse_registration = []
         expect(scene.textures[0u].name == "book_cover");
         expect(scene.textures[0u].value_type == TextureDesc::ValueType::Spectrum);
         expect(scene.textures[0u].type == TextureDesc::Type::ImageMap);
+        expect(scene.textures[0u].filter == TextureDesc::Filter::Bilinear);
         expect(scene.textures[0u].filename == std::filesystem::path{"texture/book_pbrt.png"});
         expect(scene.textures[1u].name == "book_pages");
         expect(scene.textures[1u].value_type == TextureDesc::ValueType::Spectrum);
         expect(scene.textures[1u].type == TextureDesc::Type::ImageMap);
+        expect(scene.textures[1u].filter == TextureDesc::Filter::Bilinear);
         expect(scene.textures[1u].filename == std::filesystem::path{"texture/book_pages.png"});
         expect(scene.textures[2u].name == "uneven_bump_raw");
         expect(scene.textures[2u].value_type == TextureDesc::ValueType::Float);
         expect(scene.textures[2u].type == TextureDesc::Type::ImageMap);
+        expect(scene.textures[2u].filter == TextureDesc::Filter::Bilinear);
         expect(scene.textures[2u].filename == std::filesystem::path{"texture/uneven_bump.png"});
         expect(is_near(scene.textures[2u].uv_scale.x, 1.5f));
         expect(is_near(scene.textures[2u].uv_scale.y, 1.5f));
@@ -184,6 +212,47 @@ static auto test_book_parse_registration = []
             filename_index++;
         }
         expect(filename_index == filenames.size());
+    };
+
+    "parse_imagemap_filters"_test = []
+    {
+        auto scene = PbrtParser::parse("tests/scenes/imagemap_filters.pbrt");
+        expect(scene.textures.size() == 3u);
+        expect(scene.textures[0u].filter == TextureDesc::Filter::Bilinear);
+        expect(scene.textures[1u].filter == TextureDesc::Filter::Point);
+        expect(scene.textures[2u].filter == TextureDesc::Filter::Bilinear);
+    };
+
+    "reject_unsupported_imagemap_filters"_test = []
+    {
+        struct Case
+        {
+            const char* path;
+            const char* filename;
+            const char* expected;
+        };
+        std::array cases{
+            Case{"tests/scenes/imagemap_unsupported_filter.pbrt", "imagemap_unsupported_filter.pbrt", "trilinear"},
+            Case{"tests/scenes/imagemap_ewa_filter.pbrt", "imagemap_ewa_filter.pbrt", "ewa"},
+            Case{"tests/scenes/imagemap_anisotropic_filter.pbrt", "imagemap_anisotropic_filter.pbrt", "anisotropic"},
+            Case{"tests/scenes/imagemap_unknown_filter.pbrt", "imagemap_unknown_filter.pbrt", "unknown"},
+        };
+        for (auto test_case : cases)
+        {
+            expect(parse_error_contains(
+                test_case.path,
+                {test_case.filename, "unsupported imagemap filter", test_case.expected, "point", "bilinear"}));
+        }
+    };
+
+    "reject_invalid_imagemap_filter_declarations"_test = []
+    {
+        expect(parse_error_contains(
+            "tests/scenes/imagemap_invalid_filter_type.pbrt",
+            {"imagemap_invalid_filter_type.pbrt", "unsupported parameter", "integer filter"}));
+        expect(parse_error_contains(
+            "tests/scenes/imagemap_duplicate_filter.pbrt",
+            {"imagemap_duplicate_filter.pbrt", "duplicate texture parameter", "string filter"}));
     };
 
     "reject_imagemap_without_filename"_test = []

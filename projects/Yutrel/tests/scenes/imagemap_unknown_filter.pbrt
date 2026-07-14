@@ -1,0 +1,5 @@
+WorldBegin
+
+Texture "unknown-filter" "spectrum" "imagemap"
+    "string filter" "unknown"
+    "string filename" [ "filter.png" ]

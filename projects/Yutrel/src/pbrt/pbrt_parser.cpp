@@ -1021,6 +1021,21 @@ private:
                 fail(command, "imagemap texture requires a non-empty 'string filename' parameter");
             }
             desc.filename = std::filesystem::path{filename};
+            auto filter = one_string(desc.parameters, "filter", command, "bilinear");
+            if (filter == "point")
+            {
+                desc.filter = TextureDesc::Filter::Point;
+            }
+            else if (filter == "bilinear")
+            {
+                desc.filter = TextureDesc::Filter::Bilinear;
+            }
+            else
+            {
+                auto filter_param = find_param(desc.parameters, "string", "filter");
+                fail(filter_param == nullptr ? command.loc : filter_param->source,
+                     luisa::format("unsupported imagemap filter '{}'; supported filters are 'point' and 'bilinear'", filter));
+            }
             desc.uv_scale = make_float2(
                 one_float(desc.parameters, "uscale", command, 1.0f),
                 one_float(desc.parameters, "vscale", command, 1.0f));
@@ -1054,7 +1069,7 @@ private:
         {
             auto&& p = desc.parameters[i];
             auto supported = desc.type == TextureDesc::Type::ImageMap
-                                 ? (p.type == "string" && p.name == "filename") ||
+                                 ? (p.type == "string" && (p.name == "filename" || p.name == "filter")) ||
                                        (p.type == "float" && (p.name == "uscale" || p.name == "vscale"))
                                  : desc.type == TextureDesc::Type::Constant
                                        ? p.type == "float" && p.name == "value"

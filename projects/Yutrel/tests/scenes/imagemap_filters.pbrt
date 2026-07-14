@@ -1,0 +1,10 @@
+WorldBegin
+
+Texture "default-filter" "spectrum" "imagemap"
+    "string filename" [ "filter-default.png" ]
+Texture "point-filter" "spectrum" "imagemap"
+    "string filter" [ "point" ]
+    "string filename" [ "filter-point.png" ]
+Texture "bilinear-filter" "spectrum" "imagemap"
+    "string filter" "bilinear"
+    "string filename" [ "filter-bilinear.png" ]

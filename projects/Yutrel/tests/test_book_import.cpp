@@ -258,6 +258,7 @@ static auto test_book_import_registration = []
     "import_book_v2_spheres"_test = []
     {
         auto parsed = PbrtParser::parse("scene/pbrt-book/book-v2.pbrt");
+        parsed.textures[0u].filter = TextureDesc::Filter::Point;
         auto spec   = PbrtImporter::import(std::move(parsed));
         auto film   = dynamic_cast<const RGBFilmSpec*>(&spec.films().spec(spec.render().film));
         auto camera = dynamic_cast<const PinholeCameraSpec*>(&spec.cameras().spec(spec.render().camera));
@@ -311,6 +312,10 @@ static auto test_book_import_registration = []
                 {
                     expect(image->path().lexically_normal() == expected_texture_paths[image_texture_count].lexically_normal());
                 }
+                auto expected_sampler = meta.name == "book_cover"
+                                            ? TextureSampler::point_repeat()
+                                            : TextureSampler::linear_point_repeat();
+                expect(image->sampler() == expected_sampler);
                 auto expected_uv_scale = meta.name == "uneven_bump_raw" ? 1.5f : 1.0f;
                 expect(is_near(image->uv_scale().x, expected_uv_scale));
                 expect(is_near(image->uv_scale().y, expected_uv_scale));

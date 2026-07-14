@@ -225,10 +225,13 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
             auto encoding = texture.value_type == TextureDesc::ValueType::Float
                                 ? Texture::Encoding::LINEAR
                                 : is_png_path(path) ? Texture::Encoding::SRGB : Texture::Encoding::LINEAR;
+            auto sampler = texture.filter == TextureDesc::Filter::Point
+                               ? TextureSampler::point_repeat()
+                               : TextureSampler::linear_point_repeat();
             (void)builder.add_texture<ImageTextureSpec>(
                 std::move(meta),
                 std::move(path),
-                TextureSampler::linear_point_repeat(),
+                sampler,
                 encoding,
                 texture.uv_scale);
             continue;

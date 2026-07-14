@@ -1,0 +1,5 @@
+WorldBegin
+
+Texture "anisotropic-filter" "spectrum" "imagemap"
+    "string filter" "anisotropic"
+    "string filename" [ "filter.png" ]

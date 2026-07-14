@@ -1,0 +1,6 @@
+WorldBegin
+
+Texture "duplicate-filter" "spectrum" "imagemap"
+    "string filter" "point"
+    "string filter" "bilinear"
+    "string filename" [ "filter.png" ]

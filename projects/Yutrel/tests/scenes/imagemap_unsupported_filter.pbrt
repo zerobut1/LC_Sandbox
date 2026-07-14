@@ -1,0 +1,5 @@
+WorldBegin
+
+Texture "unsupported-filter" "spectrum" "imagemap"
+    "string filter" "trilinear"
+    "string filename" [ "filter.png" ]

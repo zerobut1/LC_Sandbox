@@ -1,0 +1,5 @@
+WorldBegin
+
+Texture "invalid-filter-type" "spectrum" "imagemap"
+    "integer filter" [ 1 ]
+    "string filename" [ "filter.png" ]

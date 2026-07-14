@@ -7,14 +7,15 @@
 
 namespace Yutrel
 {
-Film::Film(uint2 resolution, bool display_hdr, std::filesystem::path filename) noexcept
+Film::Film(uint2 resolution, bool display_hdr, std::filesystem::path filename, float imaging_ratio) noexcept
     : m_resolution{resolution},
       m_display_hdr{display_hdr},
-      m_filename{std::move(filename)} {}
+      m_filename{std::move(filename)},
+      m_imaging_ratio{imaging_ratio} {}
 
 const Film* RGBFilmSpec::build(SceneBuilder& builder) const noexcept
 {
-    return builder.emplace<Film, Film>(_resolution, _display_hdr, _filename);
+    return builder.emplace<Film, Film>(_resolution, _display_hdr, _filename, _imaging_ratio);
 }
 
 Film::~Film() noexcept = default;
@@ -24,12 +25,13 @@ Float4 Film::Instance::filtered_contribution(Expr<float3> rgb, Expr<float> effec
     LUISA_ASSERT(m_image && m_converted, "Film is not prepared.");
 
     auto contribution = def(make_float4(0.0f));
-    $if(!any(compute::isnan(rgb) || compute::isinf(rgb)))
+    auto exposed_rgb  = rgb * base()->imaging_ratio();
+    $if(!any(compute::isnan(exposed_rgb) || compute::isinf(exposed_rgb)))
     {
         auto threshold = 256.0f * max(effective_spp, 1.f);
-        auto abs_rgb   = abs(rgb);
+        auto abs_rgb   = abs(exposed_rgb);
         auto strength  = max(max(max(abs_rgb.x, abs_rgb.y), abs_rgb.z), 0.f);
-        auto c         = rgb * (threshold / max(strength, threshold));
+        auto c         = exposed_rgb * (threshold / max(strength, threshold));
         contribution   = make_float4(c, effective_spp);
     };
     return contribution;

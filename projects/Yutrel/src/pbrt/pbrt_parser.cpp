@@ -857,6 +857,7 @@ private:
         m_desc.film.type       = FilmDesc::Type::RGB;
         m_desc.film.resolution = make_uint2(one_uint(params, "xresolution", command, 1024u),
                                             one_uint(params, "yresolution", command, 1024u));
+        m_desc.film.iso        = one_float(params, "iso", command, 100.0f);
         auto filename          = one_string(params, "filename", command, {});
         if (!filename.empty())
         {
@@ -877,6 +878,8 @@ private:
         m_desc.camera.source         = command.loc;
         m_desc.camera.type           = CameraDesc::Type::Perspective;
         m_desc.camera.fov            = one_float(params, "fov", command, 45.0f);
+        m_desc.camera.shutter_open   = one_float(params, "shutteropen", command, 0.0f);
+        m_desc.camera.shutter_close  = one_float(params, "shutterclose", command, 1.0f);
         m_desc.camera.pbrt_transform = m_current_transform;
         m_desc.camera.parameters     = std::move(params);
     }

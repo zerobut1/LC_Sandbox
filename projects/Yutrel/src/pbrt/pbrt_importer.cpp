@@ -449,19 +449,35 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
     {
         fail(luisa::format("Yutrel only supports EXR film output, got '{}'.", filename.string()));
     }
+    auto shutter_span  = make_float2(scene.camera.shutter_open, scene.camera.shutter_close);
+    auto exposure_time = shutter_span.y - shutter_span.x;
+    if (!std::isfinite(exposure_time) || exposure_time <= 0.0f)
+    {
+        fail("PBRT shutterclose must be greater than shutteropen.");
+    }
+    if (!std::isfinite(scene.film.iso) || scene.film.iso <= 0.0f)
+    {
+        fail("PBRT Film ISO must be finite and positive.");
+    }
+    auto imaging_ratio = exposure_time * scene.film.iso / 100.0f;
+    if (!std::isfinite(imaging_ratio))
+    {
+        fail("PBRT Film exposure ratio is not finite.");
+    }
     auto camera = builder.add_camera<PinholeCameraSpec>(
         SpecMeta{.name = "pbrt_camera", .source = scene.camera.source},
         basis.position,
         basis.position + basis.forward,
         basis.up,
-        make_float2(0.0f),
+        shutter_span,
         0u,
         scene.camera.fov);
     auto film = builder.add_film<RGBFilmSpec>(
         SpecMeta{.name = "pbrt_film", .source = scene.film.source},
         scene.film.resolution,
         false,
-        std::move(filename));
+        std::move(filename),
+        imaging_ratio);
     if (std::abs(scene.filter.radius.x - scene.filter.radius.y) > 1e-6f)
     {
         fail("PBRT pixel filter expects equal x/y radii for now.");

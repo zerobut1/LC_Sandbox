@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cctype>
+#include <cmath>
 #include <filesystem>
 #include <limits>
 
@@ -90,9 +91,10 @@ private:
     uint2 m_resolution{1920u, 1080u};
     bool m_display_hdr{false};
     std::filesystem::path m_filename{"render.exr"};
+    float m_imaging_ratio{1.0f};
 
 public:
-    Film(uint2 resolution, bool display_hdr, std::filesystem::path filename) noexcept;
+    Film(uint2 resolution, bool display_hdr, std::filesystem::path filename, float imaging_ratio) noexcept;
     ~Film() noexcept;
 
     Film()                       = delete;
@@ -110,6 +112,7 @@ public:
     [[nodiscard]] auto resolution() const noexcept { return m_resolution; }
     [[nodiscard]] auto display_hdr() const noexcept { return m_display_hdr; }
     [[nodiscard]] const auto& filename() const noexcept { return m_filename; }
+    [[nodiscard]] auto imaging_ratio() const noexcept { return m_imaging_ratio; }
 };
 
 class RGBFilmSpec final : public FilmSpec
@@ -118,10 +121,11 @@ private:
     uint2 _resolution;
     bool _display_hdr;
     std::filesystem::path _filename;
+    float _imaging_ratio;
 
 public:
-    RGBFilmSpec(uint2 resolution, bool display_hdr, std::filesystem::path filename) noexcept
-        : _resolution{resolution}, _display_hdr{display_hdr}, _filename{std::move(filename)} {}
+    RGBFilmSpec(uint2 resolution, bool display_hdr, std::filesystem::path filename, float imaging_ratio = 1.0f) noexcept
+        : _resolution{resolution}, _display_hdr{display_hdr}, _filename{std::move(filename)}, _imaging_ratio{imaging_ratio} {}
 
     [[nodiscard]] luisa::optional<luisa::string> validate() const noexcept override
     {
@@ -146,8 +150,13 @@ public:
         {
             return spec_validation_error("Film output path must use the .exr extension.");
         }
+        if (!std::isfinite(_imaging_ratio) || _imaging_ratio <= 0.0f)
+        {
+            return spec_validation_error("Film imaging ratio must be finite and positive.");
+        }
         return luisa::nullopt;
     }
+    [[nodiscard]] auto imaging_ratio() const noexcept { return _imaging_ratio; }
     [[nodiscard]] const Film* build(SceneBuilder& builder) const noexcept override;
 };
 } // namespace Yutrel

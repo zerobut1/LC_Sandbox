@@ -92,6 +92,7 @@ public:
 
     [[nodiscard]] auto init_transform() const noexcept { return m_init_transform; }
     [[nodiscard]] auto up() const noexcept { return m_up; }
+    [[nodiscard]] auto shutter_span() const noexcept { return m_shutter_span; }
     [[nodiscard]] luisa::vector<ShutterSample> shutter_samples(uint spp) const noexcept;
     [[nodiscard]] virtual bool requires_lens_sampling() const noexcept { return false; }
 };

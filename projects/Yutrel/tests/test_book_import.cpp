@@ -1,6 +1,8 @@
 #include "ut/ut.hpp"
 
+#include "base/film.h"
 #include "base/shape.h"
+#include "cameras/pinhole.h"
 #include "pbrt/pbrt_importer.h"
 #include "pbrt/pbrt_parser.h"
 #include "shapes/mesh.h"
@@ -37,6 +39,85 @@ namespace
 
 static auto test_book_import_registration = []
 {
+    "validate_rgb_film_spec"_test = []
+    {
+        expect(!RGBFilmSpec{make_uint2(16u), false, "render.exr"}.validate().has_value());
+        expect(RGBFilmSpec{make_uint2(16u), false, "render.exr", 0.0f}.validate().has_value());
+        expect(RGBFilmSpec{make_uint2(16u), false, "render.exr", -1.0f}.validate().has_value());
+        expect(RGBFilmSpec{make_uint2(16u), false, "render.exr", std::numeric_limits<float>::infinity()}.validate().has_value());
+        expect(RGBFilmSpec{make_uint2(16u), false, "render.exr", std::numeric_limits<float>::quiet_NaN()}.validate().has_value());
+    };
+
+    "import_film_exposure"_test = []
+    {
+        auto parsed = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        parsed.film.iso = 200.0f;
+        parsed.camera.shutter_open = 0.25f;
+        parsed.camera.shutter_close = 0.75f;
+        auto spec = PbrtImporter::import(std::move(parsed));
+
+        auto film   = dynamic_cast<const RGBFilmSpec*>(&spec.films().spec(spec.render().film));
+        auto camera = dynamic_cast<const PinholeCameraSpec*>(&spec.cameras().spec(spec.render().camera));
+        expect(film != nullptr);
+        expect(camera != nullptr);
+        if (film != nullptr && camera != nullptr)
+        {
+            expect(is_near(film->imaging_ratio(), 1.0f));
+            expect(is_near(camera->shutter_span().x, 0.25f));
+            expect(is_near(camera->shutter_span().y, 0.75f));
+        }
+
+        auto default_parsed  = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        auto default_spec    = PbrtImporter::import(std::move(default_parsed));
+        auto default_film    = dynamic_cast<const RGBFilmSpec*>(&default_spec.films().spec(default_spec.render().film));
+        auto default_camera = dynamic_cast<const PinholeCameraSpec*>(&default_spec.cameras().spec(default_spec.render().camera));
+        expect(default_film != nullptr);
+        expect(default_camera != nullptr);
+        if (default_film != nullptr && default_camera != nullptr)
+        {
+            expect(is_near(default_film->imaging_ratio(), 1.0f));
+            expect(is_near(default_camera->shutter_span().x, 0.0f));
+            expect(is_near(default_camera->shutter_span().y, 1.0f));
+        }
+    };
+
+    "reject_invalid_pbrt_exposure"_test = []
+    {
+        struct Case
+        {
+            float iso;
+            float shutter_open;
+            float shutter_close;
+            const char* expected_message;
+        };
+        std::array cases{
+            Case{0.0f, 0.0f, 1.0f, "ISO"},
+            Case{-1.0f, 0.0f, 1.0f, "ISO"},
+            Case{std::numeric_limits<float>::infinity(), 0.0f, 1.0f, "ISO"},
+            Case{std::numeric_limits<float>::quiet_NaN(), 0.0f, 1.0f, "ISO"},
+            Case{100.0f, 1.0f, 1.0f, "shutterclose"},
+            Case{100.0f, 1.0f, 0.0f, "shutterclose"},
+            Case{std::numeric_limits<float>::max(), 0.0f, 2.0f, "ratio"},
+        };
+        for (auto test_case : cases)
+        {
+            auto parsed                = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+            parsed.film.iso            = test_case.iso;
+            parsed.camera.shutter_open = test_case.shutter_open;
+            parsed.camera.shutter_close = test_case.shutter_close;
+            auto rejected = false;
+            try
+            {
+                (void)PbrtImporter::import(std::move(parsed));
+            }
+            catch (const std::runtime_error& error)
+            {
+                rejected = std::string{error.what()}.find(test_case.expected_message) != std::string::npos;
+            }
+            expect(rejected);
+        }
+    };
+
     "validate_coated_diffuse_spec"_test = []
     {
         expect(!CoatedDiffuseSurfaceSpec{CoatedDiffuseSurfaceParams{}}.validate().has_value());
@@ -178,6 +259,16 @@ static auto test_book_import_registration = []
     {
         auto parsed = PbrtParser::parse("scene/pbrt-book/book-v2.pbrt");
         auto spec   = PbrtImporter::import(std::move(parsed));
+        auto film   = dynamic_cast<const RGBFilmSpec*>(&spec.films().spec(spec.render().film));
+        auto camera = dynamic_cast<const PinholeCameraSpec*>(&spec.cameras().spec(spec.render().camera));
+        expect(film != nullptr);
+        expect(camera != nullptr);
+        if (film != nullptr && camera != nullptr)
+        {
+            expect(is_near(film->imaging_ratio(), 1.5f));
+            expect(is_near(camera->shutter_span().x, 0.0f));
+            expect(is_near(camera->shutter_span().y, 1.0f));
+        }
         expect(spec.shapes().size() == 5u);
         expect(spec.instances().size() == 5u);
         expect(spec.lights().size() == 2u);

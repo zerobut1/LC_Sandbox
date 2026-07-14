@@ -42,6 +42,8 @@ struct CameraDesc
     };
     Type type{Type::Perspective};
     float fov{45.0f};
+    float shutter_open{0.0f};
+    float shutter_close{1.0f};
     Matrix4 pbrt_transform{identity_matrix4};
     luisa::vector<RawParameter> parameters;
 };
@@ -55,6 +57,7 @@ struct FilmDesc
     };
     Type type{Type::RGB};
     uint2 resolution{1024u, 1024u};
+    float iso{100.0f};
     std::filesystem::path filename;
     luisa::vector<RawParameter> parameters;
 };

@@ -72,6 +72,9 @@ static auto test_book_parse_registration = []
         expect(!iso->values.front().quoted);
         expect(iso->values.front().text == "150");
         expect(!iso->bracketed);
+        expect(is_near(scene.film.iso, 150.0f));
+        expect(is_near(scene.camera.shutter_open, 0.0f));
+        expect(is_near(scene.camera.shutter_close, 1.0f));
         expect(scene.sampler.parameters.front().bracketed);
 
         expect(scene.shapes[0u].area_light.has_value());
@@ -92,6 +95,19 @@ static auto test_book_parse_registration = []
         expect(is_near(translated_sphere[3u], 34.92f));
         expect(is_near(translated_sphere[7u], 55.92f));
         expect(is_near(translated_sphere[11u], -15.351f));
+    };
+
+    "parse_film_exposure"_test = []
+    {
+        auto scene = PbrtParser::parse("tests/scenes/film_exposure.pbrt");
+        expect(is_near(scene.film.iso, 200.0f));
+        expect(is_near(scene.camera.shutter_open, 0.25f));
+        expect(is_near(scene.camera.shutter_close, 0.75f));
+
+        auto defaults = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        expect(is_near(defaults.film.iso, 100.0f));
+        expect(is_near(defaults.camera.shutter_open, 0.0f));
+        expect(is_near(defaults.camera.shutter_close, 1.0f));
     };
 
     "parse_book_v2_ply_filenames"_test = []

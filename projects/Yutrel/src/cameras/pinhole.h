@@ -81,6 +81,7 @@ public:
         }
         return luisa::nullopt;
     }
+    [[nodiscard]] auto shutter_span() const noexcept { return _shutter_span; }
     [[nodiscard]] const Camera* build(SceneBuilder& builder) const noexcept override;
 };
 

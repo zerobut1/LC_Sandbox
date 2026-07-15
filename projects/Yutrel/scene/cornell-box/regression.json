@@ -1,0 +1,28 @@
+{
+  "scene": "scene-yutrel.pbrt",
+  "reference": {
+    "image": "reference.exr",
+    "renderer": "Tungsten",
+    "version": "legacy-reference",
+    "spp": 16384,
+    "color_space": "linear-sRGB"
+  },
+  "profiles": {
+    "quick": {
+      "spp": 32,
+      "seeds": [0],
+      "limits": {
+        "nrmse": 0.15,
+        "mean_rgb_bias": 0.10
+      }
+    },
+    "quality": {
+      "spp": 512,
+      "seeds": [0, 1, 2, 3],
+      "limits": {
+        "nrmse": 0.03,
+        "mean_rgb_bias": 0.05
+      }
+    }
+  }
+}

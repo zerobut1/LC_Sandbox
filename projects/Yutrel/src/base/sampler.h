@@ -61,6 +61,7 @@ public:
     Sampler& operator=(Sampler&&) noexcept      = delete;
 
     [[nodiscard]] uint spp() const noexcept { return _spp; }
+    [[nodiscard]] virtual uint seed() const noexcept = 0;
     [[nodiscard]] virtual luisa::unique_ptr<Instance> build(const Renderer& renderer) const noexcept = 0;
 };
 } // namespace Yutrel

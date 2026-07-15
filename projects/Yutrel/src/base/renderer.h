@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include <luisa/luisa-compute.h>
 
 #include "base/camera.h"
@@ -19,10 +21,37 @@ using TextureSampler = compute::Sampler;
 class Scene;
 class Geometry;
 
+struct RendererOptions
+{
+    bool correctness{false};
+};
+
+struct RenderDiagnostics
+{
+    uint path_nan{};
+    uint path_inf{};
+    uint film_nan{};
+    uint film_inf{};
+
+    [[nodiscard]] uint64_t total() const noexcept
+    {
+        return static_cast<uint64_t>(path_nan) + path_inf + film_nan + film_inf;
+    }
+};
+
 class Renderer final
 {
 private:
+    static constexpr uint diagnostic_path_nan = 0u;
+    static constexpr uint diagnostic_path_inf = 1u;
+    static constexpr uint diagnostic_film_nan = 2u;
+    static constexpr uint diagnostic_film_inf = 3u;
+    static constexpr size_t diagnostic_count  = 4u;
+
     Device& m_device;
+    RendererOptions m_options;
+    Buffer<uint> m_diagnostics;
+    std::array<uint, diagnostic_count> m_diagnostic_zeros{};
     luisa::vector<luisa::unique_ptr<Resource>> m_resources;
     BindlessArray m_bindless_array;
     size_t m_bindless_buffer_count{0u};
@@ -43,7 +72,7 @@ private:
     luisa::unordered_map<luisa::string, uint> m_named_ids;
 
 public:
-    explicit Renderer(Device& device) noexcept;
+    explicit Renderer(Device& device, RendererOptions options = {}) noexcept;
     ~Renderer() noexcept;
 
     Renderer() noexcept                  = delete;
@@ -123,12 +152,19 @@ public:
     }
 
 public:
-    [[nodiscard]] static luisa::unique_ptr<Renderer> create(Device& device, Stream& stream, const Scene& scene) noexcept;
+    [[nodiscard]] static luisa::unique_ptr<Renderer> create(Device& device, Stream& stream, const Scene& scene,
+                                                            RendererOptions options = {}) noexcept;
 
     void render(Stream& stream, bool enable_display);
     void render_interactive(Stream& stream);
 
+    void reset_diagnostics(CommandBuffer& command_buffer) noexcept;
+    void download_diagnostics(CommandBuffer& command_buffer, std::array<uint, diagnostic_count>& values) const noexcept;
+    void record_path_non_finite(Expr<bool> has_nan, Expr<bool> has_inf) const noexcept;
+    void record_film_non_finite(Expr<bool> has_nan, Expr<bool> has_inf) const noexcept;
+
     [[nodiscard]] auto& device() const noexcept { return m_device; }
+    [[nodiscard]] const auto& options() const noexcept { return m_options; }
     [[nodiscard]] auto& bindless_array() noexcept { return m_bindless_array; }
     [[nodiscard]] auto& bindless_array() const noexcept { return m_bindless_array; }
     [[nodiscard]] auto spectrum() const noexcept { return m_spectrum.get(); }

@@ -49,10 +49,10 @@ public:
     [[nodiscard]] static LoadedImage create(uint2 resolution, storage_type storage) noexcept;
 };
 
-void save_image(std::filesystem::path path, const float* pixels,
-                uint2 resolution, uint components = 4) noexcept;
+[[nodiscard]] bool save_image(std::filesystem::path path, const float* pixels,
+                              uint2 resolution, uint components = 4) noexcept;
 
-void save_image(std::filesystem::path path, const uint8_t* pixels,
-                uint2 resolution, uint components = 4) noexcept;
+[[nodiscard]] bool save_image(std::filesystem::path path, const uint8_t* pixels,
+                              uint2 resolution, uint components = 4) noexcept;
 
 } // namespace Yutrel

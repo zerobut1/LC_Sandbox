@@ -18,7 +18,8 @@ Application::Application(ApplicationOptions options, const SceneSpec& scene)
     m_stream = m_device.create_stream(StreamTag::GRAPHICS);
 
     m_scene    = Scene::create(scene);
-    m_renderer = Renderer::create(m_device, m_stream, *m_scene);
+    m_renderer = Renderer::create(m_device, m_stream, *m_scene,
+                                  RendererOptions{.correctness = options.correctness});
 }
 
 Application::~Application() noexcept = default;

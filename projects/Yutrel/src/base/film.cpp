@@ -20,19 +20,28 @@ const Film* RGBFilmSpec::build(SceneBuilder& builder) const noexcept
 
 Film::~Film() noexcept = default;
 
+Float3 Film::apply_firefly_limit(Expr<float3> rgb, Expr<float> effective_spp, bool correctness) noexcept
+{
+    if (correctness) { return def(rgb); }
+    auto threshold = 256.0f * max(effective_spp, 1.0f);
+    auto abs_rgb   = abs(rgb);
+    auto strength  = max(max(max(abs_rgb.x, abs_rgb.y), abs_rgb.z), 0.0f);
+    return def(rgb * (threshold / max(strength, threshold)));
+}
+
 Float4 Film::Instance::filtered_contribution(Expr<float3> rgb, Expr<float> effective_spp) const noexcept
 {
     LUISA_ASSERT(m_image && m_converted, "Film is not prepared.");
 
     auto contribution = def(make_float4(0.0f));
     auto exposed_rgb  = rgb * base()->imaging_ratio();
-    $if(!any(compute::isnan(exposed_rgb) || compute::isinf(exposed_rgb)))
+    auto has_nan      = any(compute::isnan(exposed_rgb));
+    auto has_inf      = any(compute::isinf(exposed_rgb));
+    renderer().record_film_non_finite(has_nan, has_inf);
+    $if(!(has_nan | has_inf))
     {
-        auto threshold = 256.0f * max(effective_spp, 1.f);
-        auto abs_rgb   = abs(exposed_rgb);
-        auto strength  = max(max(max(abs_rgb.x, abs_rgb.y), abs_rgb.z), 0.f);
-        auto c         = exposed_rgb * (threshold / max(strength, threshold));
-        contribution   = make_float4(c, effective_spp);
+        auto c       = Film::apply_firefly_limit(exposed_rgb, effective_spp, renderer().options().correctness);
+        contribution = make_float4(c, effective_spp);
     };
     return contribution;
 }

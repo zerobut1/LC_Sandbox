@@ -9,8 +9,10 @@
 
 namespace Yutrel
 {
-Renderer::Renderer(Device& device) noexcept
+Renderer::Renderer(Device& device, RendererOptions options) noexcept
     : m_device(device),
+      m_options(options),
+      m_diagnostics(device.create_buffer<uint>(diagnostic_count)),
       m_bindless_array(device.create_bindless_array()) {}
 
 Renderer::~Renderer() noexcept = default;
@@ -39,9 +41,10 @@ uint Renderer::register_light(CommandBuffer& command_buffer, const Light* light)
     return tag;
 }
 
-luisa::unique_ptr<Renderer> Renderer::create(Device& device, Stream& stream, const Scene& scene) noexcept
+luisa::unique_ptr<Renderer> Renderer::create(Device& device, Stream& stream, const Scene& scene,
+                                             RendererOptions options) noexcept
 {
-    auto renderer = luisa::make_unique<Renderer>(device);
+    auto renderer = luisa::make_unique<Renderer>(device, options);
 
     CommandBuffer command_buffer{stream};
 
@@ -85,6 +88,29 @@ void Renderer::render(Stream& stream, bool enable_display)
 void Renderer::render_interactive(Stream& stream)
 {
     m_integrator->render_interactive(stream);
+}
+
+void Renderer::reset_diagnostics(CommandBuffer& command_buffer) noexcept
+{
+    command_buffer << m_diagnostics.copy_from(luisa::span{m_diagnostic_zeros.data(), m_diagnostic_zeros.size()});
+}
+
+void Renderer::download_diagnostics(CommandBuffer& command_buffer,
+                                    std::array<uint, diagnostic_count>& values) const noexcept
+{
+    command_buffer << m_diagnostics.copy_to(luisa::span{values.data(), values.size()});
+}
+
+void Renderer::record_path_non_finite(Expr<bool> has_nan, Expr<bool> has_inf) const noexcept
+{
+    $if(has_nan) { m_diagnostics->atomic(diagnostic_path_nan).fetch_add(1u); };
+    $if(has_inf) { m_diagnostics->atomic(diagnostic_path_inf).fetch_add(1u); };
+}
+
+void Renderer::record_film_non_finite(Expr<bool> has_nan, Expr<bool> has_inf) const noexcept
+{
+    $if(has_nan) { m_diagnostics->atomic(diagnostic_film_nan).fetch_add(1u); };
+    $if(has_inf) { m_diagnostics->atomic(diagnostic_film_inf).fetch_add(1u); };
 }
 
 const Texture::Instance* Renderer::build_texture(CommandBuffer& command_buffer, const Texture* texture) noexcept

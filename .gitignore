@@ -22,3 +22,4 @@ data
 task.md
 AGENTS.md
 .agents
+__pycache__

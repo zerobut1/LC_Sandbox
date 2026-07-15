@@ -16,6 +16,11 @@ yutrel_test("book_parse", {
     "../src/pbrt/pbrt_parser.cpp",
 })
 
+yutrel_test("cli_options", {
+    "test_cli_options.cpp",
+    "../src/cli_options.cpp",
+})
+
 target("test_Yutrel_book_import")
     set_kind("binary")
     set_default(false)
@@ -25,6 +30,20 @@ target("test_Yutrel_book_import")
     add_files("test_book_import.cpp", "../src/**.cpp")
     remove_files("../src/main.cpp")
     add_includedirs("../src", "$(projectdir)/ext/LuisaCompute/src/tests")
+    add_deps("lc-dsl", "lc-gui", "stb-image")
+    add_packages("tinyexr", "assimp")
+target_end()
+
+target("test_Yutrel_correctness")
+    set_kind("binary")
+    set_default(false)
+    set_group("tests/Yutrel")
+    set_rundir("$(projectdir)/projects/Yutrel")
+
+    add_files("test_correctness.cpp", "../src/**.cpp")
+    remove_files("../src/main.cpp")
+    add_includedirs("../src", "$(projectdir)/ext/LuisaCompute/src/tests",
+                   "$(projectdir)/ext/LuisaCompute/src/tests/common")
     add_deps("lc-dsl", "lc-gui", "stb-image")
     add_packages("tinyexr", "assimp")
 target_end()

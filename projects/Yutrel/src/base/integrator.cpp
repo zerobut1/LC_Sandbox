@@ -1,6 +1,9 @@
 #include "integrator.h"
 
 #include <algorithm>
+#include <array>
+#include <cmath>
+#include <stdexcept>
 
 #include <luisa/luisa-compute.h>
 
@@ -61,7 +64,13 @@ void PathIntegrator::Instance::render(Stream& stream, bool enable_display)
     auto resolution  = camera->film()->base()->resolution();
     auto pixel_count = resolution.x * resolution.y;
 
+    renderer().reset_diagnostics(command_buffer);
     camera->film()->prepare(command_buffer, enable_display);
+    bool output_saved = false;
+    RenderDiagnostics diagnostics{};
+    uint64_t host_nan_count{};
+    uint64_t host_inf_count{};
+    auto output_path = camera->film()->base()->filename();
     {
         render_one_camera(command_buffer, camera);
         if (camera->film()->should_close())
@@ -71,11 +80,56 @@ void PathIntegrator::Instance::render(Stream& stream, bool enable_display)
         }
         luisa::vector<float4> pixels(pixel_count);
         camera->film()->download(command_buffer, pixels.data());
+        std::array<uint, 4u> diagnostic_values{};
+        renderer().download_diagnostics(command_buffer, diagnostic_values);
         command_buffer << synchronize();
-        auto output_path = camera->film()->base()->filename();
-        save_image(output_path, reinterpret_cast<const float*>(pixels.data()), resolution);
+
+        diagnostics = RenderDiagnostics{
+            .path_nan = diagnostic_values[0u],
+            .path_inf = diagnostic_values[1u],
+            .film_nan = diagnostic_values[2u],
+            .film_inf = diagnostic_values[3u],
+        };
+        for (auto& pixel : pixels)
+        {
+            auto values = reinterpret_cast<float*>(&pixel);
+            for (auto channel = 0u; channel < 3u; channel++)
+            {
+                if (std::isnan(values[channel]))
+                {
+                    host_nan_count++;
+                    values[channel] = 0.0f;
+                }
+                else if (std::isinf(values[channel]))
+                {
+                    host_inf_count++;
+                    values[channel] = 0.0f;
+                }
+            }
+        }
+        output_saved = save_image(output_path, reinterpret_cast<const float*>(pixels.data()), resolution);
     }
     camera->film()->release();
+
+    auto invalid_count = diagnostics.total() + host_nan_count + host_inf_count;
+    if (invalid_count != 0u)
+    {
+        LUISA_WARNING(
+            "Non-finite render values: path NaN={}, path Inf={}, film NaN={}, film Inf={}, output NaN={}, output Inf={}.",
+            diagnostics.path_nan, diagnostics.path_inf,
+            diagnostics.film_nan, diagnostics.film_inf,
+            host_nan_count, host_inf_count);
+    }
+    if (!output_saved)
+    {
+        throw std::runtime_error{luisa::format("Failed to save render output '{}'.", output_path.string()).c_str()};
+    }
+    if (renderer().options().correctness && invalid_count != 0u)
+    {
+        throw std::runtime_error{luisa::format(
+            "Correctness render failed with {} non-finite value(s). Debug output was saved to '{}'.",
+            invalid_count, output_path.string()).c_str()};
+    }
 }
 
 void PathIntegrator::Instance::render_interactive(Stream& stream)
@@ -85,6 +139,7 @@ void PathIntegrator::Instance::render_interactive(Stream& stream)
     auto camera     = renderer().camera();
     auto resolution = camera->film()->base()->resolution();
 
+    renderer().reset_diagnostics(command_buffer);
     camera->film()->prepare(command_buffer, true);
     sampler()->reset(command_buffer, resolution, resolution.x * resolution.y);
     command_buffer << synchronize();
@@ -159,7 +214,7 @@ void PathIntegrator::Instance::render_one_camera(CommandBuffer& command_buffer, 
     LUISA_INFO("Integrator shader compile in {} ms.", clock_compile.toc());
     command_buffer << synchronize();
 
-    auto shutter_samples = camera->base()->shutter_samples(spp);
+    auto shutter_samples = camera->base()->shutter_samples(spp, sampler()->base()->seed());
     LUISA_INFO("Rendering started.");
     Clock clock_render;
     ProgressBar progress_bar;
@@ -315,7 +370,20 @@ Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> f
             });
         };
 
-        beta = zero_if_any_nan(beta);
+        auto beta_has_nan = beta.any([](const auto& value) noexcept
+        {
+            return compute::isnan(value);
+        });
+        auto beta_has_inf = beta.any([](const auto& value) noexcept
+        {
+            return compute::isinf(value);
+        });
+        auto beta_invalid = beta_has_nan | beta_has_inf;
+        renderer().record_path_non_finite(beta_has_nan, beta_has_inf);
+        beta = beta.map([&](auto value) noexcept
+        {
+            return ite(beta_invalid, 0.0f, value);
+        });
         $if(beta.all([](auto b) noexcept
         {
             return b <= 0.0f;

@@ -51,7 +51,7 @@ public:
     SobolSampler(uint spp, uint seed) noexcept
         : Sampler{spp}, _seed{seed} {}
 
-    [[nodiscard]] uint seed() const noexcept { return _seed; }
+    [[nodiscard]] uint seed() const noexcept override { return _seed; }
     [[nodiscard]] luisa::unique_ptr<Sampler::Instance> build(const Renderer& renderer) const noexcept override;
 };
 

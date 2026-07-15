@@ -85,7 +85,7 @@ struct SamplerDesc
     };
     Type type{Type::Independent};
     uint pixel_samples{1u};
-    uint seed{};
+    uint seed{20120712u};
     luisa::vector<RawParameter> parameters;
 };
 

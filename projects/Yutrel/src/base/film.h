@@ -94,6 +94,9 @@ private:
     float m_imaging_ratio{1.0f};
 
 public:
+    [[nodiscard]] static Float3 apply_firefly_limit(Expr<float3> rgb, Expr<float> effective_spp,
+                                                    bool correctness) noexcept;
+
     Film(uint2 resolution, bool display_hdr, std::filesystem::path filename, float imaging_ratio) noexcept;
     ~Film() noexcept;
 

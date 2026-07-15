@@ -32,7 +32,7 @@ Camera::Camera(float3 position, float3 lookat, float3 up, float2 shutter_span, u
 
 Camera::~Camera() noexcept = default;
 
-luisa::vector<Camera::ShutterSample> Camera::shutter_samples(uint spp) const noexcept
+luisa::vector<Camera::ShutterSample> Camera::shutter_samples(uint spp, uint seed) const noexcept
 {
     if (m_shutter_span.x == m_shutter_span.y)
     {
@@ -49,7 +49,7 @@ luisa::vector<Camera::ShutterSample> Camera::shutter_samples(uint spp) const noe
     auto duration = m_shutter_span.y - m_shutter_span.x;
     auto inv_n    = 1.0f / static_cast<float>(shutter_samples_count);
     std::uniform_real_distribution<float> dist{};
-    std::default_random_engine random{std::random_device{}()};
+    std::default_random_engine random{seed};
 
     for (auto sample = 0u; sample < shutter_samples_count; sample++)
     {

@@ -1232,8 +1232,19 @@ LoadedImage::LoadedImage(void* pixels,
     return ret;
 }
 
-void save_image(std::filesystem::path path, const float* pixels, uint2 resolution, uint components) noexcept
+bool save_image(std::filesystem::path path, const float* pixels, uint2 resolution, uint components) noexcept
 {
+    if (auto parent = path.parent_path(); !parent.empty())
+    {
+        std::error_code error;
+        std::filesystem::create_directories(parent, error);
+        if (error)
+        {
+            LUISA_WARNING_WITH_LOCATION("Failed to create output directory '{}': {}.",
+                                        parent.string(), error.message());
+            return false;
+        }
+    }
     // save results
     auto pixel_count = resolution.x * resolution.y;
     auto size        = make_int2(resolution);
@@ -1260,11 +1271,25 @@ void save_image(std::filesystem::path path, const float* pixels, uint2 resolutio
             "Failed to save film to '{}': {}.",
             path.string(),
             err ? err : "unknown error");
+        if (err) { FreeEXRErrorMessage(err); }
+        return false;
     }
+    return true;
 }
 
-void save_image(std::filesystem::path path, const uint8_t* pixels, uint2 resolution, uint components) noexcept
+bool save_image(std::filesystem::path path, const uint8_t* pixels, uint2 resolution, uint components) noexcept
 {
+    if (auto parent = path.parent_path(); !parent.empty())
+    {
+        std::error_code error;
+        std::filesystem::create_directories(parent, error);
+        if (error)
+        {
+            LUISA_WARNING_WITH_LOCATION("Failed to create output directory '{}': {}.",
+                                        parent.string(), error.message());
+            return false;
+        }
+    }
     LUISA_INFO("Saving image ({}x{}x{}) to '{}'.",
                resolution.x,
                resolution.y,
@@ -1284,6 +1309,7 @@ void save_image(std::filesystem::path path, const uint8_t* pixels, uint2 resolut
             ext,
             path.string());
         path.replace_extension(".png");
+        ext = ".png";
     }
     auto w = static_cast<int>(resolution.x);
     auto h = static_cast<int>(resolution.y);
@@ -1297,6 +1323,7 @@ void save_image(std::filesystem::path path, const uint8_t* pixels, uint2 resolut
                 "Failed to save image to '{}': {}.",
                 p,
                 stbi_failure_reason());
+            return false;
         }
     }
     else if (ext == ".jpg" || ext == ".jpeg")
@@ -1307,9 +1334,10 @@ void save_image(std::filesystem::path path, const uint8_t* pixels, uint2 resolut
                 "Failed to save image to '{}': {}.",
                 p,
                 stbi_failure_reason());
+            return false;
         }
     }
-    else if (ext == "bmp")
+    else if (ext == ".bmp")
     {
         if (!stbi_write_bmp(p.c_str(), w, h, c, pixels))
         {
@@ -1317,9 +1345,10 @@ void save_image(std::filesystem::path path, const uint8_t* pixels, uint2 resolut
                 "Failed to save image to '{}': {}.",
                 p,
                 stbi_failure_reason());
+            return false;
         }
     }
-    else if (ext == "tga")
+    else if (ext == ".tga")
     {
         if (!stbi_write_tga(p.c_str(), w, h, c, pixels))
         {
@@ -1327,8 +1356,10 @@ void save_image(std::filesystem::path path, const uint8_t* pixels, uint2 resolut
                 "Failed to save image to '{}': {}.",
                 p,
                 stbi_failure_reason());
+            return false;
         }
     }
+    return true;
 }
 
 } // namespace Yutrel

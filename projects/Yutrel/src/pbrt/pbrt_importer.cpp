@@ -565,7 +565,7 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         switch (scene.sampler.type)
         {
         case SamplerDesc::Type::Independent:
-            return builder.add_sampler<IndependentSamplerSpec>(SpecMeta{.name = "pbrt_sampler", .source = scene.sampler.source}, scene.sampler.pixel_samples, 20120712u);
+            return builder.add_sampler<IndependentSamplerSpec>(SpecMeta{.name = "pbrt_sampler", .source = scene.sampler.source}, scene.sampler.pixel_samples, scene.sampler.seed);
         case SamplerDesc::Type::Sobol:
             return builder.add_sampler<SobolSamplerSpec>(SpecMeta{.name = "pbrt_sampler", .source = scene.sampler.source}, scene.sampler.pixel_samples, scene.sampler.seed);
         case SamplerDesc::Type::Halton:

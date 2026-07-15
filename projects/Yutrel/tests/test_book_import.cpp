@@ -41,6 +41,13 @@ namespace
     return std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
 }
 
+[[nodiscard]] PbrtScene parse_importable_book()
+{
+    auto parsed = PbrtParser::parse("scene/pbrt-book/book.pbrt");
+    parsed.sampler.type = SamplerDesc::Type::Independent;
+    return parsed;
+}
+
 static auto test_book_import_registration = []
 {
     "validate_rgb_film_spec"_test = []
@@ -289,9 +296,9 @@ static auto test_book_import_registration = []
         expect(spec.instances()[0u].surface == spec.instances()[1u].surface);
     };
 
-    "import_book_v2_spheres"_test = []
+    "import_book_spheres"_test = []
     {
-        auto parsed = PbrtParser::parse("scene/pbrt-book/book-v2.pbrt");
+        auto parsed = parse_importable_book();
         parsed.textures[0u].filter = TextureDesc::Filter::Point;
         auto spec   = PbrtImporter::import(std::move(parsed));
         auto film   = dynamic_cast<const RGBFilmSpec*>(&spec.films().spec(spec.render().film));
@@ -566,7 +573,7 @@ static auto test_book_import_registration = []
 
     "reject_unknown_reflectance_texture"_test = []
     {
-        auto parsed = PbrtParser::parse("scene/pbrt-book/book-v2.pbrt");
+        auto parsed = parse_importable_book();
         parsed.materials[1u].reflectance_texture.emplace("missing_texture");
         auto rejected = false;
         try
@@ -576,7 +583,7 @@ static auto test_book_import_registration = []
         catch (const std::runtime_error& error)
         {
             auto message = std::string{error.what()};
-            rejected = message.find("book-v2.pbrt") != std::string::npos &&
+            rejected = message.find("book.pbrt") != std::string::npos &&
                        message.find("missing_texture") != std::string::npos;
         }
         expect(rejected);
@@ -584,7 +591,7 @@ static auto test_book_import_registration = []
 
     "reject_dynamic_scale_texture"_test = []
     {
-        auto parsed = PbrtParser::parse("scene/pbrt-book/book-v2.pbrt");
+        auto parsed = parse_importable_book();
         parsed.textures[4u].scale = "book_cover";
         auto rejected = false;
         try
@@ -594,7 +601,7 @@ static auto test_book_import_registration = []
         catch (const std::runtime_error& error)
         {
             auto message = std::string{error.what()};
-            rejected = message.find("book-v2.pbrt") != std::string::npos &&
+            rejected = message.find("book.pbrt") != std::string::npos &&
                        message.find("float constant") != std::string::npos &&
                        message.find("dynamic multiplication") != std::string::npos;
         }
@@ -603,7 +610,7 @@ static auto test_book_import_registration = []
 
     "reject_unknown_scale_texture"_test = []
     {
-        auto parsed = PbrtParser::parse("scene/pbrt-book/book-v2.pbrt");
+        auto parsed = parse_importable_book();
         parsed.textures[4u].scale = "missing_scale";
         auto rejected = false;
         try
@@ -613,7 +620,7 @@ static auto test_book_import_registration = []
         catch (const std::runtime_error& error)
         {
             auto message = std::string{error.what()};
-            rejected = message.find("book-v2.pbrt") != std::string::npos &&
+            rejected = message.find("book.pbrt") != std::string::npos &&
                        message.find("missing_scale") != std::string::npos &&
                        message.find("unknown scale texture") != std::string::npos;
         }
@@ -622,7 +629,7 @@ static auto test_book_import_registration = []
 
     "reject_missing_image_texture_file"_test = []
     {
-        auto parsed = PbrtParser::parse("scene/pbrt-book/book-v2.pbrt");
+        auto parsed = parse_importable_book();
         parsed.textures[0u].filename = "texture/missing.png";
         auto rejected = false;
         try
@@ -632,7 +639,7 @@ static auto test_book_import_registration = []
         catch (const std::runtime_error& error)
         {
             auto message = std::string{error.what()};
-            rejected = message.find("book-v2.pbrt") != std::string::npos &&
+            rejected = message.find("book.pbrt") != std::string::npos &&
                        message.find("regular file") != std::string::npos;
         }
         expect(rejected);

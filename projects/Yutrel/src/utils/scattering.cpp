@@ -43,7 +43,7 @@ Float TrowbridgeReitzDistribution::D(Expr<float3> wh) const noexcept
     auto cos4_theta_h = sqr(cos2_theta(wh));
     auto e            = tan2_theta_h * (sqr(cos_phi(wh) / alpha().x) + sqr(sin_phi(wh) / alpha().y));
     auto d            = 1.0f / (pi * alpha().x * alpha().y * cos4_theta_h * sqr(1.0f + e));
-    return ite(isinf(tan2_theta_h) | cos4_theta_h < 1e-16f, 0.0f, d);
+    return ite(luisa::compute::isinf(tan2_theta_h) | cos4_theta_h < 1e-16f, 0.0f, d);
 }
 
 Float TrowbridgeReitzDistribution::Lambda(Expr<float3> w) const noexcept
@@ -51,7 +51,7 @@ Float TrowbridgeReitzDistribution::Lambda(Expr<float3> w) const noexcept
     auto tan2_theta_w = tan2_theta(w);
     auto alpha2       = sqr(cos_phi(w) * alpha().x) + sqr(sin_phi(w) * alpha().y);
     auto lambda       = 0.5f * (sqrt(1.0f + alpha2 * tan2_theta_w) - 1.0f);
-    return ite(isinf(tan2_theta_w), 0.0f, lambda);
+    return ite(luisa::compute::isinf(tan2_theta_w), 0.0f, lambda);
 }
 
 Float3 TrowbridgeReitzDistribution::sample_wh(Expr<float3> wo, Expr<float2> u) const noexcept

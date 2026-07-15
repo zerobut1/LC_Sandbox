@@ -158,10 +158,10 @@ static auto test_book_parse_registration = []
             {"sobol_sampler_bad_randomization.pbrt", "randomization", "fastowen"}));
     };
 
-    "parse_book_v2_ply_filenames"_test = []
+    "parse_book_ply_filenames"_test = []
     {
-        auto scene = PbrtParser::parse("scene/pbrt-book/book-v2.pbrt");
-        expect(scene.sampler.type == SamplerDesc::Type::Independent);
+        auto scene = PbrtParser::parse("scene/pbrt-book/book.pbrt");
+        expect(scene.sampler.type == SamplerDesc::Type::Halton);
         expect(scene.textures.size() == 5u);
         expect(scene.textures[0u].name == "book_cover");
         expect(scene.textures[0u].value_type == TextureDesc::ValueType::Spectrum);

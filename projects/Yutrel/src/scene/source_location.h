@@ -24,7 +24,7 @@ struct SpecMeta
 
 [[nodiscard]] inline luisa::string format_source_location(const SourceLocation& location)
 {
-    auto file = location.file.empty() ? luisa::string{"<unknown>"} : luisa::string{location.file.string()};
+    auto file = location.file.empty() ? luisa::string{"<unknown>"} : luisa::string{location.file.generic_string()};
     return luisa::format("{}:{}:{}", file, location.line, location.column);
 }
 

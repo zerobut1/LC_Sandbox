@@ -1,4 +1,4 @@
-Integrator "volpath"
+Integrator "path"
     "integer maxdepth" [ 65 ]
 Transform [ 0.435523 -4.21474e-8 -0.900177 -0 -0 1 -4.68212e-8 -0 -0.900177 -2.03917e-8 -0.435524 -0 -0.711083 -1.65163 7.33425 1  ]
 Sampler "sobol"
@@ -7,7 +7,7 @@ PixelFilter "triangle"
     "float xradius" [ 1 ]
     "float yradius" [ 1 ]
 Film "rgb"
-    "string filename" [ "staircase2.png" ]
+    "string filename" [ "staircase2.exr" ]
     "integer yresolution" [ 1024 ]
     "integer xresolution" [ 1024 ]
 Camera "perspective"

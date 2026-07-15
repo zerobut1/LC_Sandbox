@@ -1,9 +1,9 @@
 Integrator "path"
-    "integer maxdepth" [ 10 ]
+    "integer maxdepth" [ 65 ]
 Transform [ 1 -0 -0 -0 -0 1 -0 -0 -0 -0 -1 -0 -0 -1 6.8 1  ]
-Sampler "independent"
-    "integer pixelsamples" [ 4096 ]
-PixelFilter "gaussian"
+Sampler "sobol"
+    "integer pixelsamples" [ 64 ]
+PixelFilter "triangle"
     "float xradius" [ 1 ]
     "float yradius" [ 1 ]
 Film "rgb"

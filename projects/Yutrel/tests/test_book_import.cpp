@@ -7,6 +7,7 @@
 #include "environments/pbrt_equal_area.h"
 #include "pbrt/pbrt_importer.h"
 #include "pbrt/pbrt_parser.h"
+#include "samplers/sobol.h"
 #include "shapes/mesh.h"
 #include "shapes/sphere.h"
 #include "textures/checker_board.h"
@@ -82,6 +83,36 @@ static auto test_book_import_registration = []
             expect(is_near(default_camera->shutter_span().x, 0.0f));
             expect(is_near(default_camera->shutter_span().y, 1.0f));
         }
+    };
+
+    "import_sobol_sampler"_test = []
+    {
+        auto parsed = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        parsed.sampler.type = SamplerDesc::Type::Sobol;
+        parsed.sampler.pixel_samples = 32u;
+        parsed.sampler.seed = 42u;
+        auto spec   = PbrtImporter::import(std::move(parsed));
+        auto&& sampler = static_cast<const SobolSamplerSpec&>(
+            spec.samplers().spec(spec.render().sampler));
+        expect(sampler.spp() == 32u);
+        expect(sampler.seed() == 42u);
+        expect(!sampler.validate().has_value());
+    };
+
+    "reject_halton_sampler"_test = []
+    {
+        auto parsed = PbrtParser::parse("tests/scenes/sobol_sampler_default.pbrt");
+        parsed.sampler.type = SamplerDesc::Type::Halton;
+        auto rejected = false;
+        try
+        {
+            (void)PbrtImporter::import(std::move(parsed));
+        }
+        catch (const std::runtime_error& error)
+        {
+            rejected = std::string{error.what()}.find("halton") != std::string::npos;
+        }
+        expect(rejected);
     };
 
     "reject_invalid_pbrt_exposure"_test = []

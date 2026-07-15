@@ -11,8 +11,9 @@ IndependentSampler::Instance::Instance(const Renderer& renderer, const Independe
 {
 }
 
-void IndependentSampler::Instance::reset(CommandBuffer& command_buffer, uint state_count) noexcept
+void IndependentSampler::Instance::reset(CommandBuffer& command_buffer, uint2 resolution, uint state_count) noexcept
 {
+    static_cast<void>(resolution);
     if (!_states || state_count > _states.size())
     {
         _states = renderer().device().create_buffer<uint>(next_pow2(state_count));

@@ -1,0 +1,11 @@
+Sampler "sobol"
+    "integer pixelsamples" [ 32 ]
+    "integer seed" [ 42 ]
+    "string randomization" [ "fastowen" ]
+Film "rgb"
+    "string filename" [ "sobol-test.exr" ]
+    "integer xresolution" [ 4 ]
+    "integer yresolution" [ 3 ]
+Camera "perspective"
+
+WorldBegin

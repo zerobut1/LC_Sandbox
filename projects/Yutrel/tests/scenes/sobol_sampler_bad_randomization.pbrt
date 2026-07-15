@@ -1,0 +1,4 @@
+Sampler "sobol"
+    "string randomization" [ "owen" ]
+
+WorldBegin

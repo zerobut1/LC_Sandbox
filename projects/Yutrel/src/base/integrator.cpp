@@ -86,7 +86,7 @@ void PathIntegrator::Instance::render_interactive(Stream& stream)
     auto resolution = camera->film()->base()->resolution();
 
     camera->film()->prepare(command_buffer, true);
-    sampler()->reset(command_buffer, resolution.x * resolution.y);
+    sampler()->reset(command_buffer, resolution, resolution.x * resolution.y);
     command_buffer << synchronize();
 
     FpsCameraController controller{camera->transform(), camera->base()->up(), FpsCameraController::Config{}};
@@ -117,7 +117,7 @@ void PathIntegrator::Instance::render_interactive(Stream& stream)
             auto c2w = controller.camera_to_world();
             camera->set_transform(command_buffer, c2w);
             camera->film()->prepare(command_buffer, true);
-            sampler()->reset(command_buffer, resolution.x * resolution.y);
+            sampler()->reset(command_buffer, resolution, resolution.x * resolution.y);
             global_sample_index = 0u;
             command_buffer << synchronize();
         }
@@ -136,7 +136,7 @@ void PathIntegrator::Instance::render_one_camera(CommandBuffer& command_buffer, 
     auto spp        = sampler()->base()->spp();
     auto resolution = camera->film()->base()->resolution();
 
-    sampler()->reset(command_buffer, resolution.x * resolution.y);
+    sampler()->reset(command_buffer, resolution, resolution.x * resolution.y);
     command_buffer << synchronize();
 
     LUISA_INFO(
@@ -213,7 +213,7 @@ Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> f
 {
     sampler()->start(pixel_id, frame_index);
 
-    auto u_filter = sampler()->generate_2d();
+    auto u_filter = sampler()->generate_pixel_2d();
     auto u_lens   = camera->base()->requires_lens_sampling() ? sampler()->generate_2d() : make_float2(0.5f);
 
     auto [camera_ray, _, camera_weight] = camera->generate_ray(pixel_id, time, u_filter, u_lens);

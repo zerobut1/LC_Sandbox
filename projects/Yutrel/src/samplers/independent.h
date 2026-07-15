@@ -20,7 +20,7 @@ public:
     public:
         Instance(const Renderer& renderer, const IndependentSampler* sampler) noexcept;
 
-        void reset(CommandBuffer& command_buffer, uint state_count) noexcept override;
+        void reset(CommandBuffer& command_buffer, uint2 resolution, uint state_count) noexcept override;
         void start(UInt2 pixel, UInt index) noexcept override;
         [[nodiscard]] Float generate_1d() noexcept override;
         [[nodiscard]] Float2 generate_2d() noexcept override;

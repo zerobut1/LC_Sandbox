@@ -135,6 +135,29 @@ static auto test_book_parse_registration = []
         expect(is_near(defaults.camera.shutter_close, 1.0f));
     };
 
+    "parse_sobol_sampler"_test = []
+    {
+        auto scene = PbrtParser::parse("tests/scenes/sobol_sampler.pbrt");
+        expect(scene.sampler.type == SamplerDesc::Type::Sobol);
+        expect(scene.sampler.pixel_samples == 32u);
+        expect(scene.sampler.seed == 42u);
+
+        auto defaults = PbrtParser::parse("tests/scenes/sobol_sampler_default.pbrt");
+        expect(defaults.sampler.type == SamplerDesc::Type::Sobol);
+        expect(defaults.sampler.pixel_samples == 16u);
+        expect(defaults.sampler.seed == 0u);
+    };
+
+    "reject_invalid_sobol_sampler"_test = []
+    {
+        expect(parse_error_contains(
+            "tests/scenes/sobol_sampler_zero_spp.pbrt",
+            {"sobol_sampler_zero_spp.pbrt", "pixelsamples", "greater than zero"}));
+        expect(parse_error_contains(
+            "tests/scenes/sobol_sampler_bad_randomization.pbrt",
+            {"sobol_sampler_bad_randomization.pbrt", "randomization", "fastowen"}));
+    };
+
     "parse_book_v2_ply_filenames"_test = []
     {
         auto scene = PbrtParser::parse("scene/pbrt-book/book-v2.pbrt");

@@ -1,0 +1,4 @@
+Sampler "sobol"
+    "integer pixelsamples" [ 0 ]
+
+WorldBegin

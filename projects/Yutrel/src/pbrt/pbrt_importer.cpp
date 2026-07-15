@@ -18,6 +18,7 @@
 #include "environments/pbrt_equal_area.h"
 #include "lights/diffuse.h"
 #include "samplers/independent.h"
+#include "samplers/sobol.h"
 #include "scene/scene_spec_builder.h"
 #include "shapes/inline_mesh.h"
 #include "shapes/mesh.h"
@@ -206,7 +207,7 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
     {
         fail("Unsupported PBRT integrator type.");
     }
-    if (scene.sampler.type != SamplerDesc::Type::Independent)
+    if (scene.sampler.type == SamplerDesc::Type::Halton)
     {
         fail(luisa::format("PBRT Importer does not implement sampler 'halton' at {}.", format_source_location(scene.sampler.source)));
     }
@@ -558,8 +559,20 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         }
         fail("Unsupported PBRT pixel filter.");
     }();
-    auto spectrum   = builder.add_spectrum<HeroWavelengthSpectrumSpec>(SpecMeta{.name = "pbrt_spectrum", .source = SourceLocation{scene.source_path}});
-    auto sampler    = builder.add_sampler<IndependentSamplerSpec>(SpecMeta{.name = "pbrt_sampler", .source = scene.sampler.source}, scene.sampler.pixel_samples, 20120712u);
+    auto spectrum = builder.add_spectrum<HeroWavelengthSpectrumSpec>(SpecMeta{.name = "pbrt_spectrum", .source = SourceLocation{scene.source_path}});
+    auto sampler  = [&]() -> SamplerRef
+    {
+        switch (scene.sampler.type)
+        {
+        case SamplerDesc::Type::Independent:
+            return builder.add_sampler<IndependentSamplerSpec>(SpecMeta{.name = "pbrt_sampler", .source = scene.sampler.source}, scene.sampler.pixel_samples, 20120712u);
+        case SamplerDesc::Type::Sobol:
+            return builder.add_sampler<SobolSamplerSpec>(SpecMeta{.name = "pbrt_sampler", .source = scene.sampler.source}, scene.sampler.pixel_samples, scene.sampler.seed);
+        case SamplerDesc::Type::Halton:
+            break;
+        }
+        fail("Unsupported PBRT sampler type.");
+    }();
     auto integrator = builder.add_integrator<PathIntegratorSpec>(SpecMeta{.name = "pbrt_integrator", .source = scene.integrator.source}, scene.integrator.max_depth, 0u, 0.95f);
     builder.set_render(RenderSpec{
         .spectrum   = spectrum,

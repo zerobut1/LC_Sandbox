@@ -815,14 +815,37 @@ private:
         {
             m_desc.sampler.type = SamplerDesc::Type::Halton;
         }
+        else if (type == "sobol")
+        {
+            m_desc.sampler.type = SamplerDesc::Type::Sobol;
+        }
         else
         {
             fail(command, luisa::format("unknown Sampler '{}'", type));
         }
-        auto params                  = parse_parameters();
-        m_desc.sampler.source        = command.loc;
-        m_desc.sampler.pixel_samples = one_uint(params, "pixelsamples", command, 1u);
-        m_desc.sampler.parameters    = std::move(params);
+        auto params           = parse_parameters();
+        m_desc.sampler.source = command.loc;
+        auto default_spp      = m_desc.sampler.type == SamplerDesc::Type::Sobol ? 16u : 1u;
+        m_desc.sampler.pixel_samples = one_uint(params, "pixelsamples", command, default_spp);
+        if (m_desc.sampler.type == SamplerDesc::Type::Sobol &&
+            m_desc.sampler.pixel_samples == 0u)
+        {
+            auto parameter = find_param(params, "integer", "pixelsamples");
+            fail(parameter == nullptr ? command.loc : parameter->source,
+                 "'integer pixelsamples' must be greater than zero");
+        }
+        if (m_desc.sampler.type == SamplerDesc::Type::Sobol)
+        {
+            m_desc.sampler.seed = one_uint(params, "seed", command, 0u);
+            auto randomization  = one_string(params, "randomization", command, "fastowen");
+            if (randomization != "fastowen")
+            {
+                auto parameter = find_param(params, "string", "randomization");
+                fail(parameter == nullptr ? command.loc : parameter->source,
+                     luisa::format("unsupported Sobol randomization '{}'; expected 'fastowen'", randomization));
+            }
+        }
+        m_desc.sampler.parameters = std::move(params);
     }
 
     void parse_filter(const Token& command)

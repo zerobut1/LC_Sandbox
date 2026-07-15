@@ -81,9 +81,11 @@ struct SamplerDesc
     {
         Independent,
         Halton,
+        Sobol,
     };
     Type type{Type::Independent};
     uint pixel_samples{1u};
+    uint seed{};
     luisa::vector<RawParameter> parameters;
 };
 

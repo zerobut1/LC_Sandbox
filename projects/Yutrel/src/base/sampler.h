@@ -40,10 +40,11 @@ public:
             return static_cast<const T*>(_sampler);
         }
 
-        virtual void reset(CommandBuffer& command_buffer, uint state_count) noexcept = 0;
-        virtual void start(UInt2 pixel, UInt index) noexcept                         = 0;
-        [[nodiscard]] virtual Float generate_1d() noexcept                           = 0;
-        [[nodiscard]] virtual Float2 generate_2d() noexcept                          = 0;
+        virtual void reset(CommandBuffer& command_buffer, uint2 resolution, uint state_count) noexcept = 0;
+        virtual void start(UInt2 pixel, UInt index) noexcept                                           = 0;
+        [[nodiscard]] virtual Float generate_1d() noexcept                                             = 0;
+        [[nodiscard]] virtual Float2 generate_2d() noexcept                                            = 0;
+        [[nodiscard]] virtual Float2 generate_pixel_2d() noexcept { return generate_2d(); }
     };
 
 private:

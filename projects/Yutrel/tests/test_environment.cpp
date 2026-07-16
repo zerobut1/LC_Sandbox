@@ -36,8 +36,10 @@ void write_pfm(const std::filesystem::path& path, const char* magic,
                luisa::span<const float> values)
 {
     std::ofstream stream{path, std::ios::binary};
-    stream << magic << '\n' << width << ' ' << height << '\n' << scale << '\n';
-    auto file_little_endian = scale < 0.0f;
+    stream << magic << '\n'
+           << width << ' ' << height << '\n'
+           << scale << '\n';
+    auto file_little_endian           = scale < 0.0f;
     constexpr auto host_little_endian = std::endian::native == std::endian::little;
     for (auto value : values)
     {
@@ -70,10 +72,13 @@ void write_pfm(const std::filesystem::path& path, const char* magic,
     }
     std::array values{1.0f, 2.0f, 3.0f, 4.0f};
     auto [aliases, pdf] = create_alias_table(values);
-    auto sum = 0.0f;
+    auto sum            = 0.0f;
     for (auto p : pdf)
     {
-        if (!std::isfinite(p) || p < 0.0f) { return false; }
+        if (!std::isfinite(p) || p < 0.0f)
+        {
+            return false;
+        }
         sum += p;
     }
     return aliases.size() == values.size() && nearly_equal(sum, 1.0f);
@@ -82,34 +87,44 @@ void write_pfm(const std::filesystem::path& path, const char* magic,
 [[nodiscard]] bool test_pfm_loading()
 {
     auto directory = std::filesystem::temp_directory_path();
-    auto rgb_path = directory / "yutrel_environment_rgb.pfm";
+    auto rgb_path  = directory / "yutrel_environment_rgb.pfm";
     auto gray_path = directory / "yutrel_environment_gray.pfm";
 
     // PFM scanlines are stored bottom-up. The file values below contain the
     // bottom row first and the top row second.
     std::array rgb_values{
-        10.0f, 11.0f, 12.0f, 20.0f, 21.0f, 22.0f,
-        1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f,
+        10.0f,
+        11.0f,
+        12.0f,
+        20.0f,
+        21.0f,
+        22.0f,
+        1.0f,
+        2.0f,
+        3.0f,
+        4.0f,
+        5.0f,
+        6.0f,
     };
     write_pfm(rgb_path, "PF", 2u, 2u, -2.0f, rgb_values);
-    auto rgb = LoadedImage::load(rgb_path);
+    auto rgb        = LoadedImage::load(rgb_path);
     auto rgb_pixels = static_cast<const float*>(rgb.pixels());
-    auto rgb_valid = rgb.size().x == 2u && rgb.size().y == 2u &&
-                     rgb.pixel_storage() == PixelStorage::FLOAT4 &&
-                     nearly_equal(rgb_pixels[0u], 2.0f) &&
-                     nearly_equal(rgb_pixels[1u], 4.0f) &&
-                     nearly_equal(rgb_pixels[2u], 6.0f) &&
-                     nearly_equal(rgb_pixels[3u], 1.0f) &&
-                     nearly_equal(rgb_pixels[8u], 20.0f);
+    auto rgb_valid  = rgb.size().x == 2u && rgb.size().y == 2u &&
+                      rgb.pixel_storage() == PixelStorage::FLOAT4 &&
+                      nearly_equal(rgb_pixels[0u], 2.0f) &&
+                      nearly_equal(rgb_pixels[1u], 4.0f) &&
+                      nearly_equal(rgb_pixels[2u], 6.0f) &&
+                      nearly_equal(rgb_pixels[3u], 1.0f) &&
+                      nearly_equal(rgb_pixels[8u], 20.0f);
 
     std::array gray_values{8.0f, 4.0f};
     write_pfm(gray_path, "Pf", 1u, 2u, 0.5f, gray_values);
-    auto gray = LoadedImage::load(gray_path);
+    auto gray        = LoadedImage::load(gray_path);
     auto gray_pixels = static_cast<const float*>(gray.pixels());
-    auto gray_valid = gray.size().x == 1u && gray.size().y == 2u &&
-                      gray.pixel_storage() == PixelStorage::FLOAT1 &&
-                      nearly_equal(gray_pixels[0u], 2.0f) &&
-                      nearly_equal(gray_pixels[1u], 4.0f);
+    auto gray_valid  = gray.size().x == 1u && gray.size().y == 2u &&
+                       gray.pixel_storage() == PixelStorage::FLOAT1 &&
+                       nearly_equal(gray_pixels[0u], 2.0f) &&
+                       nearly_equal(gray_pixels[1u], 4.0f);
 
     std::error_code error;
     std::filesystem::remove(rgb_path, error);
@@ -120,17 +135,20 @@ void write_pfm(const std::filesystem::path& path, const char* magic,
 [[nodiscard]] bool test_equal_area_mapping(Device& device, Stream& stream)
 {
     std::array directions{
-        make_float3(1.0f, 0.0f, 0.0f), make_float3(-1.0f, 0.0f, 0.0f),
-        make_float3(0.0f, 1.0f, 0.0f), make_float3(0.0f, -1.0f, 0.0f),
-        make_float3(0.0f, 0.0f, 1.0f), make_float3(0.0f, 0.0f, -1.0f),
+        make_float3(1.0f, 0.0f, 0.0f),
+        make_float3(-1.0f, 0.0f, 0.0f),
+        make_float3(0.0f, 1.0f, 0.0f),
+        make_float3(0.0f, -1.0f, 0.0f),
+        make_float3(0.0f, 0.0f, 1.0f),
+        make_float3(0.0f, 0.0f, -1.0f),
     };
-    auto direction_input = device.create_buffer<float3>(directions.size());
-    auto direction_output = device.create_buffer<float4>(directions.size());
+    auto direction_input      = device.create_buffer<float3>(directions.size());
+    auto direction_output     = device.create_buffer<float4>(directions.size());
     Kernel1D direction_kernel = [](BufferFloat3 input, BufferFloat4 output) noexcept
     {
-        auto i = dispatch_id().x;
+        auto i         = dispatch_id().x;
         auto direction = input.read(i);
-        auto uv = equal_area_sphere_to_square(direction);
+        auto uv        = equal_area_sphere_to_square(direction);
         auto recovered = equal_area_square_to_sphere(uv);
         output.write(i, make_float4(recovered, length(recovered)));
     };
@@ -159,11 +177,11 @@ void write_pfm(const std::filesystem::path& path, const char* magic,
             0.02f + 0.96f * std::fmod(i * 0.61803398875f, 1.0f),
             0.02f + 0.96f * std::fmod(i * 0.41421356237f, 1.0f));
     }
-    auto uv_input = device.create_buffer<float2>(uvs.size());
-    auto uv_output = device.create_buffer<float2>(uvs.size());
+    auto uv_input      = device.create_buffer<float2>(uvs.size());
+    auto uv_output     = device.create_buffer<float2>(uvs.size());
     Kernel1D uv_kernel = [](BufferFloat2 input, BufferFloat2 output) noexcept
     {
-        auto i = dispatch_id().x;
+        auto i  = dispatch_id().x;
         auto uv = input.read(i);
         output.write(i, equal_area_sphere_to_square(equal_area_square_to_sphere(uv)));
     };
@@ -184,11 +202,11 @@ void write_pfm(const std::filesystem::path& path, const char* magic,
     return true;
 }
 
-[[nodiscard]] luisa::unique_ptr<Scene> load_teapot_scene()
+[[nodiscard]] luisa::unique_ptr<Scene> load_infinite_diffuse_scene()
 {
-    auto parsed = PbrtParser::parse("scene/teapot/scene-yutrel.pbrt");
-    auto spec = PbrtImporter::import(std::move(parsed));
-    auto scene = Scene::create(spec);
+    auto parsed      = PbrtParser::parse("tests/scenes/infinite_diffuse.pbrt");
+    auto spec        = PbrtImporter::import(std::move(parsed));
+    auto scene       = Scene::create(spec);
     auto environment = dynamic_cast<const PBRTEqualAreaEnvironment*>(scene->environment());
     if (environment == nullptr || environment->emission()->resolution().x != 1024u ||
         environment->emission()->resolution().y != 1024u ||
@@ -199,7 +217,7 @@ void write_pfm(const std::filesystem::path& path, const char* magic,
     return scene;
 }
 
-[[nodiscard]] bool test_teapot_environment(
+[[nodiscard]] bool test_infinite_environment(
     Device& device, Stream& stream, const Scene& scene)
 {
     auto renderer = Renderer::create(device, stream, scene);
@@ -208,17 +226,13 @@ void write_pfm(const std::filesystem::path& path, const char* magic,
         return false;
     }
 
-    auto output = device.create_buffer<float4>(1u);
+    auto output     = device.create_buffer<float4>(1u);
     Kernel1D kernel = [&renderer](BufferFloat4 result) noexcept
     {
-        auto swl = renderer->spectrum()->sample(0.5f);
-        auto sample = renderer->environment()->sample(swl, 0.0f, make_float2(0.37f, 0.73f));
+        auto swl       = renderer->spectrum()->sample(0.5f);
+        auto sample    = renderer->environment()->sample(swl, 0.0f, make_float2(0.37f, 0.73f));
         auto evaluated = renderer->environment()->evaluate(sample.wi, swl, 0.0f);
-        result.write(0u, make_float4(
-            sample.eval.pdf,
-            evaluated.pdf,
-            length(sample.wi),
-            sample.eval.L[0u]));
+        result.write(0u, make_float4(sample.eval.pdf, evaluated.pdf, length(sample.wi), sample.eval.L[0u]));
     };
     auto shader = device.compile(kernel);
     std::array<float4, 1u> result{};
@@ -237,15 +251,30 @@ void write_pfm(const std::filesystem::path& path, const char* magic,
 
 int main(int argc, char* argv[])
 {
-    if (!test_alias_tables() || !test_pfm_loading()) { return 2; }
-    auto teapot_scene = load_teapot_scene();
-    if (teapot_scene == nullptr) { return 3; }
-    if (argc < 2) { return 0; }
+    if (!test_alias_tables() || !test_pfm_loading())
+    {
+        return 2;
+    }
+    auto scene = load_infinite_diffuse_scene();
+    if (scene == nullptr)
+    {
+        return 3;
+    }
+    if (argc < 2)
+    {
+        return 0;
+    }
 
     Context context{argv[0]};
     auto device = context.create_device(argv[1]);
     auto stream = device.create_stream();
-    if (!test_equal_area_mapping(device, stream)) { return 4; }
-    if (!test_teapot_environment(device, stream, *teapot_scene)) { return 5; }
+    if (!test_equal_area_mapping(device, stream))
+    {
+        return 4;
+    }
+    if (!test_infinite_environment(device, stream, *scene))
+    {
+        return 5;
+    }
     return 0;
 }

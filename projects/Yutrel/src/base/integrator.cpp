@@ -107,7 +107,12 @@ void PathIntegrator::Instance::render(Stream& stream, bool enable_display)
                 }
             }
         }
+        Clock clock_save;
         output_saved = save_image(output_path, reinterpret_cast<const float*>(pixels.data()), resolution);
+        if (output_saved)
+        {
+            LUISA_INFO("Saved render output '{}' in {} ms.", output_path.string(), clock_save.toc());
+        }
     }
     camera->film()->release();
 
@@ -116,9 +121,12 @@ void PathIntegrator::Instance::render(Stream& stream, bool enable_display)
     {
         LUISA_WARNING(
             "Non-finite render values: path NaN={}, path Inf={}, film NaN={}, film Inf={}, output NaN={}, output Inf={}.",
-            diagnostics.path_nan, diagnostics.path_inf,
-            diagnostics.film_nan, diagnostics.film_inf,
-            host_nan_count, host_inf_count);
+            diagnostics.path_nan,
+            diagnostics.path_inf,
+            diagnostics.film_nan,
+            diagnostics.film_inf,
+            host_nan_count,
+            host_inf_count);
     }
     if (!output_saved)
     {
@@ -127,8 +135,10 @@ void PathIntegrator::Instance::render(Stream& stream, bool enable_display)
     if (renderer().options().correctness && invalid_count != 0u)
     {
         throw std::runtime_error{luisa::format(
-            "Correctness render failed with {} non-finite value(s). Debug output was saved to '{}'.",
-            invalid_count, output_path.string()).c_str()};
+                                     "Correctness render failed with {} non-finite value(s). Debug output was saved to '{}'.",
+                                     invalid_count,
+                                     output_path.string())
+                                     .c_str()};
     }
 }
 
@@ -138,6 +148,13 @@ void PathIntegrator::Instance::render_interactive(Stream& stream)
 
     auto camera     = renderer().camera();
     auto resolution = camera->film()->base()->resolution();
+
+    LUISA_INFO(
+        "Interactive rendering at {}x{}, sampler_spp={}, seed={}.",
+        resolution.x,
+        resolution.y,
+        sampler()->base()->spp(),
+        sampler()->base()->seed());
 
     renderer().reset_diagnostics(command_buffer);
     camera->film()->prepare(command_buffer, true);
@@ -153,9 +170,14 @@ void PathIntegrator::Instance::render_interactive(Stream& stream)
         Var L        = Li(camera, frame_index, pixel_id, time);
         camera->film()->accumulate_single_writer(pixel_id, L, 1.0f);
     };
+    LUISA_INFO("Start compiling interactive Integrator shader.");
+    Clock clock_compile;
     auto render = renderer().device().compile(render_kernel);
+    LUISA_INFO("Interactive Integrator shader compiled in {} ms.", clock_compile.toc());
 
     uint global_sample_index = 0u;
+    LUISA_INFO("Interactive rendering started.");
+    Clock clock_render;
 
     while (true)
     {
@@ -184,6 +206,10 @@ void PathIntegrator::Instance::render_interactive(Stream& stream)
 
     command_buffer << synchronize();
     camera->film()->release();
+    LUISA_INFO(
+        "Interactive rendering finished after {} samples in {} ms.",
+        global_sample_index,
+        clock_render.toc());
 }
 
 void PathIntegrator::Instance::render_one_camera(CommandBuffer& command_buffer, Camera::Instance* camera)
@@ -195,7 +221,8 @@ void PathIntegrator::Instance::render_one_camera(CommandBuffer& command_buffer, 
     command_buffer << synchronize();
 
     LUISA_INFO(
-        "Rendering of resolution {}x{} at {}spp.",
+        "Rendering to '{}' at {}x{} and {} spp.",
+        camera->film()->base()->filename().string(),
         resolution.x,
         resolution.y,
         spp);
@@ -208,10 +235,10 @@ void PathIntegrator::Instance::render_one_camera(CommandBuffer& command_buffer, 
         camera->film()->accumulate_single_writer(pixel_id, L * shutter_weight, 1.0f);
     };
 
-    LUISA_INFO("Start compiling Integrator shader");
+    LUISA_INFO("Start compiling Integrator shader.");
     Clock clock_compile;
     auto render = renderer().device().compile(render_kernel);
-    LUISA_INFO("Integrator shader compile in {} ms.", clock_compile.toc());
+    LUISA_INFO("Integrator shader compiled in {} ms.", clock_compile.toc());
     command_buffer << synchronize();
 
     auto shutter_samples = camera->base()->shutter_samples(spp, sampler()->base()->seed());
@@ -292,7 +319,7 @@ Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> f
         {
             if (renderer().environment() != nullptr)
             {
-                auto eval = light_sampler()->evaluate_miss(ray->direction(), swl, time);
+                auto eval   = light_sampler()->evaluate_miss(ray->direction(), swl, time);
                 auto weight = ite(
                     depth == 0u,
                     1.0f,

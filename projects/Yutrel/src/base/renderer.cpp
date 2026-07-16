@@ -44,6 +44,7 @@ uint Renderer::register_light(CommandBuffer& command_buffer, const Light* light)
 luisa::unique_ptr<Renderer> Renderer::create(Device& device, Stream& stream, const Scene& scene,
                                              RendererOptions options) noexcept
 {
+    Clock clock;
     auto renderer = luisa::make_unique<Renderer>(device, options);
 
     CommandBuffer command_buffer{stream};
@@ -76,6 +77,15 @@ luisa::unique_ptr<Renderer> Renderer::create(Device& device, Stream& stream, con
     update_bindless_if_dirty();
 
     command_buffer << synchronize();
+
+    LUISA_INFO(
+        "Created renderer in {} ms with {} shape instances, {} area-light instances, {} surface implementations, {} light implementations, environment={}.",
+        clock.toc(),
+        renderer->m_geometry->instances().size(),
+        renderer->m_geometry->light_instances().size(),
+        renderer->m_surfaces.size(),
+        renderer->m_lights.size(),
+        renderer->m_environment == nullptr ? "none" : "infinite");
 
     return renderer;
 }

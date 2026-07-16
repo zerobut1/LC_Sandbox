@@ -14,12 +14,19 @@ Application::Application(ApplicationOptions options, const SceneSpec& scene)
     m_interactive = options.interactive;
     m_headless    = options.headless;
 
+    auto mode = m_interactive ? "interactive" : m_headless ? "offline-headless"
+                                                           : "offline-display";
+    LUISA_INFO(
+        "Starting Yutrel: backend={}, mode={}, correctness={}.",
+        options.backend,
+        mode,
+        options.correctness);
+
     m_device = m_context.create_device(options.backend);
     m_stream = m_device.create_stream(StreamTag::GRAPHICS);
 
     m_scene    = Scene::create(scene);
-    m_renderer = Renderer::create(m_device, m_stream, *m_scene,
-                                  RendererOptions{.correctness = options.correctness});
+    m_renderer = Renderer::create(m_device, m_stream, *m_scene, RendererOptions{.correctness = options.correctness});
 }
 
 Application::~Application() noexcept = default;
@@ -35,6 +42,7 @@ void Application::run()
         m_renderer->render(m_stream, !m_headless);
     }
     m_stream << synchronize();
+    LUISA_INFO("Yutrel application finished.");
 }
 
 } // namespace Yutrel

@@ -44,9 +44,11 @@ private:
     uint _seed;
 
 public:
-    IndependentSamplerSpec(uint spp, uint seed = 20120712u) noexcept
+    IndependentSamplerSpec(uint spp, uint seed = 0u) noexcept
         : _spp{spp}, _seed{seed} {}
 
+    [[nodiscard]] uint spp() const noexcept { return _spp; }
+    [[nodiscard]] uint seed() const noexcept { return _seed; }
     [[nodiscard]] luisa::optional<luisa::string> validate() const noexcept override { return _spp == 0u ? spec_validation_error("Sampler SPP must be greater than zero.") : luisa::nullopt; }
     [[nodiscard]] const Sampler* build(SceneBuilder& builder) const noexcept override;
 };

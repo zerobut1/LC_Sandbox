@@ -7,6 +7,9 @@
 #include <sstream>
 #include <stdexcept>
 
+#include <luisa/core/clock.h>
+#include <luisa/core/logging.h>
+
 namespace Yutrel
 {
 namespace
@@ -711,14 +714,21 @@ private:
     {
         expect_options(command);
         auto type = expect_string("Integrator type");
-        if (type != "path")
+        if (type == "path")
+        {
+            m_desc.integrator.type = IntegratorDesc::Type::Path;
+        }
+        else if (type == "volpath")
+        {
+            m_desc.integrator.type = IntegratorDesc::Type::VolPath;
+        }
+        else
         {
             fail(command, luisa::format("unsupported Integrator '{}'", type));
         }
         auto params                  = parse_parameters();
         m_desc.integrator.source     = command.loc;
-        m_desc.integrator.type       = IntegratorDesc::Type::Path;
-        m_desc.integrator.max_depth  = one_uint(params, "maxdepth", command, 10u);
+        m_desc.integrator.max_depth  = one_uint(params, "maxdepth", command, 5u);
         m_desc.integrator.parameters = std::move(params);
     }
 
@@ -819,25 +829,36 @@ private:
         {
             m_desc.sampler.type = SamplerDesc::Type::Sobol;
         }
+        else if (type == "zsobol")
+        {
+            m_desc.sampler.type = SamplerDesc::Type::ZSobol;
+        }
         else
         {
             fail(command, luisa::format("unknown Sampler '{}'", type));
         }
-        auto params           = parse_parameters();
-        m_desc.sampler.source = command.loc;
-        auto default_spp      = m_desc.sampler.type == SamplerDesc::Type::Sobol ? 16u : 1u;
+        auto params                  = parse_parameters();
+        m_desc.sampler.source        = command.loc;
+        auto default_spp             = m_desc.sampler.type == SamplerDesc::Type::Independent ? 4u : 16u;
         m_desc.sampler.pixel_samples = one_uint(params, "pixelsamples", command, default_spp);
-        if (m_desc.sampler.type == SamplerDesc::Type::Sobol &&
+        if ((m_desc.sampler.type == SamplerDesc::Type::Sobol ||
+             m_desc.sampler.type == SamplerDesc::Type::ZSobol) &&
             m_desc.sampler.pixel_samples == 0u)
         {
             auto parameter = find_param(params, "integer", "pixelsamples");
             fail(parameter == nullptr ? command.loc : parameter->source,
                  "'integer pixelsamples' must be greater than zero");
         }
-        if (m_desc.sampler.type == SamplerDesc::Type::Sobol)
+        if (m_desc.sampler.type == SamplerDesc::Type::Independent ||
+            m_desc.sampler.type == SamplerDesc::Type::Sobol ||
+            m_desc.sampler.type == SamplerDesc::Type::ZSobol)
         {
             m_desc.sampler.seed = one_uint(params, "seed", command, 0u);
-            auto randomization  = one_string(params, "randomization", command, "fastowen");
+        }
+        if (m_desc.sampler.type == SamplerDesc::Type::Sobol ||
+            m_desc.sampler.type == SamplerDesc::Type::ZSobol)
+        {
+            auto randomization = one_string(params, "randomization", command, "fastowen");
             if (randomization != "fastowen")
             {
                 auto parameter = find_param(params, "string", "randomization");
@@ -866,8 +887,9 @@ private:
             fail(command, luisa::format("unsupported PixelFilter '{}'", type));
         }
         auto params              = parse_parameters();
-        m_desc.filter.radius     = make_float2(one_float(params, "xradius", command, 1.0f),
-                                               one_float(params, "yradius", command, 1.0f));
+        auto default_radius      = m_desc.filter.type == FilterDesc::Type::Triangle ? 2.0f : 1.5f;
+        m_desc.filter.radius     = make_float2(one_float(params, "xradius", command, default_radius),
+                                               one_float(params, "yradius", command, default_radius));
         m_desc.filter.parameters = std::move(params);
     }
 
@@ -882,10 +904,10 @@ private:
         auto params            = parse_parameters();
         m_desc.film.source     = command.loc;
         m_desc.film.type       = FilmDesc::Type::RGB;
-        m_desc.film.resolution = make_uint2(one_uint(params, "xresolution", command, 1024u),
-                                            one_uint(params, "yresolution", command, 1024u));
+        m_desc.film.resolution = make_uint2(one_uint(params, "xresolution", command, 1280u),
+                                            one_uint(params, "yresolution", command, 720u));
         m_desc.film.iso        = one_float(params, "iso", command, 100.0f);
-        auto filename          = one_string(params, "filename", command, {});
+        auto filename          = one_string(params, "filename", command, "pbrt.exr");
         if (!filename.empty())
         {
             m_desc.film.filename = std::filesystem::path{filename};
@@ -904,7 +926,7 @@ private:
         auto params                  = parse_parameters();
         m_desc.camera.source         = command.loc;
         m_desc.camera.type           = CameraDesc::Type::Perspective;
-        m_desc.camera.fov            = one_float(params, "fov", command, 45.0f);
+        m_desc.camera.fov            = one_float(params, "fov", command, 90.0f);
         m_desc.camera.shutter_open   = one_float(params, "shutteropen", command, 0.0f);
         m_desc.camera.shutter_close  = one_float(params, "shutterclose", command, 1.0f);
         m_desc.camera.pbrt_transform = m_current_transform;
@@ -926,9 +948,7 @@ private:
         const Token& command, MaterialDesc::Type material_type,
         luisa::vector<RawParameter> params)
     {
-        auto reflectance = material_type == MaterialDesc::Type::CoatedDiffuse
-                               ? make_float3(0.5f)
-                               : make_float3(0.0f);
+        auto reflectance         = make_float3(0.5f);
         auto reflectance_rgb     = find_param(params, "rgb", "reflectance");
         auto reflectance_texture = optional_texture(params, "reflectance");
         if (reflectance_rgb != nullptr && reflectance_texture)
@@ -1052,7 +1072,7 @@ private:
                 fail(command, "imagemap texture requires a non-empty 'string filename' parameter");
             }
             desc.filename = std::filesystem::path{filename};
-            auto filter = one_string(desc.parameters, "filter", command, "bilinear");
+            auto filter   = one_string(desc.parameters, "filter", command, "bilinear");
             if (filter == "point")
             {
                 desc.filter = TextureDesc::Filter::Point;
@@ -1086,7 +1106,7 @@ private:
             {
                 fail(command, "only float scale textures are currently supported");
             }
-            auto tex = optional_texture(desc.parameters, "tex");
+            auto tex   = optional_texture(desc.parameters, "tex");
             auto scale = optional_texture(desc.parameters, "scale");
             if (!tex || !scale)
             {
@@ -1118,14 +1138,15 @@ private:
             auto parse_input = [&](luisa::string_view input_name, float default_value)
             {
                 TextureInputDesc input;
-                auto texture = optional_texture(desc.parameters, input_name);
+                auto texture       = optional_texture(desc.parameters, input_name);
                 auto constant_type = desc.value_type == TextureDesc::ValueType::Float ? "float" : "rgb";
-                auto constant = find_param(desc.parameters, constant_type, input_name);
+                auto constant      = find_param(desc.parameters, constant_type, input_name);
                 if (texture && constant != nullptr)
                 {
                     fail(constant->source,
                          luisa::format("checkerboard '{}' cannot be specified as both texture and {}",
-                                       input_name, constant_type));
+                                       input_name,
+                                       constant_type));
                 }
                 if (texture)
                 {
@@ -1158,7 +1179,7 @@ private:
 
         for (auto i = 0u; i < desc.parameters.size(); i++)
         {
-            auto&& p = desc.parameters[i];
+            auto&& p       = desc.parameters[i];
             auto supported = false;
             if (desc.type == TextureDesc::Type::ImageMap)
             {
@@ -1175,13 +1196,13 @@ private:
             }
             else if (desc.type == TextureDesc::Type::Checkerboard)
             {
-                auto input = p.name == "tex1" || p.name == "tex2";
+                auto input      = p.name == "tex1" || p.name == "tex2";
                 auto input_type = p.type == "texture" ||
                                   (desc.value_type == TextureDesc::ValueType::Float ? p.type == "float" : p.type == "rgb");
-                supported = (input && input_type) ||
-                            (p.type == "float" && (p.name == "uscale" || p.name == "vscale")) ||
-                            (p.type == "integer" && p.name == "dimension") ||
-                            (p.type == "string" && p.name == "mapping");
+                supported       = (input && input_type) ||
+                                  (p.type == "float" && (p.name == "uscale" || p.name == "vscale")) ||
+                                  (p.type == "integer" && p.name == "dimension") ||
+                                  (p.type == "string" && p.name == "mapping");
             }
             if (!supported)
             {
@@ -1207,7 +1228,9 @@ private:
         if (desc.type == TextureDesc::Type::Checkerboard)
         {
             auto finite = [](float4 v) noexcept
-            { return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z) && std::isfinite(v.w); };
+            {
+                return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z) && std::isfinite(v.w);
+            };
             if ((!desc.tex1.texture && !finite(desc.tex1.constant)) ||
                 (!desc.tex2.texture && !finite(desc.tex2.constant)))
             {
@@ -1260,22 +1283,18 @@ private:
         auto params = parse_parameters();
         for (auto i = 0u; i < params.size(); i++)
         {
-            auto&& param = params[i];
+            auto&& param   = params[i];
             auto supported = (param.type == "string" && param.name == "filename") ||
                              (param.type == "float" && param.name == "scale");
             if (!supported)
             {
-                fail(param.source, luisa::format(
-                    "unsupported parameter '\"{} {}\"' for infinite LightSource",
-                    param.type, param.name));
+                fail(param.source, luisa::format("unsupported parameter '\"{} {}\"' for infinite LightSource", param.type, param.name));
             }
             for (auto j = 0u; j < i; j++)
             {
                 if (params[j].type == param.type && params[j].name == param.name)
                 {
-                    fail(param.source, luisa::format(
-                        "duplicate infinite LightSource parameter '\"{} {}\"'",
-                        param.type, param.name));
+                    fail(param.source, luisa::format("duplicate infinite LightSource parameter '\"{} {}\"'", param.type, param.name));
                 }
             }
         }
@@ -1292,11 +1311,11 @@ private:
                  "infinite LightSource scale must be finite and non-negative");
         }
         m_desc.infinite_light.emplace(InfiniteLightDesc{
-            .source = command.loc,
-            .filename = std::filesystem::path{std::move(filename)},
-            .scale = scale,
+            .source         = command.loc,
+            .filename       = std::filesystem::path{std::move(filename)},
+            .scale          = scale,
             .pbrt_transform = m_current_transform,
-            .parameters = std::move(params),
+            .parameters     = std::move(params),
         });
     }
 
@@ -1346,8 +1365,8 @@ private:
         };
         if (type == "sphere")
         {
-            shape.type = ShapeDesc::Type::Sphere;
-            auto radius_count = 0u;
+            shape.type             = ShapeDesc::Type::Sphere;
+            auto radius_count      = 0u;
             auto subdivision_count = 0u;
             for (auto&& param : params)
             {
@@ -1395,7 +1414,7 @@ private:
         }
         else if (type == "plymesh")
         {
-            shape.type = ShapeDesc::Type::PlyMesh;
+            shape.type                         = ShapeDesc::Type::PlyMesh;
             const RawParameter* filename_param = nullptr;
             for (auto&& param : params)
             {
@@ -1466,8 +1485,10 @@ private:
 
 PbrtScene PbrtParser::parse(const std::filesystem::path& path)
 {
+    Clock clock;
     auto source_path = std::filesystem::absolute(path);
-    auto source      = read_file(source_path);
+    LUISA_INFO("Loading PBRT scene '{}'.", source_path.string());
+    auto source = read_file(source_path);
     Tokenizer tokenizer{source_path, std::move(source)};
     PbrtScene desc{};
     desc.source_path       = source_path;
@@ -1477,7 +1498,9 @@ PbrtScene PbrtParser::parse(const std::filesystem::path& path)
     desc.sampler.source    = SourceLocation{source_path};
     desc.filter.source     = SourceLocation{source_path};
     Parser parser{std::move(desc), tokenizer.tokenize()};
-    return parser.parse();
+    auto scene = parser.parse();
+    LUISA_INFO("Parsed PBRT scene '{}' in {} ms.", source_path.string(), clock.toc());
+    return scene;
 }
 
 } // namespace Yutrel

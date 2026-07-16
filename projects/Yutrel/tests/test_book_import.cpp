@@ -7,21 +7,27 @@
 #include "environments/pbrt_equal_area.h"
 #include "pbrt/pbrt_importer.h"
 #include "pbrt/pbrt_parser.h"
+#include "samplers/independent.h"
 #include "samplers/sobol.h"
 #include "shapes/mesh.h"
 #include "shapes/sphere.h"
-#include "textures/checker_board.h"
-#include "textures/image.h"
-#include "textures/constant.h"
-#include "textures/scale.h"
 #include "surfaces/coated_diffuse.h"
+#include "surfaces/diffuse.h"
+#include "textures/checker_board.h"
+#include "textures/constant.h"
+#include "textures/image.h"
+#include "textures/scale.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <filesystem>
 #include <limits>
+#include <mutex>
 #include <stdexcept>
 #include <string>
+
+#include <luisa/core/logging.h>
 
 using namespace Yutrel;
 using namespace boost::ut;
@@ -43,9 +49,65 @@ namespace
 
 [[nodiscard]] PbrtScene parse_importable_book()
 {
-    auto parsed = PbrtParser::parse("scene/pbrt-book/book.pbrt");
-    parsed.sampler.type = SamplerDesc::Type::Independent;
+    auto parsed            = PbrtParser::parse("scene/pbrt-book/book.pbrt");
+    parsed.integrator.type = IntegratorDesc::Type::Path;
+    parsed.integrator.parameters.clear();
+    parsed.sampler.type  = SamplerDesc::Type::Independent;
+    parsed.sampler.seed  = 0u;
+    parsed.filter.type   = FilterDesc::Type::Triangle;
+    parsed.filter.radius = make_float2(2.0f);
+    parsed.filter.parameters.clear();
+
+    auto remove_parameter = [](luisa::vector<RawParameter>& parameters, luisa::string_view name)
+    {
+        parameters.erase(
+            std::remove_if(parameters.begin(), parameters.end(), [name](auto&& parameter) noexcept
+        {
+            return parameter.name == name;
+        }),
+            parameters.end());
+    };
+    remove_parameter(parsed.film.parameters, "sensor");
+    auto make_diffuse = [&](MaterialDesc& material, bool named)
+    {
+        material.type      = MaterialDesc::Type::Diffuse;
+        material.roughness = 0.0f;
+        material.parameters.erase(
+            std::remove_if(material.parameters.begin(), material.parameters.end(), [named](auto&& parameter) noexcept
+        {
+            return parameter.name != "reflectance" && !(named && parameter.name == "type");
+        }),
+            material.parameters.end());
+        if (named)
+        {
+            for (auto& parameter : material.parameters)
+            {
+                if (parameter.name == "type" && !parameter.values.empty())
+                {
+                    parameter.values.front().text = "diffuse";
+                }
+            }
+        }
+    };
+    for (auto& material : parsed.materials)
+    {
+        make_diffuse(material, false);
+    }
+    for (auto& [_, material] : parsed.named_materials)
+    {
+        make_diffuse(material, true);
+    }
     return parsed;
+}
+
+[[nodiscard]] RawParameter test_parameter(
+    luisa::string type, luisa::string name, uint line)
+{
+    return RawParameter{
+        .source = SourceLocation{"strict_case.pbrt", line, 1u},
+        .type   = std::move(type),
+        .name   = std::move(name),
+    };
 }
 
 static auto test_book_import_registration = []
@@ -61,11 +123,11 @@ static auto test_book_import_registration = []
 
     "import_film_exposure"_test = []
     {
-        auto parsed = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
-        parsed.film.iso = 200.0f;
-        parsed.camera.shutter_open = 0.25f;
+        auto parsed                 = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        parsed.film.iso             = 200.0f;
+        parsed.camera.shutter_open  = 0.25f;
         parsed.camera.shutter_close = 0.75f;
-        auto spec = PbrtImporter::import(std::move(parsed));
+        auto spec                   = PbrtImporter::import(std::move(parsed));
 
         auto film   = dynamic_cast<const RGBFilmSpec*>(&spec.films().spec(spec.render().film));
         auto camera = dynamic_cast<const PinholeCameraSpec*>(&spec.cameras().spec(spec.render().camera));
@@ -78,9 +140,9 @@ static auto test_book_import_registration = []
             expect(is_near(camera->shutter_span().y, 0.75f));
         }
 
-        auto default_parsed  = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
-        auto default_spec    = PbrtImporter::import(std::move(default_parsed));
-        auto default_film    = dynamic_cast<const RGBFilmSpec*>(&default_spec.films().spec(default_spec.render().film));
+        auto default_parsed = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        auto default_spec   = PbrtImporter::import(std::move(default_parsed));
+        auto default_film   = dynamic_cast<const RGBFilmSpec*>(&default_spec.films().spec(default_spec.render().film));
         auto default_camera = dynamic_cast<const PinholeCameraSpec*>(&default_spec.cameras().spec(default_spec.render().camera));
         expect(default_film != nullptr);
         expect(default_camera != nullptr);
@@ -94,23 +156,91 @@ static auto test_book_import_registration = []
 
     "import_sobol_sampler"_test = []
     {
-        auto parsed = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
-        parsed.sampler.type = SamplerDesc::Type::Sobol;
+        auto parsed                  = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        parsed.sampler.type          = SamplerDesc::Type::Sobol;
         parsed.sampler.pixel_samples = 32u;
-        parsed.sampler.seed = 42u;
-        auto spec   = PbrtImporter::import(std::move(parsed));
-        auto&& sampler = static_cast<const SobolSamplerSpec&>(
+        parsed.sampler.seed          = 42u;
+        auto spec                    = PbrtImporter::import(std::move(parsed));
+        auto&& sampler               = static_cast<const SobolSamplerSpec&>(
             spec.samplers().spec(spec.render().sampler));
         expect(sampler.spp() == 32u);
         expect(sampler.seed() == 42u);
         expect(!sampler.validate().has_value());
     };
 
+    "import_independent_sampler_seed"_test = []
+    {
+        auto parsed    = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        auto spec      = PbrtImporter::import(std::move(parsed));
+        auto&& sampler = static_cast<const IndependentSamplerSpec&>(
+            spec.samplers().spec(spec.render().sampler));
+        expect(sampler.spp() == 1u);
+        expect(sampler.seed() == 37u);
+    };
+
+    "pbrt_v4_defaults_are_explicitly_rejected_until_supported"_test = []
+    {
+        auto defaults = PbrtParser::parse("tests/scenes/pbrt_defaults.pbrt");
+        expect(defaults.integrator.type == IntegratorDesc::Type::VolPath);
+        expect(defaults.integrator.max_depth == 5u);
+        expect(defaults.sampler.type == SamplerDesc::Type::ZSobol);
+        expect(defaults.sampler.pixel_samples == 16u);
+        expect(defaults.sampler.seed == 0u);
+        expect(defaults.filter.type == FilterDesc::Type::Gaussian);
+        expect(is_near(defaults.filter.radius.x, 1.5f));
+        expect(defaults.film.resolution.x == 1280u);
+        expect(defaults.film.resolution.y == 720u);
+        expect(defaults.film.filename == std::filesystem::path{"pbrt.exr"});
+        expect(is_near(defaults.camera.fov, 90.0f));
+        expect(is_near(defaults.materials.front().reflectance.x, 0.5f));
+
+        auto rejected = false;
+        try
+        {
+            (void)PbrtImporter::import(std::move(defaults));
+        }
+        catch (const std::runtime_error& error)
+        {
+            rejected = std::string{error.what()}.find("volpath") != std::string::npos;
+        }
+        expect(rejected);
+
+        auto zsobol            = PbrtParser::parse("tests/scenes/pbrt_defaults.pbrt");
+        zsobol.integrator.type = IntegratorDesc::Type::Path;
+        rejected               = false;
+        try
+        {
+            (void)PbrtImporter::import(std::move(zsobol));
+        }
+        catch (const std::runtime_error& error)
+        {
+            rejected = std::string{error.what()}.find("zsobol") != std::string::npos;
+        }
+        expect(rejected);
+
+        auto gaussian                  = PbrtParser::parse("tests/scenes/pbrt_defaults.pbrt");
+        gaussian.integrator.type       = IntegratorDesc::Type::Path;
+        gaussian.sampler.type          = SamplerDesc::Type::Independent;
+        gaussian.sampler.pixel_samples = 4u;
+        rejected                       = false;
+        try
+        {
+            (void)PbrtImporter::import(std::move(gaussian));
+        }
+        catch (const std::runtime_error& error)
+        {
+            rejected = std::string{error.what()}.find("gaussian") != std::string::npos;
+        }
+        expect(rejected);
+    };
+
     "reject_halton_sampler"_test = []
     {
-        auto parsed = PbrtParser::parse("tests/scenes/sobol_sampler_default.pbrt");
-        parsed.sampler.type = SamplerDesc::Type::Halton;
-        auto rejected = false;
+        auto parsed            = PbrtParser::parse("tests/scenes/sobol_sampler_default.pbrt");
+        parsed.integrator.type = IntegratorDesc::Type::Path;
+        parsed.sampler.type    = SamplerDesc::Type::Halton;
+        parsed.filter.type     = FilterDesc::Type::Triangle;
+        auto rejected          = false;
         try
         {
             (void)PbrtImporter::import(std::move(parsed));
@@ -142,11 +272,11 @@ static auto test_book_import_registration = []
         };
         for (auto test_case : cases)
         {
-            auto parsed                = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
-            parsed.film.iso            = test_case.iso;
-            parsed.camera.shutter_open = test_case.shutter_open;
+            auto parsed                 = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+            parsed.film.iso             = test_case.iso;
+            parsed.camera.shutter_open  = test_case.shutter_open;
             parsed.camera.shutter_close = test_case.shutter_close;
-            auto rejected = false;
+            auto rejected               = false;
             try
             {
                 (void)PbrtImporter::import(std::move(parsed));
@@ -159,15 +289,211 @@ static auto test_book_import_registration = []
         }
     };
 
+    "reject_unsupported_parameters_for_every_imported_declaration"_test = []
+    {
+        enum class Target
+        {
+            Integrator,
+            Sampler,
+            Filter,
+            Film,
+            Camera,
+            Texture,
+            Material,
+            AreaLight,
+            Shape,
+            InfiniteLight,
+        };
+        struct Case
+        {
+            Target target;
+            const char* type;
+            const char* name;
+            uint line;
+        };
+        std::array cases{
+            Case{Target::Integrator, "float", "maxdepth", 11u},
+            Case{Target::Sampler, "string", "seed", 12u},
+            Case{Target::Filter, "integer", "xradius", 13u},
+            Case{Target::Film, "string", "sensor", 14u},
+            Case{Target::Camera, "float", "lensradius", 15u},
+            Case{Target::Texture, "bool", "invert", 16u},
+            Case{Target::Material, "texture", "displacement", 17u},
+            Case{Target::AreaLight, "float", "scale", 18u},
+            Case{Target::Shape, "float", "alpha", 19u},
+            Case{Target::InfiniteLight, "rgb", "L", 20u},
+        };
+        for (auto test_case : cases)
+        {
+            auto scene     = test_case.target == Target::Texture
+                                 ? PbrtParser::parse("tests/scenes/checkerboard_textures.pbrt")
+                             : test_case.target == Target::InfiniteLight
+                                 ? PbrtParser::parse("tests/scenes/infinite_diffuse.pbrt")
+                                 : PbrtParser::parse("scene/cornell-box/scene-yutrel.pbrt");
+            auto parameter = test_parameter(test_case.type, test_case.name, test_case.line);
+            switch (test_case.target)
+            {
+            case Target::Integrator:
+                scene.integrator.parameters.emplace_back(std::move(parameter));
+                break;
+            case Target::Sampler:
+                scene.sampler.parameters.emplace_back(std::move(parameter));
+                break;
+            case Target::Filter:
+                scene.filter.parameters.emplace_back(std::move(parameter));
+                break;
+            case Target::Film:
+                scene.film.parameters.emplace_back(std::move(parameter));
+                break;
+            case Target::Camera:
+                scene.camera.parameters.emplace_back(std::move(parameter));
+                break;
+            case Target::Texture:
+                scene.textures.front().parameters.emplace_back(std::move(parameter));
+                break;
+            case Target::Material:
+                scene.named_materials.at("Floor").parameters.emplace_back(std::move(parameter));
+                break;
+            case Target::AreaLight:
+                for (auto& shape : scene.shapes)
+                {
+                    if (shape.area_light)
+                    {
+                        shape.area_light->parameters.emplace_back(std::move(parameter));
+                        break;
+                    }
+                }
+                break;
+            case Target::Shape:
+                scene.shapes.front().parameters.emplace_back(std::move(parameter));
+                break;
+            case Target::InfiniteLight:
+                scene.infinite_light->parameters.emplace_back(std::move(parameter));
+                break;
+            }
+            auto rejected = false;
+            try
+            {
+                (void)PbrtImporter::import(std::move(scene));
+            }
+            catch (const std::runtime_error& error)
+            {
+                auto message           = std::string{error.what()};
+                auto expected_location = std::string{"strict_case.pbrt:"} + std::to_string(test_case.line) + ":1";
+                rejected               = message.find(expected_location) != std::string::npos &&
+                                         message.find(test_case.name) != std::string::npos;
+            }
+            expect(rejected);
+        }
+    };
+
+    "reject_duplicate_and_unused_resource_parameters"_test = []
+    {
+        auto duplicate = PbrtParser::parse("scene/cornell-box/scene-yutrel.pbrt");
+        duplicate.integrator.parameters.emplace_back(test_parameter("integer", "maxdepth", 30u));
+        auto duplicate_rejected = false;
+        try
+        {
+            (void)PbrtImporter::import(std::move(duplicate));
+        }
+        catch (const std::runtime_error& error)
+        {
+            auto message       = std::string{error.what()};
+            duplicate_rejected = message.find("strict_case.pbrt:30:1") != std::string::npos &&
+                                 message.find("duplicate") != std::string::npos &&
+                                 message.find("maxdepth") != std::string::npos;
+        }
+        expect(duplicate_rejected);
+
+        auto unused = PbrtParser::parse("scene/cornell-box/scene-yutrel.pbrt");
+        MaterialDesc unused_material;
+        unused_material.source = SourceLocation{"strict_case.pbrt", 40u, 1u};
+        unused_material.parameters.emplace_back(test_parameter("texture", "displacement", 41u));
+        unused.named_materials.emplace("unused", std::move(unused_material));
+        auto unused_rejected = false;
+        try
+        {
+            (void)PbrtImporter::import(std::move(unused));
+        }
+        catch (const std::runtime_error& error)
+        {
+            auto message    = std::string{error.what()};
+            unused_rejected = message.find("strict_case.pbrt:41:1") != std::string::npos &&
+                              message.find("unused") != std::string::npos &&
+                              message.find("displacement") != std::string::npos;
+        }
+        expect(unused_rejected);
+    };
+
+    "reject_real_book_sensor_before_scene_construction"_test = []
+    {
+        auto parsed            = PbrtParser::parse("scene/pbrt-book/book.pbrt");
+        parsed.integrator.type = IntegratorDesc::Type::Path;
+        parsed.integrator.parameters.clear();
+        parsed.sampler.type = SamplerDesc::Type::Independent;
+        parsed.sampler.parameters.clear();
+        parsed.filter.type = FilterDesc::Type::Triangle;
+        parsed.filter.parameters.clear();
+        auto rejected = false;
+        try
+        {
+            (void)PbrtImporter::import(std::move(parsed));
+        }
+        catch (const std::runtime_error& error)
+        {
+            auto message = std::string{error.what()};
+            rejected     = message.find("book.pbrt") != std::string::npos &&
+                           message.find("Film 'rgb'") != std::string::npos &&
+                           message.find("sensor") != std::string::npos;
+        }
+        expect(rejected);
+    };
+
+    "log_effective_scene_summary_and_resource_details"_test = []
+    {
+        auto parsed = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        std::mutex mutex;
+        luisa::vector<luisa::string> messages;
+        auto sink = luisa::detail::create_sink_with_callback(
+            [&](const char*, const char* message)
+        {
+            std::lock_guard lock{mutex};
+            messages.emplace_back(message);
+        });
+        auto& logger        = luisa::detail::default_logger();
+        auto original_sinks = logger.sinks();
+        logger.sinks().clear();
+        logger.sinks().push_back(sink);
+        luisa::log_level_verbose();
+        auto spec = PbrtImporter::import(std::move(parsed));
+        (void)spec;
+        luisa::log_flush();
+        logger.sinks() = original_sinks;
+        luisa::log_level_info();
+
+        auto contains = [&](luisa::string_view expected) noexcept
+        {
+            return std::any_of(messages.begin(), messages.end(), [expected](auto&& message) noexcept
+            {
+                return message.find(expected) != luisa::string::npos;
+            });
+        };
+        expect(contains("PBRT render config"));
+        expect(contains("light_sampler=yutrel-uniform"));
+        expect(contains("PBRT resources"));
+        expect(contains("PBRT instance #0"));
+        expect(contains("Imported PBRT scene"));
+    };
+
     "validate_coated_diffuse_spec"_test = []
     {
         expect(!CoatedDiffuseSurfaceSpec{CoatedDiffuseSurfaceParams{}}.validate().has_value());
 
-        auto zero_depth = CoatedDiffuseSurfaceParams{};
+        auto zero_depth      = CoatedDiffuseSurfaceParams{};
         zero_depth.max_depth = 0u;
         expect(CoatedDiffuseSurfaceSpec{std::move(zero_depth)}.validate().has_value());
 
-        auto zero_samples = CoatedDiffuseSurfaceParams{};
+        auto zero_samples    = CoatedDiffuseSurfaceParams{};
         zero_samples.samples = 0u;
         expect(CoatedDiffuseSurfaceSpec{std::move(zero_samples)}.validate().has_value());
     };
@@ -271,7 +597,7 @@ static auto test_book_import_registration = []
                 }
             }
         }
-        auto&& first    = instances[0u].transform;
+        auto&& first = instances[0u].transform;
         expect(is_near(first[0u].x, 0.213f));
         expect(is_near(first[1u].y, 0.213f));
         expect(is_near(first[2u].z, 0.213f));
@@ -290,19 +616,19 @@ static auto test_book_import_registration = []
 
     "reuse_inherited_inline_material"_test = []
     {
-        auto parsed = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        auto parsed                             = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
         parsed.shapes[1u].material.inline_index = parsed.shapes[0u].material.inline_index;
-        auto spec = PbrtImporter::import(std::move(parsed));
+        auto spec                               = PbrtImporter::import(std::move(parsed));
         expect(spec.instances()[0u].surface == spec.instances()[1u].surface);
     };
 
     "import_book_spheres"_test = []
     {
-        auto parsed = parse_importable_book();
+        auto parsed                = parse_importable_book();
         parsed.textures[0u].filter = TextureDesc::Filter::Point;
-        auto spec   = PbrtImporter::import(std::move(parsed));
-        auto film   = dynamic_cast<const RGBFilmSpec*>(&spec.films().spec(spec.render().film));
-        auto camera = dynamic_cast<const PinholeCameraSpec*>(&spec.cameras().spec(spec.render().camera));
+        auto spec                  = PbrtImporter::import(std::move(parsed));
+        auto film                  = dynamic_cast<const RGBFilmSpec*>(&spec.films().spec(spec.render().film));
+        auto camera                = dynamic_cast<const PinholeCameraSpec*>(&spec.cameras().spec(spec.render().camera));
         expect(film != nullptr);
         expect(camera != nullptr);
         if (film != nullptr && camera != nullptr)
@@ -342,7 +668,7 @@ static auto test_book_import_registration = []
             std::filesystem::absolute("scene/pbrt-book/texture/uneven_bump.png"),
         };
         auto found_bump_constant = false;
-        auto found_bump_scale = false;
+        auto found_bump_scale    = false;
         spec.textures().visit_entries([&](TextureRef, const SpecMeta& meta, const TextureSpec* texture)
         {
             auto image = dynamic_cast<const ImageTextureSpec*>(texture);
@@ -395,47 +721,26 @@ static auto test_book_import_registration = []
         expect(found_bump_constant);
         expect(found_bump_scale);
         expect(instances[3u].surface != instances[4u].surface);
-        expect(dynamic_cast<const CoatedDiffuseSurfaceSpec*>(
+        expect(dynamic_cast<const DiffuseSurfaceSpec*>(
                    &spec.surfaces().spec(instances[4u].surface)) != nullptr);
     };
 
-    "import_coated_diffuse_materials"_test = []
+    "reject_coated_diffuse_materials"_test = []
     {
-        auto parsed = PbrtParser::parse("tests/scenes/coated_diffuse_materials.pbrt");
-        auto spec   = PbrtImporter::import(std::move(parsed));
-        expect(spec.instances().size() == 2u);
-        expect(spec.surfaces().size() == 2u);
-        expect(dynamic_cast<const CoatedDiffuseSurfaceSpec*>(
-                   &spec.surfaces().spec(spec.instances()[0u].surface)) != nullptr);
-        expect(dynamic_cast<const CoatedDiffuseSurfaceSpec*>(
-                   &spec.surfaces().spec(spec.instances()[1u].surface)) != nullptr);
-
-        auto found_named_reflectance = false;
-        auto found_named_roughness   = false;
-        auto found_inline_roughness  = false;
-        spec.textures().visit_entries([&](TextureRef, const SpecMeta& meta, const TextureSpec* texture)
+        auto parsed   = PbrtParser::parse("tests/scenes/coated_diffuse_materials.pbrt");
+        auto rejected = false;
+        try
         {
-            auto constant = dynamic_cast<const ConstantTextureSpec*>(texture);
-            if (constant == nullptr)
-            {
-                return;
-            }
-            if (meta.name == "coated-default::reflectance")
-            {
-                found_named_reflectance = is_near(constant->value().x, 0.5f);
-            }
-            else if (meta.name == "coated-default::roughness")
-            {
-                found_named_roughness = is_near(constant->value().x, 0.0f);
-            }
-            else if (is_near(constant->value().x, 0.25f))
-            {
-                found_inline_roughness = true;
-            }
-        });
-        expect(found_named_reflectance);
-        expect(found_named_roughness);
-        expect(found_inline_roughness);
+            (void)PbrtImporter::import(std::move(parsed));
+        }
+        catch (const std::runtime_error& error)
+        {
+            auto message = std::string{error.what()};
+            rejected     = message.find("coated_diffuse_materials.pbrt") != std::string::npos &&
+                           message.find("coateddiffuse") != std::string::npos &&
+                           message.find("not PBRT-v4 compatible") != std::string::npos;
+        }
+        expect(rejected);
     };
 
     "detect_image_texture_channels"_test = []
@@ -473,8 +778,8 @@ static auto test_book_import_registration = []
         auto parsed = PbrtParser::parse("tests/scenes/checkerboard_textures.pbrt");
         auto spec   = PbrtImporter::import(std::move(parsed));
 
-        const CheckerBoardTextureSpec* floor = nullptr;
-        const CheckerBoardTextureSpec* defaults = nullptr;
+        const CheckerBoardTextureSpec* floor     = nullptr;
+        const CheckerBoardTextureSpec* defaults  = nullptr;
         const CheckerBoardTextureSpec* reference = nullptr;
         spec.textures().visit_entries([&](TextureRef, const SpecMeta& meta, const TextureSpec* texture)
         {
@@ -547,7 +852,7 @@ static auto test_book_import_registration = []
         }
         catch (const std::runtime_error& error)
         {
-            auto message = std::string{error.what()};
+            auto message     = std::string{error.what()};
             rejected_unknown = message.find("checkerboard_textures.pbrt") != std::string::npos &&
                                message.find("unknown tex1 texture") != std::string::npos &&
                                message.find("missing-texture") != std::string::npos;
@@ -563,7 +868,7 @@ static auto test_book_import_registration = []
         }
         catch (const std::runtime_error& error)
         {
-            auto message = std::string{error.what()};
+            auto message      = std::string{error.what()};
             rejected_mismatch = message.find("checkerboard_textures.pbrt") != std::string::npos &&
                                 message.find("tex1 'float-source'") != std::string::npos &&
                                 message.find("spectrum texture") != std::string::npos;
@@ -583,17 +888,17 @@ static auto test_book_import_registration = []
         catch (const std::runtime_error& error)
         {
             auto message = std::string{error.what()};
-            rejected = message.find("book.pbrt") != std::string::npos &&
-                       message.find("missing_texture") != std::string::npos;
+            rejected     = message.find("book.pbrt") != std::string::npos &&
+                           message.find("missing_texture") != std::string::npos;
         }
         expect(rejected);
     };
 
     "reject_dynamic_scale_texture"_test = []
     {
-        auto parsed = parse_importable_book();
+        auto parsed               = parse_importable_book();
         parsed.textures[4u].scale = "book_cover";
-        auto rejected = false;
+        auto rejected             = false;
         try
         {
             (void)PbrtImporter::import(std::move(parsed));
@@ -601,18 +906,18 @@ static auto test_book_import_registration = []
         catch (const std::runtime_error& error)
         {
             auto message = std::string{error.what()};
-            rejected = message.find("book.pbrt") != std::string::npos &&
-                       message.find("float constant") != std::string::npos &&
-                       message.find("dynamic multiplication") != std::string::npos;
+            rejected     = message.find("book.pbrt") != std::string::npos &&
+                           message.find("float constant") != std::string::npos &&
+                           message.find("dynamic multiplication") != std::string::npos;
         }
         expect(rejected);
     };
 
     "reject_unknown_scale_texture"_test = []
     {
-        auto parsed = parse_importable_book();
+        auto parsed               = parse_importable_book();
         parsed.textures[4u].scale = "missing_scale";
-        auto rejected = false;
+        auto rejected             = false;
         try
         {
             (void)PbrtImporter::import(std::move(parsed));
@@ -620,18 +925,18 @@ static auto test_book_import_registration = []
         catch (const std::runtime_error& error)
         {
             auto message = std::string{error.what()};
-            rejected = message.find("book.pbrt") != std::string::npos &&
-                       message.find("missing_scale") != std::string::npos &&
-                       message.find("unknown scale texture") != std::string::npos;
+            rejected     = message.find("book.pbrt") != std::string::npos &&
+                           message.find("missing_scale") != std::string::npos &&
+                           message.find("unknown scale texture") != std::string::npos;
         }
         expect(rejected);
     };
 
     "reject_missing_image_texture_file"_test = []
     {
-        auto parsed = parse_importable_book();
+        auto parsed                  = parse_importable_book();
         parsed.textures[0u].filename = "texture/missing.png";
-        auto rejected = false;
+        auto rejected                = false;
         try
         {
             (void)PbrtImporter::import(std::move(parsed));
@@ -639,24 +944,24 @@ static auto test_book_import_registration = []
         catch (const std::runtime_error& error)
         {
             auto message = std::string{error.what()};
-            rejected = message.find("book.pbrt") != std::string::npos &&
-                       message.find("regular file") != std::string::npos;
+            rejected     = message.find("book.pbrt") != std::string::npos &&
+                           message.find("regular file") != std::string::npos;
         }
         expect(rejected);
     };
 
     "reject_out_of_range_inline_material"_test = []
     {
-        auto parsed = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        auto parsed                             = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
         parsed.shapes[0u].material.inline_index = 99u;
-        auto source_located = false;
+        auto source_located                     = false;
         try
         {
             (void)PbrtImporter::import(std::move(parsed));
         }
         catch (const std::runtime_error& error)
         {
-            auto message  = std::string{error.what()};
+            auto message   = std::string{error.what()};
             source_located = message.find("tests/scenes/book_geometry.pbrt") != std::string::npos &&
                              message.find("out-of-range inline material 99") != std::string::npos;
         }
@@ -665,30 +970,39 @@ static auto test_book_import_registration = []
 
     "reject_ambiguous_material_binding"_test = []
     {
-        auto parsed = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        auto parsed                      = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
         parsed.shapes[0u].material.named = "named";
-        auto source_located = false;
+        auto source_located              = false;
         try
         {
             (void)PbrtImporter::import(std::move(parsed));
         }
         catch (const std::runtime_error& error)
         {
-            auto message  = std::string{error.what()};
+            auto message   = std::string{error.what()};
             source_located = message.find("tests/scenes/book_geometry.pbrt") != std::string::npos &&
                              message.find("both named and inline material bindings") != std::string::npos;
         }
         expect(source_located);
     };
 
-    "import_inline_coated_diffuse_material"_test = []
+    "reject_inline_coated_diffuse_material"_test = []
     {
-        auto parsed = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
-        parsed.materials[0u].type = MaterialDesc::Type::CoatedDiffuse;
+        auto parsed                    = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        parsed.materials[0u].type      = MaterialDesc::Type::CoatedDiffuse;
         parsed.materials[0u].roughness = 0.1f;
-        auto spec = PbrtImporter::import(std::move(parsed));
-        expect(dynamic_cast<const CoatedDiffuseSurfaceSpec*>(
-                   &spec.surfaces().spec(spec.instances()[0u].surface)) != nullptr);
+        auto rejected                  = false;
+        try
+        {
+            (void)PbrtImporter::import(std::move(parsed));
+        }
+        catch (const std::runtime_error& error)
+        {
+            auto message = std::string{error.what()};
+            rejected     = message.find("book_geometry.pbrt") != std::string::npos &&
+                           message.find("coateddiffuse") != std::string::npos;
+        }
+        expect(rejected);
     };
 
     "import_named_material_binding"_test = []
@@ -739,7 +1053,7 @@ static auto test_book_import_registration = []
         }
         catch (const std::runtime_error& error)
         {
-            auto message  = std::string{error.what()};
+            auto message   = std::string{error.what()};
             source_located = message.find("tests/scenes/book_geometry.pbrt") != std::string::npos &&
                              message.find("regular file") != std::string::npos;
         }
@@ -749,27 +1063,33 @@ static auto test_book_import_registration = []
     "import_null_environment_for_cornell_box"_test = []
     {
         auto parsed = PbrtParser::parse("scene/cornell-box/scene-yutrel.pbrt");
-        auto spec = PbrtImporter::import(std::move(parsed));
+        auto spec   = PbrtImporter::import(std::move(parsed));
         expect(spec.environments().size() == 1u);
         expect(dynamic_cast<const NullEnvironmentSpec*>(
                    &spec.environments().spec(spec.render().environment)) != nullptr);
     };
 
-    "import_pbrt_equal_area_environment_for_teapot"_test = []
+    "import_pbrt_equal_area_environment"_test = []
     {
-        auto parsed = PbrtParser::parse("scene/teapot/scene-yutrel.pbrt");
-        auto spec = PbrtImporter::import(std::move(parsed));
+        auto parsed      = PbrtParser::parse("tests/scenes/infinite_diffuse.pbrt");
+        auto spec        = PbrtImporter::import(std::move(parsed));
         auto environment = dynamic_cast<const PBRTEqualAreaEnvironmentSpec*>(
             &spec.environments().spec(spec.render().environment));
         expect(environment != nullptr);
-        if (environment == nullptr) { return; }
+        if (environment == nullptr)
+        {
+            return;
+        }
         expect(is_near(environment->scale(), 1.0f));
         expect(!environment->validate().has_value());
 
         auto image = dynamic_cast<const ImageTextureSpec*>(
             &spec.textures().spec(environment->emission()));
         expect(image != nullptr);
-        if (image == nullptr) { return; }
+        if (image == nullptr)
+        {
+            return;
+        }
         expect(image->path().filename() == std::filesystem::path{"envmap.pfm"});
         expect(image->sampler() == TextureSampler::point_edge());
         expect(image->encoding() == Texture::Encoding::LINEAR);
@@ -783,21 +1103,43 @@ static auto test_book_import_registration = []
         expect(is_near(transform[2].y, 1.0f));
 
         expect(PBRTEqualAreaEnvironmentSpec{
-                   environment->emission(), 1.0f, make_float3x3(2.0f)}
+            environment->emission(),
+            1.0f,
+            make_float3x3(2.0f)}
                    .validate()
                    .has_value());
         expect(!PBRTEqualAreaEnvironmentSpec{
-                    environment->emission(), 1.0f,
-                    make_float3x3(
-                        make_float3(-1.0f, 0.0f, 0.0f),
-                        make_float3(0.0f, 1.0f, 0.0f),
-                        make_float3(0.0f, 0.0f, 1.0f))}
+            environment->emission(),
+            1.0f,
+            make_float3x3(
+                make_float3(-1.0f, 0.0f, 0.0f),
+                make_float3(0.0f, 1.0f, 0.0f),
+                make_float3(0.0f, 0.0f, 1.0f))}
                     .validate()
                     .has_value());
         expect(PBRTEqualAreaEnvironmentSpec{
-                   environment->emission(), -1.0f, make_float3x3(1.0f)}
+            environment->emission(),
+            -1.0f,
+            make_float3x3(1.0f)}
                    .validate()
                    .has_value());
+    };
+
+    "reject_teapot_coated_diffuse"_test = []
+    {
+        auto parsed   = PbrtParser::parse("scene/teapot/scene-yutrel.pbrt");
+        auto rejected = false;
+        try
+        {
+            (void)PbrtImporter::import(std::move(parsed));
+        }
+        catch (const std::runtime_error& error)
+        {
+            auto message = std::string{error.what()};
+            rejected     = message.find("scene-yutrel.pbrt") != std::string::npos &&
+                           message.find("coateddiffuse") != std::string::npos;
+        }
+        expect(rejected);
     };
     return 0;
 }();

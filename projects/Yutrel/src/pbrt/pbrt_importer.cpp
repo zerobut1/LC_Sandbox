@@ -9,13 +9,15 @@
 #include <stdexcept>
 #include <utility>
 
+#include <luisa/core/clock.h>
+#include <luisa/core/logging.h>
+
 #include "base/film.h"
 #include "base/integrator.h"
 #include "cameras/pinhole.h"
-#include "filters/gaussian.h"
-#include "filters/triangle.h"
 #include "environments/null.h"
 #include "environments/pbrt_equal_area.h"
+#include "filters/triangle.h"
 #include "lights/diffuse.h"
 #include "samplers/independent.h"
 #include "samplers/sobol.h"
@@ -24,7 +26,6 @@
 #include "shapes/mesh.h"
 #include "shapes/sphere.h"
 #include "spectrum/hero.h"
-#include "surfaces/coated_diffuse.h"
 #include "surfaces/diffuse.h"
 #include "textures/checker_board.h"
 #include "textures/constant.h"
@@ -42,6 +43,354 @@ namespace
 [[noreturn]] void fail(luisa::string message)
 {
     throw std::runtime_error{message.c_str()};
+}
+
+[[noreturn]] void fail(const SourceLocation& source, luisa::string message)
+{
+    fail(luisa::format("{}: {}", format_source_location(source), message));
+}
+
+struct ParameterKey
+{
+    luisa::string_view type;
+    luisa::string_view name;
+};
+
+void validate_parameters(
+    luisa::span<const RawParameter> parameters,
+    luisa::string_view owner,
+    luisa::span<const ParameterKey> allowed)
+{
+    for (auto i = 0u; i < parameters.size(); i++)
+    {
+        auto&& parameter  = parameters[i];
+        auto name_known   = false;
+        auto type_allowed = false;
+        luisa::string expected_types;
+        for (auto&& key : allowed)
+        {
+            if (key.name != parameter.name)
+            {
+                continue;
+            }
+            name_known = true;
+            type_allowed |= key.type == parameter.type;
+            if (!expected_types.empty())
+            {
+                expected_types.append(" or ");
+            }
+            expected_types.append(luisa::format("'{}'", key.type));
+        }
+        if (!name_known)
+        {
+            fail(parameter.source, luisa::format("PBRT {} has unsupported parameter '{} {}'.", owner, parameter.type, parameter.name));
+        }
+        if (!type_allowed)
+        {
+            fail(parameter.source, luisa::format("PBRT {} parameter '{}' has type '{}'; expected {}.", owner, parameter.name, parameter.type, expected_types));
+        }
+        for (auto j = 0u; j < i; j++)
+        {
+            if (parameters[j].name == parameter.name)
+            {
+                fail(parameter.source, luisa::format("PBRT {} has duplicate parameter '{} {}'.", owner, parameter.type, parameter.name));
+            }
+        }
+    }
+}
+
+template <size_t N>
+void validate_parameters(
+    luisa::span<const RawParameter> parameters,
+    luisa::string_view owner,
+    const std::array<ParameterKey, N>& allowed)
+{
+    validate_parameters(parameters, owner, luisa::span<const ParameterKey>{allowed.data(), allowed.size()});
+}
+
+[[nodiscard]] luisa::string_view sampler_name(SamplerDesc::Type type) noexcept
+{
+    switch (type)
+    {
+    case SamplerDesc::Type::Independent:
+        return "independent";
+    case SamplerDesc::Type::Halton:
+        return "halton";
+    case SamplerDesc::Type::Sobol:
+        return "sobol";
+    case SamplerDesc::Type::ZSobol:
+        return "zsobol";
+    }
+    return "unknown";
+}
+
+[[nodiscard]] luisa::string_view texture_type_name(TextureDesc::Type type) noexcept
+{
+    switch (type)
+    {
+    case TextureDesc::Type::ImageMap:
+        return "imagemap";
+    case TextureDesc::Type::Constant:
+        return "constant";
+    case TextureDesc::Type::Scale:
+        return "scale";
+    case TextureDesc::Type::Checkerboard:
+        return "checkerboard";
+    }
+    return "unknown";
+}
+
+[[nodiscard]] luisa::string_view shape_type_name(ShapeDesc::Type type) noexcept
+{
+    switch (type)
+    {
+    case ShapeDesc::Type::TriangleMesh:
+        return "trianglemesh";
+    case ShapeDesc::Type::PlyMesh:
+        return "plymesh";
+    case ShapeDesc::Type::Sphere:
+        return "sphere";
+    }
+    return "unknown";
+}
+
+[[nodiscard]] luisa::string format_matrix(const Matrix4& m)
+{
+    return luisa::format(
+        "[{} {} {} {}; {} {} {} {}; {} {} {} {}; {} {} {} {}]",
+        m[0u],
+        m[1u],
+        m[2u],
+        m[3u],
+        m[4u],
+        m[5u],
+        m[6u],
+        m[7u],
+        m[8u],
+        m[9u],
+        m[10u],
+        m[11u],
+        m[12u],
+        m[13u],
+        m[14u],
+        m[15u]);
+}
+
+void validate_material(const MaterialDesc& material, luisa::string_view owner, bool named)
+{
+    if (material.type == MaterialDesc::Type::CoatedDiffuse)
+    {
+        fail(material.source, luisa::format("PBRT {} uses 'coateddiffuse', which is not PBRT-v4 compatible in Yutrel yet.", owner));
+    }
+    static constexpr std::array inline_allowed{
+        ParameterKey{"rgb", "reflectance"},
+        ParameterKey{"texture", "reflectance"},
+    };
+    static constexpr std::array named_allowed{
+        ParameterKey{"string", "type"},
+        ParameterKey{"rgb", "reflectance"},
+        ParameterKey{"texture", "reflectance"},
+    };
+    if (named)
+    {
+        validate_parameters(material.parameters, owner, named_allowed);
+    }
+    else
+    {
+        validate_parameters(material.parameters, owner, inline_allowed);
+    }
+}
+
+void validate_pbrt_scene(const PbrtScene& scene)
+{
+    if (scene.integrator.type == IntegratorDesc::Type::VolPath)
+    {
+        fail(scene.integrator.source, "PBRT Integrator 'volpath' is not implemented by Yutrel.");
+    }
+    static constexpr std::array integrator_allowed{ParameterKey{"integer", "maxdepth"}};
+    validate_parameters(scene.integrator.parameters, "Integrator 'path'", integrator_allowed);
+
+    if (scene.sampler.type == SamplerDesc::Type::Halton ||
+        scene.sampler.type == SamplerDesc::Type::ZSobol)
+    {
+        fail(scene.sampler.source, luisa::format("PBRT Sampler '{}' is not implemented by Yutrel.", sampler_name(scene.sampler.type)));
+    }
+    static constexpr std::array independent_allowed{
+        ParameterKey{"integer", "pixelsamples"},
+        ParameterKey{"integer", "seed"},
+    };
+    static constexpr std::array sobol_allowed{
+        ParameterKey{"integer", "pixelsamples"},
+        ParameterKey{"integer", "seed"},
+        ParameterKey{"string", "randomization"},
+    };
+    if (scene.sampler.type == SamplerDesc::Type::Independent)
+    {
+        validate_parameters(scene.sampler.parameters, "Sampler 'independent'", independent_allowed);
+    }
+    else
+    {
+        validate_parameters(scene.sampler.parameters, "Sampler 'sobol'", sobol_allowed);
+    }
+
+    if (scene.filter.type == FilterDesc::Type::Gaussian)
+    {
+        fail(scene.filter.source, "PBRT PixelFilter 'gaussian' is not implemented faithfully by Yutrel.");
+    }
+    static constexpr std::array filter_allowed{
+        ParameterKey{"float", "xradius"},
+        ParameterKey{"float", "yradius"},
+    };
+    validate_parameters(scene.filter.parameters, "PixelFilter 'triangle'", filter_allowed);
+
+    static constexpr std::array film_allowed{
+        ParameterKey{"integer", "xresolution"},
+        ParameterKey{"integer", "yresolution"},
+        ParameterKey{"float", "iso"},
+        ParameterKey{"string", "filename"},
+    };
+    validate_parameters(scene.film.parameters, "Film 'rgb'", film_allowed);
+
+    static constexpr std::array camera_allowed{
+        ParameterKey{"float", "fov"},
+        ParameterKey{"float", "shutteropen"},
+        ParameterKey{"float", "shutterclose"},
+    };
+    validate_parameters(scene.camera.parameters, "Camera 'perspective'", camera_allowed);
+
+    for (auto&& texture : scene.textures)
+    {
+        auto owner = luisa::format("Texture '{}' ({})", texture.name, texture_type_name(texture.type));
+        switch (texture.type)
+        {
+        case TextureDesc::Type::ImageMap:
+        {
+            static constexpr std::array allowed{
+                ParameterKey{"string", "filename"},
+                ParameterKey{"string", "filter"},
+                ParameterKey{"float", "uscale"},
+                ParameterKey{"float", "vscale"},
+            };
+            validate_parameters(texture.parameters, owner, allowed);
+            break;
+        }
+        case TextureDesc::Type::Constant:
+        {
+            static constexpr std::array allowed{ParameterKey{"float", "value"}};
+            validate_parameters(texture.parameters, owner, allowed);
+            break;
+        }
+        case TextureDesc::Type::Scale:
+        {
+            static constexpr std::array allowed{
+                ParameterKey{"texture", "tex"},
+                ParameterKey{"texture", "scale"},
+            };
+            validate_parameters(texture.parameters, owner, allowed);
+            break;
+        }
+        case TextureDesc::Type::Checkerboard:
+        {
+            static constexpr std::array float_allowed{
+                ParameterKey{"texture", "tex1"},
+                ParameterKey{"float", "tex1"},
+                ParameterKey{"texture", "tex2"},
+                ParameterKey{"float", "tex2"},
+                ParameterKey{"float", "uscale"},
+                ParameterKey{"float", "vscale"},
+                ParameterKey{"integer", "dimension"},
+                ParameterKey{"string", "mapping"},
+            };
+            static constexpr std::array spectrum_allowed{
+                ParameterKey{"texture", "tex1"},
+                ParameterKey{"rgb", "tex1"},
+                ParameterKey{"texture", "tex2"},
+                ParameterKey{"rgb", "tex2"},
+                ParameterKey{"float", "uscale"},
+                ParameterKey{"float", "vscale"},
+                ParameterKey{"integer", "dimension"},
+                ParameterKey{"string", "mapping"},
+            };
+            if (texture.value_type == TextureDesc::ValueType::Float)
+            {
+                validate_parameters(texture.parameters, owner, float_allowed);
+            }
+            else
+            {
+                validate_parameters(texture.parameters, owner, spectrum_allowed);
+            }
+            break;
+        }
+        }
+    }
+
+    luisa::vector<std::pair<luisa::string_view, const MaterialDesc*>> named_materials;
+    named_materials.reserve(scene.named_materials.size());
+    for (auto&& [name, material] : scene.named_materials)
+    {
+        named_materials.emplace_back(name, &material);
+    }
+    std::sort(named_materials.begin(), named_materials.end(), [](auto a, auto b) noexcept
+    {
+        return a.first < b.first;
+    });
+    for (auto&& [name, material] : named_materials)
+    {
+        validate_material(*material, luisa::format("MakeNamedMaterial '{}'", name), true);
+    }
+    for (auto i = 0u; i < scene.materials.size(); i++)
+    {
+        validate_material(scene.materials[i], luisa::format("inline Material #{}", i), false);
+    }
+
+    static constexpr std::array area_light_allowed{ParameterKey{"rgb", "L"}};
+    static constexpr std::array infinite_light_allowed{
+        ParameterKey{"string", "filename"},
+        ParameterKey{"float", "scale"},
+    };
+    if (scene.infinite_light)
+    {
+        validate_parameters(scene.infinite_light->parameters, "LightSource 'infinite'", infinite_light_allowed);
+    }
+
+    for (auto i = 0u; i < scene.shapes.size(); i++)
+    {
+        auto&& shape = scene.shapes[i];
+        auto owner   = luisa::format("Shape #{} ({})", i, shape_type_name(shape.type));
+        switch (shape.type)
+        {
+        case ShapeDesc::Type::TriangleMesh:
+        {
+            static constexpr std::array allowed{
+                ParameterKey{"point3", "P"},
+                ParameterKey{"normal", "N"},
+                ParameterKey{"point2", "uv"},
+                ParameterKey{"integer", "indices"},
+            };
+            validate_parameters(shape.parameters, owner, allowed);
+            break;
+        }
+        case ShapeDesc::Type::PlyMesh:
+        {
+            static constexpr std::array allowed{ParameterKey{"string", "filename"}};
+            validate_parameters(shape.parameters, owner, allowed);
+            break;
+        }
+        case ShapeDesc::Type::Sphere:
+        {
+            static constexpr std::array allowed{
+                ParameterKey{"float", "radius"},
+                ParameterKey{"integer", "subdivision"},
+            };
+            validate_parameters(shape.parameters, owner, allowed);
+            break;
+        }
+        }
+        if (shape.area_light)
+        {
+            validate_parameters(shape.area_light->parameters, luisa::format("AreaLightSource for Shape #{}", i), area_light_allowed);
+        }
+    }
 }
 
 [[nodiscard]] float& at(Matrix4& m, uint32_t row, uint32_t column) noexcept { return m[row * 4u + column]; }
@@ -190,7 +539,7 @@ struct CameraBasis
 {
     if (path.empty())
     {
-        return "render.exr";
+        return "pbrt.exr";
     }
     if (path.is_absolute())
     {
@@ -203,22 +552,8 @@ struct CameraBasis
 
 SceneSpec PbrtImporter::import(PbrtScene scene)
 {
-    if (scene.integrator.type != IntegratorDesc::Type::Path)
-    {
-        fail("Unsupported PBRT integrator type.");
-    }
-    if (scene.sampler.type == SamplerDesc::Type::Halton)
-    {
-        fail(luisa::format("PBRT Importer does not implement sampler 'halton' at {}.", format_source_location(scene.sampler.source)));
-    }
-    if (scene.film.type != FilmDesc::Type::RGB)
-    {
-        fail("Unsupported PBRT film type.");
-    }
-    if (scene.camera.type != CameraDesc::Type::Perspective)
-    {
-        fail("Unsupported PBRT camera type.");
-    }
+    Clock import_clock;
+    validate_pbrt_scene(scene);
     SceneSpecBuilder builder;
 
     auto environment = [&]() -> EnvironmentRef
@@ -228,8 +563,8 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
             return builder.add_environment<NullEnvironmentSpec>(
                 SpecMeta{.name = "pbrt_null_environment", .source = SourceLocation{scene.source_path}});
         }
-        auto&& desc = *scene.infinite_light;
-        auto path = resolve_relative_to_scene(desc.source.file, desc.filename);
+        auto&& desc  = *scene.infinite_light;
+        auto path    = resolve_relative_to_scene(desc.source.file, desc.filename);
         auto texture = builder.add_anonymous_texture<ImageTextureSpec>(
             desc.source,
             std::move(path),
@@ -254,13 +589,14 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         auto meta = SpecMeta{.name = texture.name, .source = texture.source};
         if (texture.type == TextureDesc::Type::ImageMap)
         {
-            auto path = resolve_relative_to_scene(texture.source.file, texture.filename);
+            auto path     = resolve_relative_to_scene(texture.source.file, texture.filename);
             auto encoding = texture.value_type == TextureDesc::ValueType::Float
                                 ? Texture::Encoding::LINEAR
-                                : is_png_path(path) ? Texture::Encoding::SRGB : Texture::Encoding::LINEAR;
-            auto sampler = texture.filter == TextureDesc::Filter::Point
-                               ? TextureSampler::point_repeat()
-                               : TextureSampler::linear_point_repeat();
+                            : is_png_path(path) ? Texture::Encoding::SRGB
+                                                : Texture::Encoding::LINEAR;
+            auto sampler  = texture.filter == TextureDesc::Filter::Point
+                                ? TextureSampler::point_repeat()
+                                : TextureSampler::linear_point_repeat();
             (void)builder.add_texture<ImageTextureSpec>(
                 std::move(meta),
                 std::move(path),
@@ -272,7 +608,8 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         if (texture.type == TextureDesc::Type::Constant)
         {
             (void)builder.add_texture<ConstantTextureSpec>(
-                std::move(meta), make_float4(texture.constant_value));
+                std::move(meta),
+                make_float4(texture.constant_value));
             continue;
         }
         if (texture.type == TextureDesc::Type::Scale)
@@ -282,20 +619,26 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
             {
                 fail(luisa::format(
                     "PBRT scale texture '{}' references unknown base texture '{}' at {}.",
-                    texture.name, texture.tex, format_source_location(texture.source)));
+                    texture.name,
+                    texture.tex,
+                    format_source_location(texture.source)));
             }
             if (base_iter->second->value_type != TextureDesc::ValueType::Float)
             {
                 fail(luisa::format(
                     "PBRT scale texture '{}' requires '{}' to be a float texture at {}.",
-                    texture.name, texture.tex, format_source_location(texture.source)));
+                    texture.name,
+                    texture.tex,
+                    format_source_location(texture.source)));
             }
             auto scale_iter = texture_declarations.find(texture.scale);
             if (scale_iter == texture_declarations.end())
             {
                 fail(luisa::format(
                     "PBRT scale texture '{}' references unknown scale texture '{}' at {}.",
-                    texture.name, texture.scale, format_source_location(texture.source)));
+                    texture.name,
+                    texture.scale,
+                    format_source_location(texture.source)));
             }
             auto scale = scale_iter->second;
             if (scale->value_type != TextureDesc::ValueType::Float ||
@@ -303,11 +646,16 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
             {
                 fail(luisa::format(
                     "PBRT scale texture '{}' requires '{}' to be a float constant texture; dynamic multiplication is unsupported at {}.",
-                    texture.name, texture.scale, format_source_location(texture.source)));
+                    texture.name,
+                    texture.scale,
+                    format_source_location(texture.source)));
             }
             auto base = builder.reference_texture(texture.tex, texture.source);
             (void)builder.add_texture<ScaleTextureSpec>(
-                std::move(meta), base, make_float4(scale->constant_value), make_float4(0.0f));
+                std::move(meta),
+                base,
+                make_float4(scale->constant_value),
+                make_float4(0.0f));
             continue;
         }
         if (texture.type == TextureDesc::Type::Checkerboard)
@@ -323,26 +671,37 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
                 {
                     fail(luisa::format(
                         "PBRT checkerboard texture '{}' references unknown {} texture '{}' at {}.",
-                        texture.name, parameter, *input.texture, format_source_location(texture.source)));
+                        texture.name,
+                        parameter,
+                        *input.texture,
+                        format_source_location(texture.source)));
                 }
                 if (iter->second->value_type != texture.value_type)
                 {
                     auto expected = texture.value_type == TextureDesc::ValueType::Float ? "float" : "spectrum";
                     fail(luisa::format(
                         "PBRT checkerboard texture '{}' requires {} '{}' to be a {} texture at {}.",
-                        texture.name, parameter, *input.texture, expected, format_source_location(texture.source)));
+                        texture.name,
+                        parameter,
+                        *input.texture,
+                        expected,
+                        format_source_location(texture.source)));
                 }
                 return builder.reference_texture(*input.texture, texture.source);
             };
             auto tex1 = resolve_input(texture.tex1, "tex1");
             auto tex2 = resolve_input(texture.tex2, "tex2");
             (void)builder.add_texture<CheckerBoardTextureSpec>(
-                std::move(meta), texture.uv_scale, tex1, tex2);
+                std::move(meta),
+                texture.uv_scale,
+                tex1,
+                tex2);
             continue;
         }
         fail(luisa::format(
             "Unsupported PBRT texture '{}' at {}.",
-            texture.name, format_source_location(texture.source)));
+            texture.name,
+            format_source_location(texture.source)));
     }
 
     auto make_material_surface = [&](const MaterialDesc& material, luisa::string_view name) -> SurfaceRef
@@ -364,38 +723,17 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
             {
                 return builder.reference_texture(*material.reflectance_texture, material.source);
             }
-            return add_constant_texture("reflectance", make_float4(
-                material.reflectance.x,
-                material.reflectance.y,
-                material.reflectance.z,
-                1.0f));
+            return add_constant_texture("reflectance", make_float4(material.reflectance.x, material.reflectance.y, material.reflectance.z, 1.0f));
         }();
 
-        if (material.type == MaterialDesc::Type::Diffuse)
-        {
-            if (name.empty())
-            {
-                return builder.add_anonymous_surface<DiffuseSurfaceSpec>(material.source, reflectance, true);
-            }
-            return builder.add_surface<DiffuseSurfaceSpec>(
-                SpecMeta{.name = luisa::string{name}, .source = material.source},
-                reflectance,
-                true);
-        }
-
-        auto roughness = add_constant_texture("roughness", make_float4(material.roughness));
-        CoatedDiffuseSurfaceParams params{
-            .reflectance = reflectance,
-            .roughness   = roughness,
-        };
         if (name.empty())
         {
-            return builder.add_anonymous_surface<CoatedDiffuseSurfaceSpec>(
-                material.source, std::move(params));
+            return builder.add_anonymous_surface<DiffuseSurfaceSpec>(material.source, reflectance, true);
         }
-        return builder.add_surface<CoatedDiffuseSurfaceSpec>(
+        return builder.add_surface<DiffuseSurfaceSpec>(
             SpecMeta{.name = luisa::string{name}, .source = material.source},
-            std::move(params));
+            reflectance,
+            true);
     };
 
     for (auto& [name, material] : scene.named_materials)
@@ -415,7 +753,7 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
     {
         if (!default_surface)
         {
-            auto texture = builder.add_anonymous_texture<ConstantTextureSpec>(source, make_float4(0.5f, 0.5f, 0.5f, 1.0f));
+            auto texture    = builder.add_anonymous_texture<ConstantTextureSpec>(source, make_float4(0.5f, 0.5f, 0.5f, 1.0f));
             default_surface = builder.add_anonymous_surface<DiffuseSurfaceSpec>(source, texture, true);
         }
         return *default_surface;
@@ -435,7 +773,7 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
 
     for (auto shape_index = 0u; shape_index < scene.shapes.size(); shape_index++)
     {
-        auto& shape = scene.shapes[shape_index];
+        auto& shape    = scene.shapes[shape_index];
         auto shape_ref = [&]() -> ShapeRef
         {
             switch (shape.type)
@@ -542,7 +880,7 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         SpecMeta{.name = "pbrt_film", .source = scene.film.source},
         scene.film.resolution,
         false,
-        std::move(filename),
+        filename,
         imaging_ratio);
     if (std::abs(scene.filter.radius.x - scene.filter.radius.y) > 1e-6f)
     {
@@ -555,7 +893,7 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         case FilterDesc::Type::Triangle:
             return builder.add_filter<TriangleFilterSpec>(SpecMeta{.name = "pbrt_filter", .source = scene.filter.source}, scene.filter.radius.x);
         case FilterDesc::Type::Gaussian:
-            return builder.add_filter<GaussianFilterSpec>(SpecMeta{.name = "pbrt_filter", .source = scene.filter.source}, scene.filter.radius.x);
+            break;
         }
         fail("Unsupported PBRT pixel filter.");
     }();
@@ -569,21 +907,221 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         case SamplerDesc::Type::Sobol:
             return builder.add_sampler<SobolSamplerSpec>(SpecMeta{.name = "pbrt_sampler", .source = scene.sampler.source}, scene.sampler.pixel_samples, scene.sampler.seed);
         case SamplerDesc::Type::Halton:
+        case SamplerDesc::Type::ZSobol:
             break;
         }
         fail("Unsupported PBRT sampler type.");
     }();
     auto integrator = builder.add_integrator<PathIntegratorSpec>(SpecMeta{.name = "pbrt_integrator", .source = scene.integrator.source}, scene.integrator.max_depth, 0u, 0.95f);
     builder.set_render(RenderSpec{
-        .spectrum   = spectrum,
+        .spectrum    = spectrum,
         .environment = environment,
-        .camera     = camera,
-        .film       = film,
-        .filter     = filter,
-        .sampler    = sampler,
-        .integrator = integrator,
+        .camera      = camera,
+        .film        = film,
+        .filter      = filter,
+        .sampler     = sampler,
+        .integrator  = integrator,
     });
-    return builder.finish();
+    auto result = builder.finish();
+
+    auto randomization = scene.sampler.type == SamplerDesc::Type::Sobol ? "fastowen" : "n/a";
+    LUISA_INFO(
+        "PBRT render config: integrator=path, max_depth={}, rr_depth=0, rr_threshold=0.95, light_sampler=yutrel-uniform; sampler={}, spp={}, seed={}, randomization={}; filter=triangle, radius=({}, {}).",
+        scene.integrator.max_depth,
+        sampler_name(scene.sampler.type),
+        scene.sampler.pixel_samples,
+        scene.sampler.seed,
+        randomization,
+        scene.filter.radius.x,
+        scene.filter.radius.y);
+    LUISA_INFO(
+        "PBRT film: type=rgb, resolution={}x{}, ISO={}, imaging_ratio={}, output='{}'.",
+        scene.film.resolution.x,
+        scene.film.resolution.y,
+        scene.film.iso,
+        imaging_ratio,
+        filename.string());
+    LUISA_INFO(
+        "PBRT camera: type=perspective, fov={}, shutter=[{}, {}], position=({}, {}, {}), forward=({}, {}, {}), up=({}, {}, {}).",
+        scene.camera.fov,
+        scene.camera.shutter_open,
+        scene.camera.shutter_close,
+        basis.position.x,
+        basis.position.y,
+        basis.position.z,
+        basis.forward.x,
+        basis.forward.y,
+        basis.forward.z,
+        basis.up.x,
+        basis.up.y,
+        basis.up.z);
+    if (scene.infinite_light)
+    {
+        LUISA_INFO(
+            "PBRT environment: type=infinite, file='{}', scale={}.",
+            resolve_relative_to_scene(scene.infinite_light->source.file, scene.infinite_light->filename).string(),
+            scene.infinite_light->scale);
+        LUISA_VERBOSE(
+            "PBRT environment transform={}, source={}.",
+            format_matrix(scene.infinite_light->pbrt_transform),
+            format_source_location(scene.infinite_light->source));
+    }
+    else
+    {
+        LUISA_INFO("PBRT environment: none.");
+    }
+    auto area_light_count = static_cast<size_t>(std::count_if(
+        scene.shapes.begin(),
+        scene.shapes.end(),
+        [](auto&& shape) noexcept
+    {
+        return shape.area_light.has_value();
+    }));
+    LUISA_INFO(
+        "PBRT resources: textures={}, materials={} (named={}, inline={}), shapes={}, area_lights={}; SceneSpec textures={}, surfaces={}, lights={}, shapes={}, instances={}.",
+        scene.textures.size(),
+        scene.named_materials.size() + scene.materials.size(),
+        scene.named_materials.size(),
+        scene.materials.size(),
+        scene.shapes.size(),
+        area_light_count,
+        result.textures().size(),
+        result.surfaces().size(),
+        result.lights().size(),
+        result.shapes().size(),
+        result.instances().size());
+
+    for (auto i = 0u; i < scene.textures.size(); i++)
+    {
+        auto&& texture = scene.textures[i];
+        switch (texture.type)
+        {
+        case TextureDesc::Type::ImageMap:
+            LUISA_VERBOSE(
+                "PBRT texture #{} '{}' type=imagemap, value_type={}, file='{}', filter={}, uv_scale=({}, {}), source={}.",
+                i,
+                texture.name,
+                texture.value_type == TextureDesc::ValueType::Float ? "float" : "spectrum",
+                resolve_relative_to_scene(texture.source.file, texture.filename).string(),
+                texture.filter == TextureDesc::Filter::Point ? "point" : "bilinear",
+                texture.uv_scale.x,
+                texture.uv_scale.y,
+                format_source_location(texture.source));
+            break;
+        case TextureDesc::Type::Constant:
+            LUISA_VERBOSE(
+                "PBRT texture #{} '{}' type=constant, value={}, source={}.",
+                i,
+                texture.name,
+                texture.constant_value,
+                format_source_location(texture.source));
+            break;
+        case TextureDesc::Type::Scale:
+            LUISA_VERBOSE(
+                "PBRT texture #{} '{}' type=scale, tex='{}', scale='{}', source={}.",
+                i,
+                texture.name,
+                texture.tex,
+                texture.scale,
+                format_source_location(texture.source));
+            break;
+        case TextureDesc::Type::Checkerboard:
+            LUISA_VERBOSE(
+                "PBRT texture #{} '{}' type=checkerboard, tex1={}, tex2={}, uv_scale=({}, {}), source={}.",
+                i,
+                texture.name,
+                texture.tex1.texture ? *texture.tex1.texture : "<constant>",
+                texture.tex2.texture ? *texture.tex2.texture : "<constant>",
+                texture.uv_scale.x,
+                texture.uv_scale.y,
+                format_source_location(texture.source));
+            break;
+        }
+    }
+
+    luisa::vector<std::pair<luisa::string_view, const MaterialDesc*>> sorted_materials;
+    sorted_materials.reserve(scene.named_materials.size());
+    for (auto&& [name, material] : scene.named_materials)
+    {
+        sorted_materials.emplace_back(name, &material);
+    }
+    std::sort(sorted_materials.begin(), sorted_materials.end(), [](auto a, auto b) noexcept
+    {
+        return a.first < b.first;
+    });
+    for (auto&& [name, material] : sorted_materials)
+    {
+        if (material->reflectance_texture)
+        {
+            LUISA_VERBOSE(
+                "PBRT material '{}' type=diffuse, reflectance=texture '{}', source={}.",
+                name,
+                *material->reflectance_texture,
+                format_source_location(material->source));
+        }
+        else
+        {
+            LUISA_VERBOSE(
+                "PBRT material '{}' type=diffuse, reflectance=({}, {}, {}), source={}.",
+                name,
+                material->reflectance.x,
+                material->reflectance.y,
+                material->reflectance.z,
+                format_source_location(material->source));
+        }
+    }
+    for (auto i = 0u; i < scene.materials.size(); i++)
+    {
+        auto&& material = scene.materials[i];
+        if (material.reflectance_texture)
+        {
+            LUISA_VERBOSE(
+                "PBRT inline material #{} type=diffuse, reflectance=texture '{}', source={}.",
+                i,
+                *material.reflectance_texture,
+                format_source_location(material.source));
+        }
+        else
+        {
+            LUISA_VERBOSE(
+                "PBRT inline material #{} type=diffuse, reflectance=({}, {}, {}), source={}.",
+                i,
+                material.reflectance.x,
+                material.reflectance.y,
+                material.reflectance.z,
+                format_source_location(material.source));
+        }
+    }
+    for (auto i = 0u; i < scene.shapes.size(); i++)
+    {
+        auto&& shape           = scene.shapes[i];
+        auto material          = !shape.material.named.empty()
+                                     ? luisa::format("named '{}'", shape.material.named)
+                                 : shape.material.inline_index
+                                     ? luisa::format("inline #{}", *shape.material.inline_index)
+                                     : luisa::string{"default diffuse"};
+        auto shape_detail      = shape.filename
+                                     ? luisa::string{shape.filename->string().c_str()}
+                                     : luisa::string{"inline"};
+        auto area_light_detail = shape.area_light
+                                     ? luisa::format(
+                                           "diffuse L=({}, {}, {})",
+                                           shape.area_light->emission.x,
+                                           shape.area_light->emission.y,
+                                           shape.area_light->emission.z)
+                                     : luisa::string{"none"};
+        LUISA_VERBOSE(
+            "PBRT instance #{} shape={} ({}), material={}, area_light={}, transform={}, source={}.",
+            i,
+            shape_type_name(shape.type),
+            shape_detail,
+            material,
+            area_light_detail,
+            format_matrix(shape.pbrt_transform),
+            format_source_location(shape.source));
+    }
+    LUISA_INFO("Imported PBRT scene '{}' in {} ms.", scene.source_path.string(), import_clock.toc());
+    return result;
 }
 
 } // namespace Yutrel

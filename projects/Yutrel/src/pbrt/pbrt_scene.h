@@ -41,7 +41,7 @@ struct CameraDesc
         Perspective,
     };
     Type type{Type::Perspective};
-    float fov{45.0f};
+    float fov{90.0f};
     float shutter_open{0.0f};
     float shutter_close{1.0f};
     Matrix4 pbrt_transform{identity_matrix4};
@@ -56,9 +56,9 @@ struct FilmDesc
         RGB,
     };
     Type type{Type::RGB};
-    uint2 resolution{1024u, 1024u};
+    uint2 resolution{1280u, 720u};
     float iso{100.0f};
-    std::filesystem::path filename;
+    std::filesystem::path filename{"pbrt.exr"};
     luisa::vector<RawParameter> parameters;
 };
 
@@ -68,9 +68,10 @@ struct IntegratorDesc
     enum class Type
     {
         Path,
+        VolPath,
     };
-    Type type{Type::Path};
-    uint max_depth{10u};
+    Type type{Type::VolPath};
+    uint max_depth{5u};
     luisa::vector<RawParameter> parameters;
 };
 
@@ -82,10 +83,11 @@ struct SamplerDesc
         Independent,
         Halton,
         Sobol,
+        ZSobol,
     };
-    Type type{Type::Independent};
-    uint pixel_samples{1u};
-    uint seed{20120712u};
+    Type type{Type::ZSobol};
+    uint pixel_samples{16u};
+    uint seed{0u};
     luisa::vector<RawParameter> parameters;
 };
 
@@ -97,8 +99,8 @@ struct FilterDesc
         Triangle,
         Gaussian,
     };
-    Type type{Type::Triangle};
-    float2 radius{1.0f, 1.0f};
+    Type type{Type::Gaussian};
+    float2 radius{1.5f, 1.5f};
     luisa::vector<RawParameter> parameters;
 };
 
@@ -151,7 +153,7 @@ struct MaterialDesc
         CoatedDiffuse,
     };
     Type type{Type::Diffuse};
-    float3 reflectance{0.0f, 0.0f, 0.0f};
+    float3 reflectance{0.5f, 0.5f, 0.5f};
     luisa::optional<luisa::string> reflectance_texture;
     float roughness{0.0f};
     luisa::vector<RawParameter> parameters;

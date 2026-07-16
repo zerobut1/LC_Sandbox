@@ -2,9 +2,9 @@
   "scene": "scene-yutrel.pbrt",
   "reference": {
     "image": "reference.exr",
-    "renderer": "Tungsten",
-    "version": "legacy-reference",
-    "spp": 16384,
+    "renderer": "pbrt-v4",
+    "version": "5f7a606806a4ac7b939131ded9d7a30ebd02416e",
+    "spp": 4096,
     "color_space": "linear-sRGB"
   },
   "profiles": {

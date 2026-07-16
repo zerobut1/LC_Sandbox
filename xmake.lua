@@ -70,9 +70,23 @@ after_load(function()
         return
     end
 
-    local cuda_path = os.getenv("CUDA_PATH")
+    -- CUDA 13.x static NVRTC requires ntdll on Windows.
+    if is_plat("windows") then
+        local nvrtc = project.target("lc-nvrtc")
+        if nvrtc ~= nil then
+            nvrtc:add("syslinks", "ntdll")
+        end
+    end
+
+    -- Prefer xmake's configured CUDA SDK over the process environment, which
+    -- may still point to an older Toolkit after an upgrade.
+    local cuda_path = get_config("cuda")
     if cuda_path == nil or cuda_path == "" then
-        wprint("CUDA_PATH is not set; cannot locate cudadevrt.lib. CUDA indirect dispatch will remain unavailable.")
+        import("cuda_sdkdir", {rootdir = get_config("lc_scripts_path")})
+        cuda_path = cuda_sdkdir()
+    end
+    if cuda_path == nil or cuda_path == "" then
+        wprint("CUDA SDK not found; cannot locate cudadevrt. CUDA indirect dispatch will remain unavailable.")
         return
     end
 

@@ -15,6 +15,7 @@
 #include "base/film.h"
 #include "base/integrator.h"
 #include "cameras/pinhole.h"
+#include "environments/distant.h"
 #include "environments/null.h"
 #include "environments/pbrt_equal_area.h"
 #include "filters/triangle.h"
@@ -348,9 +349,19 @@ void validate_pbrt_scene(const PbrtScene& scene)
         ParameterKey{"string", "filename"},
         ParameterKey{"float", "scale"},
     };
+    static constexpr std::array distant_light_allowed{
+        ParameterKey{"rgb", "L"},
+        ParameterKey{"float", "scale"},
+        ParameterKey{"point3", "from"},
+        ParameterKey{"point3", "to"},
+    };
     if (scene.infinite_light)
     {
         validate_parameters(scene.infinite_light->parameters, "LightSource 'infinite'", infinite_light_allowed);
+    }
+    if (scene.distant_light)
+    {
+        validate_parameters(scene.distant_light->parameters, "LightSource 'distant'", distant_light_allowed);
     }
 
     for (auto i = 0u; i < scene.shapes.size(); i++)
@@ -558,6 +569,24 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
 
     auto environment = [&]() -> EnvironmentRef
     {
+        if (scene.distant_light)
+        {
+            auto&& desc = *scene.distant_light;
+            auto direction = transform_vector(desc.pbrt_transform, desc.from - desc.to);
+            auto length_squared = dot(direction, direction);
+            if (!std::isfinite(length_squared) || length_squared < 1e-16f)
+            {
+                fail(desc.source, "PBRT distant LightSource transform produced a non-finite or zero-length direction.");
+            }
+            direction *= 1.0f / std::sqrt(length_squared);
+            auto texture = builder.add_anonymous_texture<ConstantTextureSpec>(
+                desc.source, make_float4(desc.L, 1.0f));
+            return builder.add_environment<DistantEnvironmentSpec>(
+                SpecMeta{.name = "pbrt_distant_environment", .source = desc.source},
+                texture,
+                desc.scale,
+                direction);
+        }
         if (!scene.infinite_light)
         {
             return builder.add_environment<NullEnvironmentSpec>(
@@ -965,6 +994,25 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
             "PBRT environment transform={}, source={}.",
             format_matrix(scene.infinite_light->pbrt_transform),
             format_source_location(scene.infinite_light->source));
+    }
+    else if (scene.distant_light)
+    {
+        LUISA_INFO(
+            "PBRT environment: type=distant, L=({}, {}, {}), scale={}, from=({}, {}, {}), to=({}, {}, {}).",
+            scene.distant_light->L.x,
+            scene.distant_light->L.y,
+            scene.distant_light->L.z,
+            scene.distant_light->scale,
+            scene.distant_light->from.x,
+            scene.distant_light->from.y,
+            scene.distant_light->from.z,
+            scene.distant_light->to.x,
+            scene.distant_light->to.y,
+            scene.distant_light->to.z);
+        LUISA_VERBOSE(
+            "PBRT distant transform={}, source={}.",
+            format_matrix(scene.distant_light->pbrt_transform),
+            format_source_location(scene.distant_light->source));
     }
     else
     {

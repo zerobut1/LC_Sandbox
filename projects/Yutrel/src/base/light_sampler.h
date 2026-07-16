@@ -36,6 +36,7 @@ public:
     {
         Evaluation eval;
         Var<Ray> shadow_ray;
+        Bool delta;
         [[nodiscard]] static Sample zero(uint dimension) noexcept;
         [[nodiscard]] static Sample from_light(const Light::Sample& s, const Interaction& it_from) noexcept;
         [[nodiscard]] static Sample from_environment(const Environment::Sample& s, const Interaction& it_from) noexcept;

@@ -13,6 +13,7 @@
 
 #include "base/film.h"
 #include "base/renderer.h"
+#include "utils/frame.h"
 
 using namespace Yutrel;
 using namespace luisa;
@@ -41,6 +42,43 @@ namespace
 
     return std::abs(values[0u] - 256.0f) < 1e-4f &&
            std::abs(values[1u] - 1000.0f) < 1e-4f;
+}
+
+[[nodiscard]] bool test_axis_aligned_frame(Device& device)
+{
+    auto stream = device.create_stream();
+    auto output = device.create_buffer<float4>(3u);
+
+    Kernel1D kernel = [](BufferFloat4 result) noexcept
+    {
+        auto n     = make_float3(0.0f, 1.0f, 0.0f);
+        auto frame = Frame::make(n);
+        result.write(0u, make_float4(frame.s(), length(frame.s())));
+        result.write(1u, make_float4(frame.t(), length(frame.t())));
+        result.write(2u, make_float4(dot(frame.s(), n),
+                                    dot(frame.t(), n),
+                                    dot(frame.s(), frame.t()),
+                                    0.0f));
+    };
+    auto shader = device.compile(kernel);
+    std::array<float4, 3u> values{};
+    stream << shader(output).dispatch(1u)
+           << output.copy_to(luisa::span{values.data(), values.size()})
+           << synchronize();
+
+    for (auto value : values)
+    {
+        if (!std::isfinite(value.x) || !std::isfinite(value.y) ||
+            !std::isfinite(value.z) || !std::isfinite(value.w))
+        {
+            return false;
+        }
+    }
+    return std::abs(values[0u].w - 1.0f) < 1e-4f &&
+           std::abs(values[1u].w - 1.0f) < 1e-4f &&
+           std::abs(values[2u].x) < 1e-4f &&
+           std::abs(values[2u].y) < 1e-4f &&
+           std::abs(values[2u].z) < 1e-4f;
 }
 
 [[nodiscard]] bool test_non_finite_diagnostics(Device& device)
@@ -91,10 +129,15 @@ int main(int argc, char* argv[])
         LUISA_WARNING("Firefly limit correctness test failed.");
         return 2;
     }
+    if (!test_axis_aligned_frame(device))
+    {
+        LUISA_WARNING("Axis-aligned frame test failed.");
+        return 3;
+    }
     if (!test_non_finite_diagnostics(device))
     {
         LUISA_WARNING("Non-finite diagnostic counter test failed.");
-        return 3;
+        return 4;
     }
     return 0;
 }

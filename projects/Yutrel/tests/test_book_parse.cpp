@@ -464,6 +464,38 @@ static auto test_book_parse_registration = []
         expect(!scene.infinite_light.has_value());
     };
 
+    "parse_distant_light"_test = []
+    {
+        auto scene = PbrtParser::parse("tests/scenes/distant_basic.pbrt");
+        expect(scene.distant_light.has_value());
+        expect(!scene.infinite_light.has_value());
+        if (!scene.distant_light) { return; }
+        auto&& light = *scene.distant_light;
+        expect(is_near(light.L.x, 8.0f));
+        expect(is_near(light.L.y, 8.0f));
+        expect(is_near(light.L.z, 8.0f));
+        expect(is_near(light.scale, 1.0f));
+        expect(is_near(light.from.z, 1.0f));
+        expect(is_near(light.to.x, 0.0f));
+        expect(is_near(light.pbrt_transform[2u], 1.0f));
+        expect(is_near(light.pbrt_transform[8u], -1.0f));
+    };
+
+    "reject_invalid_distant_lights"_test = []
+    {
+        for (auto path : {
+                 "tests/scenes/distant_invalid_direction.pbrt",
+                 "tests/scenes/distant_invalid_scale.pbrt",
+                 "tests/scenes/distant_invalid_radiance.pbrt",
+                 "tests/scenes/distant_duplicate.pbrt",
+                 "tests/scenes/distant_duplicate_parameter.pbrt",
+                 "tests/scenes/distant_with_infinite.pbrt",
+             })
+        {
+            expect(parse_error_contains(path, {path, "LightSource"}));
+        }
+    };
+
     "reject_invalid_infinite_lights"_test = []
     {
         for (auto path : {

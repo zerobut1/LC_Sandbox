@@ -176,17 +176,17 @@ LightSampler::Sample LightSampler::sample_environment(
 
 LightSampler::Sample LightSampler::Sample::zero(uint dimension) noexcept
 {
-    return Sample{.eval = Evaluation::zero(dimension), .shadow_ray = {}};
+    return Sample{.eval = Evaluation::zero(dimension), .shadow_ray = {}, .delta = false};
 }
 
 LightSampler::Sample LightSampler::Sample::from_light(const Light::Sample& s, const Interaction& it_from) noexcept
 {
-    return Sample{.eval = s.eval, .shadow_ray = it_from.spawn_ray_to(s.p)};
+    return Sample{.eval = s.eval, .shadow_ray = it_from.spawn_ray_to(s.p), .delta = false};
 }
 
 LightSampler::Sample LightSampler::Sample::from_environment(
     const Environment::Sample& s, const Interaction& it_from) noexcept
 {
-    return Sample{.eval = s.eval, .shadow_ray = it_from.spawn_ray(s.wi)};
+    return Sample{.eval = s.eval, .shadow_ray = it_from.spawn_ray(s.wi), .delta = s.delta};
 }
 } // namespace Yutrel

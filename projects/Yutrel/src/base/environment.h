@@ -18,10 +18,15 @@ public:
     {
         Evaluation eval;
         Float3 wi;
+        Bool delta;
 
         [[nodiscard]] static auto zero(uint dimension) noexcept
         {
-            return Sample{.eval = Evaluation::zero(dimension), .wi = make_float3(0.0f)};
+            return Sample{
+                .eval = Evaluation::zero(dimension),
+                .wi = make_float3(0.0f),
+                .delta = false,
+            };
         }
     };
 

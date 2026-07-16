@@ -514,6 +514,25 @@ private:
         return parse_float_token(p->values.front());
     }
 
+    [[nodiscard]] float3 one_float3(
+        luisa::span<const RawParameter> params, luisa::string_view type,
+        luisa::string_view name, float3 default_value) const
+    {
+        auto p = find_param(params, type, name);
+        if (p == nullptr)
+        {
+            return default_value;
+        }
+        if (p->values.size() != 3u)
+        {
+            fail(p->source, luisa::format("'{} {}' expects exactly three values", type, name));
+        }
+        return make_float3(
+            parse_float_token(p->values[0u]),
+            parse_float_token(p->values[1u]),
+            parse_float_token(p->values[2u]));
+    }
+
     [[nodiscard]] luisa::string one_string(luisa::span<const RawParameter> params, luisa::string_view name, const Token& command, luisa::string default_value) const
     {
         auto p = find_param(params, "string", name);
@@ -1272,15 +1291,72 @@ private:
     {
         expect_world(command);
         auto type = expect_string("LightSource type");
-        if (type != "infinite")
+        if (type != "infinite" && type != "distant")
         {
             fail(command, luisa::format("unsupported LightSource '{}'", type));
         }
-        if (m_desc.infinite_light)
+        if (m_desc.infinite_light || m_desc.distant_light)
         {
-            fail(command, "only one infinite LightSource is supported");
+            fail(command, "only one infinite or distant LightSource is supported");
         }
         auto params = parse_parameters();
+        if (type == "distant")
+        {
+            for (auto i = 0u; i < params.size(); i++)
+            {
+                auto&& param   = params[i];
+                auto supported = (param.type == "rgb" && param.name == "L") ||
+                                 (param.type == "float" && param.name == "scale") ||
+                                 (param.type == "point3" && (param.name == "from" || param.name == "to"));
+                if (!supported)
+                {
+                    fail(param.source, luisa::format("unsupported parameter '\"{} {}\"' for distant LightSource", param.type, param.name));
+                }
+                for (auto j = 0u; j < i; j++)
+                {
+                    if (params[j].name == param.name)
+                    {
+                        fail(param.source, luisa::format("duplicate distant LightSource parameter '\"{} {}\"'", param.type, param.name));
+                    }
+                }
+            }
+            auto L     = one_float3(params, "rgb", "L", make_float3(1.0f));
+            auto scale = one_float(params, "scale", command, 1.0f);
+            auto from  = one_float3(params, "point3", "from", make_float3(0.0f));
+            auto to    = one_float3(params, "point3", "to", make_float3(0.0f, 0.0f, 1.0f));
+            auto finite = [](float3 v) noexcept
+            {
+                return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+            };
+            if (!finite(L) || L.x < 0.0f || L.y < 0.0f || L.z < 0.0f)
+            {
+                auto p = find_param(params, "rgb", "L");
+                fail(p == nullptr ? command.loc : p->source,
+                     "distant LightSource radiance must be finite and non-negative");
+            }
+            if (!std::isfinite(scale) || scale < 0.0f)
+            {
+                auto p = find_param(params, "float", "scale");
+                fail(p == nullptr ? command.loc : p->source,
+                     "distant LightSource scale must be finite and non-negative");
+            }
+            auto direction = from - to;
+            auto length_squared = dot_host(direction, direction);
+            if (!finite(from) || !finite(to) || !std::isfinite(length_squared) || length_squared < 1e-16f)
+            {
+                fail(command, "distant LightSource 'from' and 'to' must define a finite non-zero direction");
+            }
+            m_desc.distant_light.emplace(DistantLightDesc{
+                .source         = command.loc,
+                .L              = L,
+                .scale          = scale,
+                .from           = from,
+                .to             = to,
+                .pbrt_transform = m_current_transform,
+                .parameters     = std::move(params),
+            });
+            return;
+        }
         for (auto i = 0u; i < params.size(); i++)
         {
             auto&& param   = params[i];

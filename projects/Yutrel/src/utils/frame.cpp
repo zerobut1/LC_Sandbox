@@ -14,7 +14,7 @@ Frame::Frame() noexcept
 
 Frame Frame::make(Expr<float3> n) noexcept
 {
-    auto sgn = sign(n.z);
+    auto sgn = ite(n.z >= 0.0f, 1.0f, -1.0f);
     auto a   = -1.f / (sgn + n.z);
     auto b   = n.x * n.y * a;
     auto s   = make_float3(1.f + sgn * sqr(n.x) * a, sgn * b, -sgn * n.x);

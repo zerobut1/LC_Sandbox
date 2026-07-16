@@ -186,6 +186,17 @@ struct InfiniteLightDesc
     luisa::vector<RawParameter> parameters;
 };
 
+struct DistantLightDesc
+{
+    SourceLocation source;
+    float3 L{1.0f};
+    float scale{1.0f};
+    float3 from{0.0f};
+    float3 to{0.0f, 0.0f, 1.0f};
+    Matrix4 pbrt_transform{identity_matrix4};
+    luisa::vector<RawParameter> parameters;
+};
+
 struct MeshDesc
 {
     SourceLocation source;
@@ -232,6 +243,7 @@ struct PbrtScene
     luisa::vector<MeshDesc> meshes;
     luisa::vector<ShapeDesc> shapes;
     luisa::optional<InfiniteLightDesc> infinite_light;
+    luisa::optional<DistantLightDesc> distant_light;
 };
 
 } // namespace Yutrel

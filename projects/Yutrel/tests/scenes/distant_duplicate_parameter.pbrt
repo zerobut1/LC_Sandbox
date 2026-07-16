@@ -1,0 +1,2 @@
+WorldBegin
+LightSource "distant" "point3 from" [0 0 1] "point3 from" [0 1 0]

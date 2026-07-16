@@ -3,6 +3,7 @@
 #include "base/film.h"
 #include "base/shape.h"
 #include "cameras/pinhole.h"
+#include "environments/distant.h"
 #include "environments/null.h"
 #include "environments/pbrt_equal_area.h"
 #include "pbrt/pbrt_importer.h"
@@ -1121,6 +1122,42 @@ static auto test_book_import_registration = []
             environment->emission(),
             -1.0f,
             make_float3x3(1.0f)}
+                   .validate()
+                    .has_value());
+    };
+
+    "import_distant_environment"_test = []
+    {
+        auto parsed      = PbrtParser::parse("tests/scenes/distant_basic.pbrt");
+        auto spec        = PbrtImporter::import(std::move(parsed));
+        auto environment = dynamic_cast<const DistantEnvironmentSpec*>(
+            &spec.environments().spec(spec.render().environment));
+        expect(environment != nullptr);
+        if (environment == nullptr)
+        {
+            return;
+        }
+        expect(is_near(environment->scale(), 1.0f));
+        expect(is_near(environment->direction().x, 1.0f));
+        expect(is_near(environment->direction().y, 0.0f));
+        expect(is_near(environment->direction().z, 0.0f));
+        expect(!environment->validate().has_value());
+
+        auto emission = dynamic_cast<const ConstantTextureSpec*>(
+            &spec.textures().spec(environment->emission()));
+        expect(emission != nullptr);
+        if (emission != nullptr)
+        {
+            expect(is_near(emission->value().x, 8.0f));
+            expect(is_near(emission->value().y, 8.0f));
+            expect(is_near(emission->value().z, 8.0f));
+        }
+        expect(DistantEnvironmentSpec{
+            environment->emission(), -1.0f, make_float3(1.0f, 0.0f, 0.0f)}
+                   .validate()
+                   .has_value());
+        expect(DistantEnvironmentSpec{
+            environment->emission(), 1.0f, make_float3(2.0f, 0.0f, 0.0f)}
                    .validate()
                    .has_value());
     };

@@ -384,7 +384,9 @@ Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> f
                 {
                     auto wi   = light_sample.shadow_ray->direction();
                     auto eval = closure->evaluate(wo, wi);
-                    auto w    = balance_heuristic(light_sample.eval.pdf, eval.pdf) / light_sample.eval.pdf;
+                    auto mis  = ite(light_sample.delta, 1.0f,
+                                     balance_heuristic(light_sample.eval.pdf, eval.pdf));
+                    auto w    = mis / light_sample.eval.pdf;
                     Li += w * beta * eval.f * light_sample.eval.L;
                 };
 

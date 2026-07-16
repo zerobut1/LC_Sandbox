@@ -1,0 +1,14 @@
+Integrator "path" "integer maxdepth" [2]
+Sampler "independent" "integer pixelsamples" [1]
+PixelFilter "triangle" "float xradius" [1] "float yradius" [1]
+Film "rgb" "string filename" ["distant_basic.exr"] "integer xresolution" [8] "integer yresolution" [8]
+Camera "perspective" "float fov" [45]
+
+WorldBegin
+Rotate 90 0 1 0
+LightSource "distant"
+    "rgb L" [8 8 8]
+    "point3 from" [0 0 1]
+    "point3 to" [0 0 0]
+Material "diffuse" "rgb reflectance" [0.5 0.5 0.5]
+Shape "sphere" "float radius" [1]

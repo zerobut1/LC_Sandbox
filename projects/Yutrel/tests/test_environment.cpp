@@ -10,6 +10,7 @@
 
 #include "base/renderer.h"
 #include "base/scene.h"
+#include "environments/distant.h"
 #include "environments/pbrt_equal_area.h"
 #include "pbrt/pbrt_importer.h"
 #include "pbrt/pbrt_parser.h"
@@ -247,6 +248,58 @@ void write_pfm(const std::filesystem::path& path, const char* magic,
            std::isfinite(value.w) && value.w >= 0.0f;
 }
 
+[[nodiscard]] luisa::unique_ptr<Scene> load_distant_scene()
+{
+    auto parsed = PbrtParser::parse("tests/scenes/distant_basic.pbrt");
+    auto spec   = PbrtImporter::import(std::move(parsed));
+    auto scene  = Scene::create(spec);
+    return dynamic_cast<const DistantEnvironment*>(scene->environment()) == nullptr
+               ? nullptr
+               : std::move(scene);
+}
+
+[[nodiscard]] bool test_distant_environment(
+    Device& device, Stream& stream, const Scene& scene)
+{
+    auto renderer = Renderer::create(device, stream, scene);
+    if (renderer->environment() == nullptr || !renderer->lights().empty())
+    {
+        return false;
+    }
+
+    auto output = device.create_buffer<float4>(4u);
+    Kernel1D kernel = [&renderer](BufferFloat4 result) noexcept
+    {
+        auto swl       = renderer->spectrum()->sample(0.5f);
+        auto sample_a  = renderer->environment()->sample(swl, 0.0f, make_float2(0.1f, 0.2f));
+        auto sample_b  = renderer->environment()->sample(swl, 0.0f, make_float2(0.8f, 0.9f));
+        auto evaluated = renderer->environment()->evaluate(sample_a.wi, swl, 0.0f);
+        result.write(0u, make_float4(sample_a.wi, sample_a.eval.pdf));
+        result.write(1u, make_float4(sample_b.wi, sample_b.eval.pdf));
+        result.write(2u, make_float4(
+            ite(sample_a.delta, 1.0f, 0.0f),
+            ite(sample_b.delta, 1.0f, 0.0f),
+            evaluated.pdf,
+            sample_a.eval.L[0u]));
+        result.write(3u, make_float4(evaluated.L[0u]));
+    };
+    auto shader = device.compile(kernel);
+    std::array<float4, 4u> result{};
+    stream << shader(output).dispatch(1u)
+           << output.copy_to(result.data())
+           << synchronize();
+
+    auto a = result[0u];
+    auto b = result[1u];
+    auto values = result[2u];
+    return dot(a.xyz(), make_float3(1.0f, 0.0f, 0.0f)) > 0.999f &&
+           dot(a.xyz(), b.xyz()) > 0.999f &&
+           nearly_equal(a.w, 1.0f) && nearly_equal(b.w, 1.0f) &&
+           nearly_equal(values.x, 1.0f) && nearly_equal(values.y, 1.0f) &&
+           nearly_equal(values.z, 0.0f) && std::isfinite(values.w) && values.w > 0.0f &&
+           nearly_equal(result[3u].x, 0.0f);
+}
+
 } // namespace
 
 int main(int argc, char* argv[])
@@ -275,6 +328,15 @@ int main(int argc, char* argv[])
     if (!test_infinite_environment(device, stream, *scene))
     {
         return 5;
+    }
+    auto distant_scene = load_distant_scene();
+    if (distant_scene == nullptr)
+    {
+        return 6;
+    }
+    if (!test_distant_environment(device, stream, *distant_scene))
+    {
+        return 7;
     }
     return 0;
 }

@@ -74,6 +74,7 @@ Environment::Sample PBRTEqualAreaEnvironment::Instance::sample(
                 .ng = make_float3(0.0f),
             },
             .wi = wi,
+            .delta = false,
         };
     };
     return result;

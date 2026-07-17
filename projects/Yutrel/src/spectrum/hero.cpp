@@ -20,20 +20,27 @@ HeroWavelengthSpectrum::Instance::Instance(Renderer& renderer, CommandBuffer& co
 
 SampledWavelengths HeroWavelengthSpectrum::Instance::sample(Expr<float> u) const noexcept
 {
-    // 均匀采样
-    // TODO : 人眼响应importance sampling
-    SampledWavelengths swl{base()->dimension()};
+    constexpr auto sample_visible = [](auto u) noexcept
+    {
+        return clamp(
+            538.0f - 138.888889f * atanh(0.85691062f - 1.82750197f * u),
+            visible_wavelength_min,
+            visible_wavelength_max);
+    };
+    constexpr auto visible_pdf = [](auto lambda) noexcept
+    {
+        auto c = cosh(0.0072f * (lambda - 538.0f));
+        return 0.0039398042f / (c * c);
+    };
 
-    auto lambda_span   = visible_wavelength_max - visible_wavelength_min;
-    auto lambda_stride = lambda_span / static_cast<float>(base()->dimension());
-    auto pdf           = 1.0f / lambda_span;
-    auto lambda_hero   = visible_wavelength_min + u * lambda_span;
+    SampledWavelengths swl{base()->dimension()};
+    auto inv_n = 1.0f / static_cast<float>(swl.dimension());
     for (auto i = 0u; i < swl.dimension(); i++)
     {
-        auto lambda = lambda_hero + lambda_stride * static_cast<float>(i);
-        lambda      = ite(lambda > visible_wavelength_max, lambda - lambda_span, lambda);
+        auto up     = fract(u + static_cast<float>(i) * inv_n);
+        auto lambda = sample_visible(up);
         swl.set_lambda(i, lambda);
-        swl.set_pdf(i, pdf);
+        swl.set_pdf(i, visible_pdf(lambda));
     }
     return swl;
 }

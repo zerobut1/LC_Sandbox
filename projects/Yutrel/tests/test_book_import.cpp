@@ -726,7 +726,7 @@ static auto test_book_import_registration = []
                    &spec.surfaces().spec(instances[4u].surface)) != nullptr);
     };
 
-    "reject_coated_diffuse_materials"_test = []
+    "reject_unsupported_coated_displacement"_test = []
     {
         auto parsed   = PbrtParser::parse("tests/scenes/coated_diffuse_materials.pbrt");
         auto rejected = false;
@@ -738,8 +738,8 @@ static auto test_book_import_registration = []
         {
             auto message = std::string{error.what()};
             rejected     = message.find("coated_diffuse_materials.pbrt") != std::string::npos &&
-                           message.find("coateddiffuse") != std::string::npos &&
-                           message.find("not PBRT-v4 compatible") != std::string::npos;
+                           message.find("displacement") != std::string::npos &&
+                           message.find("unsupported parameter") != std::string::npos;
         }
         expect(rejected);
     };
@@ -987,23 +987,20 @@ static auto test_book_import_registration = []
         expect(source_located);
     };
 
-    "reject_inline_coated_diffuse_material"_test = []
+    "import_inline_coated_diffuse_material"_test = []
     {
-        auto parsed                    = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
-        parsed.materials[0u].type      = MaterialDesc::Type::CoatedDiffuse;
-        parsed.materials[0u].roughness = 0.1f;
-        auto rejected                  = false;
-        try
+        auto parsed                      = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        parsed.materials[0u].type        = MaterialDesc::Type::CoatedDiffuse;
+        parsed.materials[0u].roughness   = 0.1f;
+        parsed.materials[0u].u_roughness = 0.1f;
+        parsed.materials[0u].v_roughness = 0.1f;
+        auto spec                        = PbrtImporter::import(std::move(parsed));
+        auto found                       = false;
+        spec.surfaces().visit_entries([&](SurfaceRef, const SpecMeta&, const SurfaceSpec* surface)
         {
-            (void)PbrtImporter::import(std::move(parsed));
-        }
-        catch (const std::runtime_error& error)
-        {
-            auto message = std::string{error.what()};
-            rejected     = message.find("book_geometry.pbrt") != std::string::npos &&
-                           message.find("coateddiffuse") != std::string::npos;
-        }
-        expect(rejected);
+            found |= dynamic_cast<const CoatedDiffuseSurfaceSpec*>(surface) != nullptr;
+        });
+        expect(found);
     };
 
     "import_named_material_binding"_test = []
@@ -1162,21 +1159,39 @@ static auto test_book_import_registration = []
                    .has_value());
     };
 
-    "reject_teapot_coated_diffuse"_test = []
+    "import_teapot_coated_diffuse"_test = []
     {
-        auto parsed   = PbrtParser::parse("scene/teapot/scene-yutrel.pbrt");
-        auto rejected = false;
-        try
+        auto parsed = PbrtParser::parse("scene/teapot/scene-yutrel.pbrt");
+        auto spec   = PbrtImporter::import(std::move(parsed));
+        auto found  = false;
+        spec.surfaces().visit_entries([&](SurfaceRef, const SpecMeta& meta, const SurfaceSpec* surface)
         {
-            (void)PbrtImporter::import(std::move(parsed));
-        }
-        catch (const std::runtime_error& error)
-        {
-            auto message = std::string{error.what()};
-            rejected     = message.find("scene-yutrel.pbrt") != std::string::npos &&
-                           message.find("coateddiffuse") != std::string::npos;
-        }
-        expect(rejected);
+            if (meta.name != "Material")
+            {
+                return;
+            }
+            auto coated = dynamic_cast<const CoatedDiffuseSurfaceSpec*>(surface);
+            expect(coated != nullptr);
+            if (coated == nullptr)
+            {
+                return;
+            }
+            found = true;
+            expect(!coated->params().remap_roughness);
+            expect(coated->params().u_roughness.has_value());
+            expect(coated->params().v_roughness.has_value());
+            if (coated->params().u_roughness)
+            {
+                auto texture = dynamic_cast<const ConstantTextureSpec*>(
+                    &spec.textures().spec(*coated->params().u_roughness));
+                expect(texture != nullptr);
+                if (texture != nullptr)
+                {
+                    expect(is_near(texture->value().x, 0.001f));
+                }
+            }
+        });
+        expect(found);
     };
     return 0;
 }();

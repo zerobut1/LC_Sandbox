@@ -27,6 +27,7 @@
 #include "shapes/mesh.h"
 #include "shapes/sphere.h"
 #include "spectrum/hero.h"
+#include "surfaces/coated_diffuse.h"
 #include "surfaces/diffuse.h"
 #include "textures/checker_board.h"
 #include "textures/constant.h"
@@ -179,27 +180,64 @@ void validate_parameters(
 
 void validate_material(const MaterialDesc& material, luisa::string_view owner, bool named)
 {
-    if (material.type == MaterialDesc::Type::CoatedDiffuse)
-    {
-        fail(material.source, luisa::format("PBRT {} uses 'coateddiffuse', which is not PBRT-v4 compatible in Yutrel yet.", owner));
-    }
-    static constexpr std::array inline_allowed{
+    static constexpr std::array diffuse_inline_allowed{
         ParameterKey{"rgb", "reflectance"},
         ParameterKey{"texture", "reflectance"},
     };
-    static constexpr std::array named_allowed{
+    static constexpr std::array diffuse_named_allowed{
         ParameterKey{"string", "type"},
         ParameterKey{"rgb", "reflectance"},
         ParameterKey{"texture", "reflectance"},
     };
-    if (named)
+    static constexpr std::array coated_inline_allowed{
+        ParameterKey{"rgb", "reflectance"},
+        ParameterKey{"texture", "reflectance"},
+        ParameterKey{"float", "roughness"},
+        ParameterKey{"texture", "roughness"},
+        ParameterKey{"float", "uroughness"},
+        ParameterKey{"texture", "uroughness"},
+        ParameterKey{"float", "vroughness"},
+        ParameterKey{"texture", "vroughness"},
+        ParameterKey{"float", "thickness"},
+        ParameterKey{"texture", "thickness"},
+        ParameterKey{"rgb", "albedo"},
+        ParameterKey{"texture", "albedo"},
+        ParameterKey{"float", "g"},
+        ParameterKey{"texture", "g"},
+        ParameterKey{"float", "eta"},
+        ParameterKey{"texture", "eta"},
+        ParameterKey{"bool", "remaproughness"},
+        ParameterKey{"integer", "maxdepth"},
+        ParameterKey{"integer", "nsamples"},
+    };
+    static constexpr std::array coated_named_allowed{
+        ParameterKey{"string", "type"},
+        ParameterKey{"rgb", "reflectance"},
+        ParameterKey{"texture", "reflectance"},
+        ParameterKey{"float", "roughness"},
+        ParameterKey{"texture", "roughness"},
+        ParameterKey{"float", "uroughness"},
+        ParameterKey{"texture", "uroughness"},
+        ParameterKey{"float", "vroughness"},
+        ParameterKey{"texture", "vroughness"},
+        ParameterKey{"float", "thickness"},
+        ParameterKey{"texture", "thickness"},
+        ParameterKey{"rgb", "albedo"},
+        ParameterKey{"texture", "albedo"},
+        ParameterKey{"float", "g"},
+        ParameterKey{"texture", "g"},
+        ParameterKey{"float", "eta"},
+        ParameterKey{"texture", "eta"},
+        ParameterKey{"bool", "remaproughness"},
+        ParameterKey{"integer", "maxdepth"},
+        ParameterKey{"integer", "nsamples"},
+    };
+    if (material.type == MaterialDesc::Type::Diffuse)
     {
-        validate_parameters(material.parameters, owner, named_allowed);
+        validate_parameters(material.parameters, owner, named ? luisa::span<const ParameterKey>{diffuse_named_allowed} : luisa::span<const ParameterKey>{diffuse_inline_allowed});
+        return;
     }
-    else
-    {
-        validate_parameters(material.parameters, owner, inline_allowed);
-    }
+    validate_parameters(material.parameters, owner, named ? luisa::span<const ParameterKey>{coated_named_allowed} : luisa::span<const ParameterKey>{coated_inline_allowed});
 }
 
 void validate_pbrt_scene(const PbrtScene& scene)
@@ -746,23 +784,52 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
                 value);
         };
 
-        auto reflectance = [&]() -> TextureRef
+        auto resolve_texture = [&](luisa::string_view parameter, float4 value, const luisa::optional<luisa::string>& texture) -> TextureRef
         {
-            if (material.reflectance_texture)
+            if (texture)
             {
-                return builder.reference_texture(*material.reflectance_texture, material.source);
+                return builder.reference_texture(*texture, material.source);
             }
-            return add_constant_texture("reflectance", make_float4(material.reflectance.x, material.reflectance.y, material.reflectance.z, 1.0f));
-        }();
+            return add_constant_texture(parameter, value);
+        };
 
+        auto reflectance = resolve_texture(
+            "reflectance",
+            make_float4(material.reflectance.x, material.reflectance.y, material.reflectance.z, 1.0f),
+            material.reflectance_texture);
+
+        if (material.type == MaterialDesc::Type::Diffuse)
+        {
+            if (name.empty())
+            {
+                return builder.add_anonymous_surface<DiffuseSurfaceSpec>(material.source, reflectance, true);
+            }
+            return builder.add_surface<DiffuseSurfaceSpec>(
+                SpecMeta{.name = luisa::string{name}, .source = material.source},
+                reflectance,
+                true);
+        }
+
+        CoatedDiffuseSurfaceParams params{
+            .reflectance     = reflectance,
+            .roughness       = luisa::nullopt,
+            .u_roughness     = resolve_texture("uroughness", make_float4(material.u_roughness), material.u_roughness_texture),
+            .v_roughness     = resolve_texture("vroughness", make_float4(material.v_roughness), material.v_roughness_texture),
+            .thickness       = resolve_texture("thickness", make_float4(material.thickness), material.thickness_texture),
+            .albedo          = resolve_texture("albedo", make_float4(material.albedo.x, material.albedo.y, material.albedo.z, 1.0f), material.albedo_texture),
+            .g               = resolve_texture("g", make_float4(material.g), material.g_texture),
+            .eta             = resolve_texture("eta", make_float4(material.eta), material.eta_texture),
+            .remap_roughness = material.remap_roughness,
+            .max_depth       = material.max_depth,
+            .samples         = material.samples,
+        };
         if (name.empty())
         {
-            return builder.add_anonymous_surface<DiffuseSurfaceSpec>(material.source, reflectance, true);
+            return builder.add_anonymous_surface<CoatedDiffuseSurfaceSpec>(material.source, std::move(params));
         }
-        return builder.add_surface<DiffuseSurfaceSpec>(
+        return builder.add_surface<CoatedDiffuseSurfaceSpec>(
             SpecMeta{.name = luisa::string{name}, .source = material.source},
-            reflectance,
-            true);
+            std::move(params));
     };
 
     for (auto& [name, material] : scene.named_materials)

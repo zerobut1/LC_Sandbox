@@ -136,6 +136,7 @@ public:
     explicit CoatedDiffuseSurfaceSpec(CoatedDiffuseSurfaceParams params) noexcept
         : m_params{std::move(params)} {}
 
+    [[nodiscard]] const CoatedDiffuseSurfaceParams& params() const noexcept { return m_params; }
     [[nodiscard]] luisa::optional<luisa::string> validate() const noexcept override;
     void visit_dependencies(SpecDependencyVisitor& visitor) const noexcept override;
     [[nodiscard]] const Surface* build(SceneBuilder& builder) const noexcept override;

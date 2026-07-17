@@ -390,6 +390,8 @@ static auto test_book_parse_registration = []
         expect(is_near(inline_material.reflectance.y, 0.4f));
         expect(is_near(inline_material.reflectance.z, 0.6f));
         expect(is_near(inline_material.roughness, 0.25f));
+        expect(is_near(inline_material.u_roughness, 0.25f));
+        expect(is_near(inline_material.v_roughness, 0.25f));
         expect(find_parameter(inline_material.parameters, "displacement") != nullptr);
 
         auto&& named_material = scene.named_materials.at("coated-default");
@@ -398,6 +400,7 @@ static auto test_book_parse_registration = []
         expect(is_near(named_material.reflectance.y, 0.5f));
         expect(is_near(named_material.reflectance.z, 0.5f));
         expect(is_near(named_material.roughness, 0.0f));
+        expect(named_material.remap_roughness);
     };
 
     "reject_invalid_sphere_parameters"_test = []
@@ -446,7 +449,12 @@ static auto test_book_parse_registration = []
 
     "parse_teapot_infinite_environment"_test = []
     {
-        auto scene = PbrtParser::parse("scene/teapot/scene-yutrel.pbrt");
+        auto scene      = PbrtParser::parse("scene/teapot/scene-yutrel.pbrt");
+        auto&& material = scene.named_materials.at("Material");
+        expect(material.type == MaterialDesc::Type::CoatedDiffuse);
+        expect(is_near(material.u_roughness, 0.001f));
+        expect(is_near(material.v_roughness, 0.001f));
+        expect(!material.remap_roughness);
         expect(scene.infinite_light.has_value());
         if (!scene.infinite_light) { return; }
         auto&& light = *scene.infinite_light;

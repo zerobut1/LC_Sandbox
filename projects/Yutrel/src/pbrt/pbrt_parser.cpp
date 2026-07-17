@@ -514,6 +514,30 @@ private:
         return parse_float_token(p->values.front());
     }
 
+    [[nodiscard]] bool one_bool(luisa::span<const RawParameter> params, luisa::string_view name,
+                                const Token& command, bool default_value) const
+    {
+        auto p = find_param(params, "bool", name);
+        if (p == nullptr)
+        {
+            return default_value;
+        }
+        if (p->values.size() != 1u)
+        {
+            fail(p->source, luisa::format("'bool {}' expects exactly one value", name));
+        }
+        auto&& value = p->values.front();
+        if (value.text == "true")
+        {
+            return true;
+        }
+        if (value.text == "false")
+        {
+            return false;
+        }
+        fail(value.source, luisa::format("'bool {}' expects 'true' or 'false'", name));
+    }
+
     [[nodiscard]] float3 one_float3(
         luisa::span<const RawParameter> params, luisa::string_view type,
         luisa::string_view name, float3 default_value) const
@@ -978,15 +1002,69 @@ private:
         {
             reflectance = rgb(params, "reflectance", command);
         }
-        auto roughness = material_type == MaterialDesc::Type::CoatedDiffuse
-                             ? one_float(params, "roughness", command, 0.0f)
-                             : 0.0f;
+        auto parse_float_texture = [&](luisa::string_view name, float default_value)
+        {
+            auto value   = one_float(params, name, command, default_value);
+            auto texture = optional_texture(params, name);
+            if (find_param(params, "float", name) != nullptr && texture)
+            {
+                fail(command, luisa::format("material '{}' cannot specify both float and texture values", name));
+            }
+            return std::pair{value, std::move(texture)};
+        };
+        auto parse_rgb_texture = [&](luisa::string_view name, float3 default_value)
+        {
+            auto value   = default_value;
+            auto p       = find_param(params, "rgb", name);
+            auto texture = optional_texture(params, name);
+            if (p != nullptr && texture)
+            {
+                fail(p->source, luisa::format("material '{}' cannot specify both rgb and texture values", name));
+            }
+            if (p != nullptr)
+            {
+                value = rgb(params, name, command);
+            }
+            return std::pair{value, std::move(texture)};
+        };
+
+        auto [roughness, roughness_texture]     = parse_float_texture("roughness", 0.0f);
+        auto [u_roughness, u_roughness_texture] = parse_float_texture("uroughness", roughness);
+        auto [v_roughness, v_roughness_texture] = parse_float_texture("vroughness", roughness);
+        if (find_param(params, "float", "uroughness") == nullptr && !u_roughness_texture)
+        {
+            u_roughness_texture = roughness_texture;
+        }
+        if (find_param(params, "float", "vroughness") == nullptr && !v_roughness_texture)
+        {
+            v_roughness_texture = roughness_texture;
+        }
+        auto [thickness, thickness_texture] = parse_float_texture("thickness", 0.01f);
+        auto [albedo, albedo_texture]       = parse_rgb_texture("albedo", make_float3(0.0f));
+        auto [g, g_texture]                 = parse_float_texture("g", 0.0f);
+        auto [eta, eta_texture]             = parse_float_texture("eta", 1.5f);
         return MaterialDesc{
             .source              = command.loc,
             .type                = material_type,
             .reflectance         = reflectance,
             .reflectance_texture = std::move(reflectance_texture),
             .roughness           = roughness,
+            .roughness_texture   = std::move(roughness_texture),
+            .u_roughness         = u_roughness,
+            .u_roughness_texture = std::move(u_roughness_texture),
+            .v_roughness         = v_roughness,
+            .v_roughness_texture = std::move(v_roughness_texture),
+            .thickness           = thickness,
+            .thickness_texture   = std::move(thickness_texture),
+            .albedo              = albedo,
+            .albedo_texture      = std::move(albedo_texture),
+            .g                   = g,
+            .g_texture           = std::move(g_texture),
+            .eta                 = eta,
+            .eta_texture         = std::move(eta_texture),
+            .remap_roughness     = one_bool(params, "remaproughness", command, true),
+            .max_depth           = one_uint(params, "maxdepth", command, 10u),
+            .samples             = one_uint(params, "nsamples", command, 1u),
             .parameters          = std::move(params),
         };
     }

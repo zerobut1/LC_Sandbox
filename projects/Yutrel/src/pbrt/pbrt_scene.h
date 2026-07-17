@@ -156,6 +156,22 @@ struct MaterialDesc
     float3 reflectance{0.5f, 0.5f, 0.5f};
     luisa::optional<luisa::string> reflectance_texture;
     float roughness{0.0f};
+    luisa::optional<luisa::string> roughness_texture;
+    float u_roughness{0.0f};
+    luisa::optional<luisa::string> u_roughness_texture;
+    float v_roughness{0.0f};
+    luisa::optional<luisa::string> v_roughness_texture;
+    float thickness{0.01f};
+    luisa::optional<luisa::string> thickness_texture;
+    float3 albedo{0.0f, 0.0f, 0.0f};
+    luisa::optional<luisa::string> albedo_texture;
+    float g{0.0f};
+    luisa::optional<luisa::string> g_texture;
+    float eta{1.5f};
+    luisa::optional<luisa::string> eta_texture;
+    bool remap_roughness{true};
+    uint max_depth{10u};
+    uint samples{1u};
     luisa::vector<RawParameter> parameters;
 };
 

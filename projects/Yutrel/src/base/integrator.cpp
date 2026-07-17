@@ -304,8 +304,9 @@ Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> f
     SampledSpectrum beta{swl.dimension(), camera_weight};
     auto eta_scale = def(1.0f);
 
-    auto ray      = camera_ray;
-    auto pdf_bsdf = def(1e16f);
+    auto ray          = camera_ray;
+    auto pdf_bsdf     = def(1e16f);
+    auto delta_bounce = def(true);
     $for(depth, max_depth())
     {
         // trace
@@ -320,7 +321,7 @@ Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> f
             {
                 auto eval   = light_sampler()->evaluate_miss(ray->direction(), swl, time);
                 auto weight = ite(
-                    depth == 0u,
+                    (depth == 0u) | delta_bounce,
                     1.0f,
                     balance_heuristic(pdf_bsdf, eval.pdf));
                 Li += beta * eval.L * weight;
@@ -335,8 +336,9 @@ Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> f
             {
                 $if(it->shape.has_light())
                 {
-                    auto eval = light_sampler()->evaluate_hit(*it, ray->origin(), swl, time);
-                    Li += beta * eval.L * balance_heuristic(pdf_bsdf, eval.pdf);
+                    auto eval   = light_sampler()->evaluate_hit(*it, ray->origin(), swl, time);
+                    auto weight = ite(delta_bounce, 1.0f, balance_heuristic(pdf_bsdf, eval.pdf));
+                    Li += beta * eval.L * weight;
                 };
             };
         };
@@ -386,7 +388,8 @@ Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> f
                 // sample surface
                 auto surface_sample = closure->sample(wo, u_lobe, u_bsdf);
                 ray                 = it->spawn_ray(surface_sample.wi);
-                pdf_bsdf            = surface_sample.eval.pdf;
+                pdf_bsdf            = surface_sample.pdf_mis;
+                delta_bounce        = surface_sample.delta;
                 auto w              = ite(surface_sample.eval.pdf > 0.0f, 1.0f / surface_sample.eval.pdf, 0.0f);
                 beta *= w * surface_sample.eval.f;
                 auto transmission = (surface_sample.event & Surface::event_transmit) != 0u;

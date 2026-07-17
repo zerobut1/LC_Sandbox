@@ -29,12 +29,12 @@ Bool TrowbridgeReitzDistribution::effectively_smooth() const noexcept
 
 Float TrowbridgeReitzDistribution::roughness_to_alpha(Expr<float> roughness) noexcept
 {
-    return sqr(roughness);
+    return sqrt(roughness);
 }
 
 Float2 TrowbridgeReitzDistribution::roughness_to_alpha(Expr<float2> roughness) noexcept
 {
-    return sqr(roughness);
+    return sqrt(roughness);
 }
 
 Float TrowbridgeReitzDistribution::D(Expr<float3> wh) const noexcept

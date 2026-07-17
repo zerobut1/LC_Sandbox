@@ -18,6 +18,7 @@ namespace
 {
 struct InterfaceEvaluation
 {
+    // Projected BSDF value f * abs_cos_theta(wi), matching Surface::Evaluation.
     SampledSpectrum f;
     Float pdf;
 };
@@ -28,6 +29,7 @@ struct InterfaceSample
     Float3 wi;
     Bool valid;
     Bool reflection;
+    Bool delta;
 };
 
 enum class InterfaceSampleMode
@@ -58,7 +60,7 @@ public:
           m_reflection{m_unit, std::addressof(m_distribution), std::addressof(m_fresnel)},
           m_transmission{m_unit, std::addressof(m_distribution), 1.0f, eta} {}
 
-    [[nodiscard]] Bool smooth() const noexcept { return m_distribution.effectively_smooth(); }
+    [[nodiscard]] Bool smooth() const noexcept { return (m_eta == 1.0f) | m_distribution.effectively_smooth(); }
 
     [[nodiscard]] InterfaceEvaluation evaluate(Expr<float3> wo, Expr<float3> wi,
                                                TransportMode mode,
@@ -104,12 +106,12 @@ public:
                                          TransportMode mode,
                                          InterfaceSampleMode sample_mode = InterfaceSampleMode::ALL) const noexcept
     {
-        InterfaceSample s{{SampledSpectrum{m_dimension}, 0.0f}, make_float3(0.0f), false, false};
+        InterfaceSample s{{SampledSpectrum{m_dimension}, 0.0f}, make_float3(0.0f), false, false, false};
         $if(smooth())
         {
-            auto F          = m_fresnel.evaluate(cos_theta(wo));
-            auto choose_refl = sample_mode == InterfaceSampleMode::REFLECTION ? Bool{true} :
-                               sample_mode == InterfaceSampleMode::TRANSMISSION ? Bool{false} : uc < F;
+            auto F           = m_fresnel.evaluate(cos_theta(wo));
+            auto choose_refl = sample_mode == InterfaceSampleMode::REFLECTION ? Bool{true} : sample_mode == InterfaceSampleMode::TRANSMISSION ? Bool{false}
+                                                                                                                                              : uc < F;
             $if(choose_refl)
             {
                 auto wi      = make_float3(-wo.x, -wo.y, wo.z);
@@ -117,8 +119,9 @@ public:
                 s.eval.f     = m_unit * F;
                 s.eval.pdf   = p;
                 s.wi         = wi;
-                s.valid      = p > 0.0f;
+                s.valid      = (p > 0.0f) & (wi.z != 0.0f);
                 s.reflection = true;
+                s.delta      = true;
             }
             $else
             {
@@ -136,16 +139,17 @@ public:
                 s.eval.f     = ite(ok, ft, 0.0f);
                 s.eval.pdf   = ite(ok, p, 0.0f);
                 s.wi         = wi;
-                s.valid      = ok & (p > 0.0f);
+                s.valid      = ok & (p > 0.0f) & (wi.z != 0.0f);
                 s.reflection = false;
+                s.delta      = true;
             };
         }
         $else
         {
-            auto wh = m_distribution.sample_wh(wo, u);
-            auto F  = m_fresnel.evaluate(dot(wo, wh));
-            auto choose_refl = sample_mode == InterfaceSampleMode::REFLECTION ? Bool{true} :
-                               sample_mode == InterfaceSampleMode::TRANSMISSION ? Bool{false} : uc < F;
+            auto wh          = m_distribution.sample_wh(wo, u);
+            auto F           = m_fresnel.evaluate(dot(wo, wh));
+            auto choose_refl = sample_mode == InterfaceSampleMode::REFLECTION ? Bool{true} : sample_mode == InterfaceSampleMode::TRANSMISSION ? Bool{false}
+                                                                                                                                              : uc < F;
             $if(choose_refl)
             {
                 auto d       = m_reflection.sample_wi(wo, u, mode);
@@ -154,7 +158,7 @@ public:
                 s.eval.f     = m_reflection.evaluate(wo, d.wi, mode) * abs_cos_theta(d.wi);
                 s.eval.pdf   = ite(d.valid, p * select, 0.0f);
                 s.wi         = d.wi;
-                s.valid      = d.valid & (s.eval.pdf > 0.0f);
+                s.valid      = d.valid & (s.eval.pdf > 0.0f) & (d.wi.z != 0.0f);
                 s.reflection = true;
             }
             $else
@@ -165,7 +169,7 @@ public:
                 s.eval.f     = m_transmission.evaluate(wo, d.wi, mode) * abs_cos_theta(d.wi);
                 s.eval.pdf   = ite(d.valid, p * select, 0.0f);
                 s.wi         = d.wi;
-                s.valid      = d.valid & (s.eval.pdf > 0.0f);
+                s.valid      = d.valid & (s.eval.pdf > 0.0f) & (d.wi.z != 0.0f);
                 s.reflection = false;
             };
         };
@@ -236,12 +240,54 @@ private:
         auto wi  = def(make_float3(0.0f));
         auto pdf = def(0.0f);
         auto f   = m_substrate.sample(wo, std::addressof(wi), u, std::addressof(pdf), mode);
-        return {{f * abs_cos_theta(wi), pdf}, wi, pdf > 0.0f, true};
+        return {{f * abs_cos_theta(wi), pdf}, wi, (pdf > 0.0f) & (wi.z != 0.0f), true, false};
+    }
+
+    [[nodiscard]] SampledSpectrum reverse_connection(const InterfaceSample& sample,
+                                                     Expr<float3> wi) const noexcept
+    {
+        auto cos_internal = abs_cos_theta(sample.wi);
+        return sample.eval.f * abs_cos_theta(wi) /
+               (sample.eval.pdf * cos_internal);
     }
 
 public:
     explicit Impl(const Context& ctx) noexcept
         : m_ctx{ctx}, m_substrate{ctx.reflectance}, m_coat{ctx.reflectance.dimension(), ctx.alpha, ctx.eta} {}
+
+    [[nodiscard]] Float pdf(Expr<float3> wo, Expr<float3> wi) const noexcept
+    {
+        auto result = def(0.0f);
+        $if(same_hemisphere(wo, wi))
+        {
+            auto direct  = m_coat.evaluate(wo, wi, TransportMode::RADIANCE, InterfaceSampleMode::REFLECTION);
+            auto pdf_sum = direct.pdf * Float{m_ctx.samples};
+            auto seed    = xxhash32(make_uint4(as<UInt3>(wi), xxhash32(as<UInt3>(wo))));
+            $for(sample_index, m_ctx.samples)
+            {
+                auto wos = m_coat.sample(wo, lcg(seed), make_float2(lcg(seed), lcg(seed)), TransportMode::RADIANCE, InterfaceSampleMode::TRANSMISSION);
+                auto wis = m_coat.sample(wi, lcg(seed), make_float2(lcg(seed), lcg(seed)), TransportMode::IMPORTANCE, InterfaceSampleMode::TRANSMISSION);
+                $if(!wos.valid | !wis.valid) { $continue; };
+                $if(m_coat.smooth())
+                {
+                    pdf_sum += substrate_evaluate(-wos.wi, -wis.wi, TransportMode::RADIANCE).pdf;
+                }
+                $else
+                {
+                    auto rs = substrate_sample(-wos.wi, make_float2(lcg(seed), lcg(seed)), TransportMode::RADIANCE);
+                    $if(rs.valid)
+                    {
+                        auto r_pdf = substrate_evaluate(-wos.wi, -wis.wi, TransportMode::RADIANCE).pdf;
+                        pdf_sum += power_heuristic(wis.eval.pdf, r_pdf) * r_pdf;
+                        auto t_pdf = m_coat.evaluate(-rs.wi, wi, TransportMode::RADIANCE, InterfaceSampleMode::TRANSMISSION).pdf;
+                        pdf_sum += power_heuristic(rs.eval.pdf, t_pdf) * t_pdf;
+                    };
+                };
+            };
+            result = lerp(0.25f * inv_pi, pdf_sum / Float{m_ctx.samples}, 0.9f);
+        };
+        return result;
+    }
 
     [[nodiscard]] InterfaceEvaluation evaluate(Expr<float3> wo, Expr<float3> wi) const noexcept
     {
@@ -251,15 +297,12 @@ public:
             auto direct = m_coat.evaluate(wo, wi, TransportMode::RADIANCE);
             result.f    = direct.f * Float{m_ctx.samples};
             auto seed   = xxhash32(make_uint4(as<UInt3>(m_ctx.it.p_g), xxhash32(as<UInt3>(wi))));
-            auto pdf_sum = direct.pdf * Float{m_ctx.samples};
             HGPhaseFunction phase{m_ctx.g};
 
             $for(sample_index, m_ctx.samples)
             {
-                auto wos = m_coat.sample(wo, lcg(seed), make_float2(lcg(seed), lcg(seed)),
-                                         TransportMode::RADIANCE, InterfaceSampleMode::TRANSMISSION);
-                auto wis = m_coat.sample(wi, lcg(seed), make_float2(lcg(seed), lcg(seed)),
-                                         TransportMode::IMPORTANCE, InterfaceSampleMode::TRANSMISSION);
+                auto wos = m_coat.sample(wo, lcg(seed), make_float2(lcg(seed), lcg(seed)), TransportMode::RADIANCE, InterfaceSampleMode::TRANSMISSION);
+                auto wis = m_coat.sample(wi, lcg(seed), make_float2(lcg(seed), lcg(seed)), TransportMode::IMPORTANCE, InterfaceSampleMode::TRANSMISSION);
                 $if(!wos.valid | !wis.valid) { $continue; };
 
                 auto beta = wos.eval.f / wos.eval.pdf;
@@ -285,10 +328,9 @@ public:
                         $if((zp > 0.0f) & (zp < m_ctx.thickness))
                         {
                             auto phase_pdf = phase.p(-w, -wis.wi);
-                            auto exit_pdf  = m_coat.evaluate(-w, wi, TransportMode::RADIANCE).pdf;
-                            auto wt        = power_heuristic(wis.eval.pdf, exit_pdf);
+                            auto wt        = ite(m_coat.smooth(), 1.0f, power_heuristic(wis.eval.pdf, phase_pdf));
                             result.f += beta * m_ctx.medium_albedo * phase_pdf * wt *
-                                        transmittance(zp - m_ctx.thickness, wis.wi) * wis.eval.f / wis.eval.pdf;
+                                        transmittance(zp - m_ctx.thickness, wis.wi) * reverse_connection(wis, wi);
                             auto ps = phase.sample(-w, make_float2(lcg(seed), lcg(seed)));
                             $if((ps.pdf <= 0.0f) | (ps.wi.z == 0.0f)) { $continue; };
                             beta *= m_ctx.medium_albedo * ps.p / ps.pdf;
@@ -296,8 +338,7 @@ public:
                             z = zp;
                             $if(w.z > 0.0f)
                             {
-                                auto exit = m_coat.evaluate(-w, wi, TransportMode::RADIANCE,
-                                                            InterfaceSampleMode::TRANSMISSION);
+                                auto exit    = m_coat.evaluate(-w, wi, TransportMode::RADIANCE, InterfaceSampleMode::TRANSMISSION);
                                 auto exit_wt = power_heuristic(ps.pdf, exit.pdf);
                                 result.f += beta * transmittance(zp - m_ctx.thickness, w) * exit.f * exit_wt;
                             };
@@ -308,8 +349,7 @@ public:
 
                     $if(z == m_ctx.thickness)
                     {
-                        auto bs = m_coat.sample(-w, lcg(seed), make_float2(lcg(seed), lcg(seed)),
-                                                TransportMode::RADIANCE, InterfaceSampleMode::REFLECTION);
+                        auto bs = m_coat.sample(-w, lcg(seed), make_float2(lcg(seed), lcg(seed)), TransportMode::RADIANCE, InterfaceSampleMode::REFLECTION);
                         $if(!bs.valid) { $break; };
                         beta *= bs.eval.f / bs.eval.pdf;
                         w = bs.wi;
@@ -317,48 +357,22 @@ public:
                     $else
                     {
                         auto nee = substrate_evaluate(-w, -wis.wi, TransportMode::RADIANCE);
-                        auto wt  = power_heuristic(wis.eval.pdf, nee.pdf);
+                        auto wt  = ite(m_coat.smooth(), 1.0f, power_heuristic(wis.eval.pdf, nee.pdf));
                         result.f += beta * nee.f * wt * transmittance(m_ctx.thickness, wis.wi) *
-                                    wis.eval.f / wis.eval.pdf;
+                                    reverse_connection(wis, wi);
                         auto bs = substrate_sample(-w, make_float2(lcg(seed), lcg(seed)), TransportMode::RADIANCE);
                         $if(!bs.valid) { $break; };
                         beta *= bs.eval.f / bs.eval.pdf;
-                        w = bs.wi;
-                        auto exit = m_coat.evaluate(-w, wi, TransportMode::RADIANCE,
-                                                    InterfaceSampleMode::TRANSMISSION);
+                        w            = bs.wi;
+                        auto exit    = m_coat.evaluate(-w, wi, TransportMode::RADIANCE, InterfaceSampleMode::TRANSMISSION);
                         auto exit_wt = power_heuristic(bs.eval.pdf, exit.pdf);
                         result.f += beta * transmittance(m_ctx.thickness, w) * exit.f * exit_wt;
                     };
                 };
             };
 
-            $for(sample_index, m_ctx.samples)
-            {
-                auto wos = m_coat.sample(wo, lcg(seed), make_float2(lcg(seed), lcg(seed)),
-                                         TransportMode::RADIANCE, InterfaceSampleMode::TRANSMISSION);
-                auto wis = m_coat.sample(wi, lcg(seed), make_float2(lcg(seed), lcg(seed)),
-                                         TransportMode::IMPORTANCE, InterfaceSampleMode::TRANSMISSION);
-                $if(!wos.valid | !wis.valid) { $continue; };
-                $if(m_coat.smooth())
-                {
-                    pdf_sum += substrate_evaluate(-wos.wi, -wis.wi, TransportMode::RADIANCE).pdf;
-                }
-                $else
-                {
-                    auto rs = substrate_sample(-wos.wi, make_float2(lcg(seed), lcg(seed)),
-                                               TransportMode::RADIANCE);
-                    $if(rs.valid)
-                    {
-                        auto r_pdf = substrate_evaluate(-wos.wi, -wis.wi, TransportMode::RADIANCE).pdf;
-                        pdf_sum += power_heuristic(wis.eval.pdf, r_pdf) * r_pdf;
-                        auto t_pdf = m_coat.evaluate(-rs.wi, wi, TransportMode::RADIANCE,
-                                                    InterfaceSampleMode::TRANSMISSION).pdf;
-                        pdf_sum += power_heuristic(rs.eval.pdf, t_pdf) * t_pdf;
-                    };
-                };
-            };
             result.f /= Float{m_ctx.samples};
-            result.pdf = lerp(0.25f * inv_pi, pdf_sum / Float{m_ctx.samples}, 0.9f);
+            result.pdf = pdf(wo, wi);
         };
         return result;
     }
@@ -367,7 +381,10 @@ public:
     {
         auto bs = m_coat.sample(wo, u_lobe, u, TransportMode::RADIANCE);
         InterfaceSample result{{SampledSpectrum{m_ctx.reflectance.dimension()}, 0.0f},
-                               make_float3(0.0f), false, true};
+                               make_float3(0.0f),
+                               false,
+                               true,
+                               false};
         $if(bs.valid)
         {
             $if(bs.reflection)
@@ -415,15 +432,17 @@ public:
                     };
 
                     InterfaceSample next{{SampledSpectrum{m_ctx.reflectance.dimension()}, 0.0f},
-                                         make_float3(0.0f), false, true};
+                                         make_float3(0.0f),
+                                         false,
+                                         true,
+                                         false};
                     $if(z == 0.0f)
                     {
                         next = substrate_sample(-w, make_float2(lcg(seed), lcg(seed)), TransportMode::RADIANCE);
                     }
                     $else
                     {
-                        next = m_coat.sample(-w, lcg(seed), make_float2(lcg(seed), lcg(seed)),
-                                             TransportMode::RADIANCE);
+                        next = m_coat.sample(-w, lcg(seed), make_float2(lcg(seed), lcg(seed)), TransportMode::RADIANCE);
                     };
                     $if(!next.valid) { $break; };
                     f *= next.eval.f;
@@ -431,7 +450,7 @@ public:
                     w = next.wi;
                     $if((z == m_ctx.thickness) & !next.reflection)
                     {
-                        result = {{f, pdf}, w, true, true};
+                        result = {{f, pdf}, w, true, true, false};
                         $break;
                     };
                 };
@@ -545,6 +564,7 @@ Surface::Sample CoatedDiffuse::Closure::sample_impl(Expr<float3> wo, Expr<float>
     auto&& ctx = context<Context>();
     auto wo_local = ctx.it.shading.world_to_local(wo);
     auto s = m_impl->sample(wo_local, u_lobe, u);
+    auto pdf_mis = m_impl->pdf(wo_local, s.wi);
     return Surface::Sample{
         .eval = {
             .f = s.eval.f,
@@ -552,9 +572,11 @@ Surface::Sample CoatedDiffuse::Closure::sample_impl(Expr<float3> wo, Expr<float>
             .f_diffuse = SampledSpectrum{swl().dimension()},
             .pdf_diffuse = 0.0f,
         },
-        .wi = ctx.it.shading.local_to_world(s.wi),
-        .event = Surface::event_reflect,
-        .eta = 1.0f,
+        .wi      = ctx.it.shading.local_to_world(s.wi),
+        .event   = Surface::event_reflect,
+        .pdf_mis = pdf_mis,
+        .delta   = s.delta,
+        .eta     = 1.0f,
     };
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "base/filter.h"
+#include "scene/scene_builder.h"
 
 namespace Yutrel
 {
@@ -34,6 +35,9 @@ private:
 public:
     explicit GaussianFilterSpec(float radius) noexcept : _radius{radius} {}
     [[nodiscard]] luisa::optional<luisa::string> validate() const noexcept override { return std::isfinite(_radius) && _radius > 0.0f ? luisa::nullopt : spec_validation_error("Filter radius must be finite and positive."); }
-    [[nodiscard]] const Filter* build(SceneBuilder& builder) const noexcept override;
+    [[nodiscard]] const Filter* build(SceneBuilder& builder) const noexcept override
+    {
+        return builder.emplace<Filter, GaussianFilter>(_radius);
+    }
 };
 } // namespace Yutrel

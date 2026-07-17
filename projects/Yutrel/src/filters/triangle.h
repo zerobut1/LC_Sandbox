@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "base/filter.h"
+#include "scene/spec_base.h"
 
 namespace Yutrel
 {

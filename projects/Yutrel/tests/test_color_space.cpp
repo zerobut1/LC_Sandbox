@@ -2,6 +2,7 @@
 
 #include <cmath>
 
+#include "spectrum/srgb.h"
 #include "utils/color_space.h"
 #include "utils/spectra.h"
 
@@ -40,11 +41,21 @@ static auto test_color_space_registration = []
 
     "linear_srgb_matrices_are_inverses"_test = []
     {
-        const auto rgb = make_float3(.17f, .42f, .91f);
+        const auto rgb        = make_float3(.17f, .42f, .91f);
         const auto round_trip = cie_xyz_to_linear_srgb(linear_srgb_to_cie_xyz(rgb));
         expect(close(round_trip.x, rgb.x));
         expect(close(round_trip.y, rgb.y));
         expect(close(round_trip.z, rgb.z));
+    };
+
+    "srgb_spectrum_static_albedo_is_saturated"_test = []
+    {
+        SRGBSpectrum spectrum;
+        const auto encoded = spectrum.encode_static_srgb_albedo(make_float3(-0.25f, 0.5f, 1.25f));
+        expect(close(encoded.x, 0.0f));
+        expect(close(encoded.y, 0.5f));
+        expect(close(encoded.z, 1.0f));
+        expect(close(encoded.w, 1.0f));
     };
     return 0;
 }();

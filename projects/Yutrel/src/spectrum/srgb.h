@@ -1,7 +1,7 @@
 #pragma once
 
 #include "base/spectrum.h"
-#include "scene/spec_base.h"
+#include "scene/scene_builder.h"
 #include "utils/color_space.h"
 
 namespace Yutrel
@@ -110,7 +110,10 @@ public:
 class SRGBSpectrumSpec final : public SpectrumSpec
 {
 public:
-    [[nodiscard]] const Spectrum* build(SceneBuilder& builder) const noexcept override;
+    [[nodiscard]] const Spectrum* build(SceneBuilder& builder) const noexcept override
+    {
+        return builder.emplace<Spectrum, SRGBSpectrum>();
+    }
 };
 
 } // namespace Yutrel

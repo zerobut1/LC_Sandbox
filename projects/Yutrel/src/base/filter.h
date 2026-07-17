@@ -5,8 +5,6 @@
 #include <luisa/core/stl.h>
 #include <luisa/dsl/syntax.h>
 
-#include "scene/spec_base.h"
-
 namespace Yutrel
 {
 using namespace luisa;

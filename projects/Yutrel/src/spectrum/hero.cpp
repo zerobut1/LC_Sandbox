@@ -1,11 +1,17 @@
 #include "spectrum/hero.h"
 
 #include "base/renderer.h"
+#include "scene/scene_builder.h"
 #include "utils/color_space.h"
 #include "utils/rgb2spec.h"
 
 namespace Yutrel
 {
+
+const Spectrum* HeroWavelengthSpectrumSpec::build(SceneBuilder& builder) const noexcept
+{
+    return builder.emplace<Spectrum, HeroWavelengthSpectrum>();
+}
 
 HeroWavelengthSpectrum::Instance::Instance(Renderer& renderer, CommandBuffer& command_buffer, const Spectrum* spectrum, uint t0) noexcept
     : Spectrum::Instance(renderer, command_buffer, spectrum),

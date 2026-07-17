@@ -1,19 +1,9 @@
 #include "filter.h"
 
-#include "filters/box.h"
-#include "filters/gaussian.h"
-#include "filters/lanczos_sinc.h"
-#include "filters/mitchell.h"
-#include "scene/scene_builder.h"
 #include "utils/sampling.h"
 
 namespace Yutrel
 {
-const Filter* BoxFilterSpec::build(SceneBuilder& builder) const noexcept { return builder.emplace<Filter, BoxFilter>(_radius); }
-const Filter* GaussianFilterSpec::build(SceneBuilder& builder) const noexcept { return builder.emplace<Filter, GaussianFilter>(_radius); }
-const Filter* MitchellFilterSpec::build(SceneBuilder& builder) const noexcept { return builder.emplace<Filter, MitchellFilter>(_radius); }
-const Filter* LanczosSincFilterSpec::build(SceneBuilder& builder) const noexcept { return builder.emplace<Filter, LanczosSincFilter>(_radius); }
-
 luisa::unique_ptr<Filter::Instance> Filter::build(const Renderer& renderer) const noexcept
 {
     return luisa::make_unique<Filter::Instance>(renderer, this);

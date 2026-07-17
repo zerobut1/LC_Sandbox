@@ -1264,7 +1264,7 @@ bool save_image(std::filesystem::path path, const float* pixels, uint2 resolutio
 
     auto c = static_cast<int>(std::clamp(components, 1u, 4u));
     const char* err = nullptr;
-    if (auto ret = save_exr_impl(pixels, size.x, size.y, c, false, path.string().c_str(), &err);
+    if (auto ret = save_exr_impl(pixels, size.x, size.y, c, true, path.string().c_str(), &err);
         ret != TINYEXR_SUCCESS) [[unlikely]]
     {
         LUISA_WARNING_WITH_LOCATION(

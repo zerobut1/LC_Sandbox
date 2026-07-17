@@ -36,7 +36,7 @@ static inline auto downsample_densely_sampled_spectrum(uint t, const float* spec
     return samples;
 }
 
-static constexpr auto spd_lut_interval = 5u;
+static constexpr auto spd_lut_interval = 1u;
 
 SPD SPD::create_cie_x(Renderer& renderer, CommandBuffer& cb) noexcept
 {

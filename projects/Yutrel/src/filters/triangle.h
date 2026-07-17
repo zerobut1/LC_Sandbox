@@ -10,6 +10,14 @@ namespace Yutrel
 class TriangleFilter final : public Filter
 {
 public:
+    class Instance final : public Filter::Instance
+    {
+    public:
+        using Filter::Instance::Instance;
+        [[nodiscard]] Sample sample(Expr<float2> u) const noexcept override;
+    };
+
+public:
     explicit TriangleFilter(float radius) noexcept
         : Filter{radius} {}
 
@@ -17,6 +25,8 @@ public:
     {
         return std::max(0.0f, radius() - std::abs(x));
     }
+
+    [[nodiscard]] luisa::unique_ptr<Filter::Instance> build(const Renderer& renderer) const noexcept override;
 };
 
 class TriangleFilterSpec final : public FilterSpec

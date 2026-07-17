@@ -941,7 +941,7 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         }
         fail("Unsupported PBRT sampler type.");
     }();
-    auto integrator = builder.add_integrator<PathIntegratorSpec>(SpecMeta{.name = "pbrt_integrator", .source = scene.integrator.source}, scene.integrator.max_depth, 0u, 0.95f);
+    auto integrator = builder.add_integrator<PathIntegratorSpec>(SpecMeta{.name = "pbrt_integrator", .source = scene.integrator.source}, scene.integrator.max_depth);
     builder.set_render(RenderSpec{
         .spectrum    = spectrum,
         .environment = environment,
@@ -955,7 +955,7 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
 
     auto randomization = scene.sampler.type == SamplerDesc::Type::Sobol ? "fastowen" : "n/a";
     LUISA_INFO(
-        "PBRT render config: integrator=path, max_depth={}, rr_depth=0, rr_threshold=0.95, light_sampler=yutrel-uniform; sampler={}, spp={}, seed={}, randomization={}; filter=triangle, radius=({}, {}).",
+        "PBRT render config: integrator=path, max_depth={}, rr=pbrt-v4, light_sampler=yutrel-uniform; sampler={}, spp={}, seed={}, randomization={}; filter=triangle, radius=({}, {}).",
         scene.integrator.max_depth,
         sampler_name(scene.sampler.type),
         scene.sampler.pixel_samples,

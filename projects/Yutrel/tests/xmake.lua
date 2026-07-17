@@ -40,5 +40,6 @@ end
 yutrel_core_test("book_import")
 yutrel_core_test("correctness", true)
 yutrel_core_test("coated_diffuse")
+yutrel_core_test("color_space")
 yutrel_core_test("environment")
 yutrel_core_test("sobol")

@@ -554,6 +554,7 @@ Surface::Sample CoatedDiffuse::Closure::sample_impl(Expr<float3> wo, Expr<float>
         },
         .wi = ctx.it.shading.local_to_world(s.wi),
         .event = Surface::event_reflect,
+        .eta = 1.0f,
     };
 }
 

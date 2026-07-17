@@ -34,10 +34,8 @@ Integrator::Instance::Instance(Renderer& renderer, CommandBuffer& command_buffer
 
 Integrator::Instance::~Instance() noexcept = default;
 
-PathIntegrator::PathIntegrator(uint max_depth, uint rr_depth, float rr_threshold) noexcept
-    : _max_depth{max_depth},
-      _rr_depth{rr_depth},
-      _rr_threshold{std::max(rr_threshold, 0.05f)}
+PathIntegrator::PathIntegrator(uint max_depth) noexcept
+    : _max_depth{max_depth}
 {
 }
 
@@ -53,7 +51,7 @@ luisa::unique_ptr<Integrator::Instance> PathIntegrator::build(Renderer& renderer
 
 const Integrator* PathIntegratorSpec::build(SceneBuilder& builder) const noexcept
 {
-    return builder.emplace<Integrator, PathIntegrator>(_max_depth, _rr_depth, _rr_threshold);
+    return builder.emplace<Integrator, PathIntegrator>(_max_depth);
 }
 
 void PathIntegrator::Instance::render(Stream& stream, bool enable_display)
@@ -304,6 +302,7 @@ Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> f
     auto swl      = spectrum->sample(spectrum->base()->is_fixed() ? 0.0f : sampler()->generate_1d());
     SampledSpectrum Li{swl.dimension(), 0.0f};
     SampledSpectrum beta{swl.dimension(), camera_weight};
+    auto eta_scale = def(1.0f);
 
     auto ray      = camera_ray;
     auto pdf_bsdf = def(1e16f);
@@ -364,12 +363,6 @@ Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> f
         auto u_lobe = sampler()->generate_1d();
         auto u_bsdf = sampler()->generate_2d();
 
-        auto u_rr = def(0.0f);
-        $if(depth + 1u >= rr_depth())
-        {
-            u_rr = sampler()->generate_1d();
-        };
-
         $outline
         {
             PolymorphicCall<Surface::Closure> call;
@@ -396,6 +389,8 @@ Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> f
                 pdf_bsdf            = surface_sample.eval.pdf;
                 auto w              = ite(surface_sample.eval.pdf > 0.0f, 1.0f / surface_sample.eval.pdf, 0.0f);
                 beta *= w * surface_sample.eval.f;
+                auto transmission = (surface_sample.event & Surface::event_transmit) != 0u;
+                eta_scale *= ite(transmission, sqr(surface_sample.eta), 1.0f);
             });
         };
 
@@ -421,14 +416,18 @@ Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> f
             $break;
         };
 
-        auto q = max(beta.max(), 0.05f);
-        $if(depth + 1u >= rr_depth())
+        // Match PBRT-v4: start RR after the second scattering event and base
+        // the survival probability on throughput adjusted for refraction.
+        auto rr_beta_max = beta.max() * eta_scale;
+        $if((depth + 1u > 1u) & (rr_beta_max < 1.0f))
         {
-            $if(q < rr_threshold() & u_rr >= q)
+            auto q = max(0.0f, 1.0f - rr_beta_max);
+            auto u_rr = sampler()->generate_1d();
+            $if(u_rr < q)
             {
                 $break;
             };
-            beta *= ite(q < rr_threshold(), 1.0f / q, 1.0f);
+            beta /= 1.0f - q;
         };
     };
 

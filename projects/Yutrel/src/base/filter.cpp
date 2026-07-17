@@ -4,14 +4,12 @@
 #include "filters/gaussian.h"
 #include "filters/lanczos_sinc.h"
 #include "filters/mitchell.h"
-#include "filters/triangle.h"
 #include "scene/scene_builder.h"
 #include "utils/sampling.h"
 
 namespace Yutrel
 {
 const Filter* BoxFilterSpec::build(SceneBuilder& builder) const noexcept { return builder.emplace<Filter, BoxFilter>(_radius); }
-const Filter* TriangleFilterSpec::build(SceneBuilder& builder) const noexcept { return builder.emplace<Filter, TriangleFilter>(_radius); }
 const Filter* GaussianFilterSpec::build(SceneBuilder& builder) const noexcept { return builder.emplace<Filter, GaussianFilter>(_radius); }
 const Filter* MitchellFilterSpec::build(SceneBuilder& builder) const noexcept { return builder.emplace<Filter, MitchellFilter>(_radius); }
 const Filter* LanczosSincFilterSpec::build(SceneBuilder& builder) const noexcept { return builder.emplace<Filter, LanczosSincFilter>(_radius); }
@@ -67,7 +65,7 @@ Filter::Sample Filter::Instance::sample(Expr<float2> u) const noexcept
     auto pdf      = pdfs[ix] * pdfs[iy];
     auto f        = lerp(lut[ix], lut[ix + 1u], ux) * lerp(lut[iy], lut[iy + 1u], uy);
     auto p        = make_float2(make_uint2(ix, iy)) + make_float2(ux, uy);
-    auto inv_size = 1.0f / static_cast<float>(look_up_table_size);
+    auto inv_size = 1.0f / static_cast<float>(n);
     auto pixel    = (p * inv_size * 2.0f - 1.0f) * m_filter->radius();
     return {pixel, f / pdf};
 }

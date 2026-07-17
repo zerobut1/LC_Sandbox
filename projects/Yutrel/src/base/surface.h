@@ -43,13 +43,17 @@ public:
         Evaluation eval;
         Float3 wi;
         UInt event;
+        // Relative IOR along the sampled ray (eta_t / eta_i), matching PBRT's
+        // BSDFSample::eta convention. Reflection samples keep this at one.
+        Float eta;
 
         [[nodiscard]] static auto zero(uint dimension) noexcept
         {
             return Sample{
                 .eval  = Evaluation::zero(dimension),
                 .wi    = make_float3(0.f, 0.f, 1.f),
-                .event = Surface::event_reflect};
+                .event = Surface::event_reflect,
+                .eta   = 1.0f};
         }
     };
 

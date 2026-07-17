@@ -63,7 +63,8 @@ Surface::Sample Diffuse::Closure::sample_impl(Expr<float3> wo, Expr<float> u_lob
             .pdf_diffuse = pdf,
         },
         .wi    = wi,
-        .event = Surface::event_reflect};
+        .event = Surface::event_reflect,
+        .eta   = 1.0f};
 }
 
 Surface::Evaluation Diffuse::Closure::evaluate_impl(Expr<float3> wo, Expr<float3> wi) const noexcept

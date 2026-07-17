@@ -220,7 +220,6 @@ def main() -> int:
                 args.backend,
                 str(configuration["scene_path"]),
                 "--headless",
-                "--correctness",
                 "--spp",
                 str(profile["spp"]),
                 "--seed",

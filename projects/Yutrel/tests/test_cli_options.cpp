@@ -48,12 +48,10 @@ static auto test_cli_options_registration = []
     "parse_all_overrides"_test = []
     {
         auto options = parse({"Yutrel", "dx", "scene.pbrt", "--headless", "--spp", "32",
-                              "--seed", "7", "--resolution", "640x480", "--output", "result.exr",
-                              "--correctness"});
+                              "--seed", "7", "--resolution", "640x480", "--output", "result.exr"});
         expect(options.backend == "dx");
         expect(options.scene_path == std::filesystem::path{"scene.pbrt"});
         expect(options.headless);
-        expect(options.overrides.correctness);
         expect(options.overrides.spp && *options.overrides.spp == 32u);
         expect(options.overrides.seed && *options.overrides.seed == 7u);
         expect(static_cast<bool>(options.overrides.resolution));
@@ -87,7 +85,7 @@ static auto test_cli_options_registration = []
         expect(parse_fails({"Yutrel", "dx", "scene.pbrt", "--resolution", "65536x65536"}));
         expect(parse_fails({"Yutrel", "dx", "scene.pbrt", "--output", "result.png"}));
         expect(parse_fails({"Yutrel", "dx", "scene.pbrt", "--spp", "1", "--spp", "2"}));
-        expect(parse_fails({"Yutrel", "dx", "scene.pbrt", "--interactive", "--correctness"}));
+        expect(parse_fails({"Yutrel", "dx", "scene.pbrt", "--unknown"}));
     };
     return 0;
 }();

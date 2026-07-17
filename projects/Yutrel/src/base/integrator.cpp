@@ -130,10 +130,10 @@ void PathIntegrator::Instance::render(Stream& stream, bool enable_display)
     {
         throw std::runtime_error{luisa::format("Failed to save render output '{}'.", output_path.string()).c_str()};
     }
-    if (renderer().options().correctness && invalid_count != 0u)
+    if (invalid_count != 0u)
     {
         throw std::runtime_error{luisa::format(
-                                     "Correctness render failed with {} non-finite value(s). Debug output was saved to '{}'.",
+                                     "Render failed with {} non-finite value(s). Debug output was saved to '{}'.",
                                      invalid_count,
                                      output_path.string())
                                      .c_str()};

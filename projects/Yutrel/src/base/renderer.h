@@ -21,11 +21,6 @@ using TextureSampler = compute::Sampler;
 class Scene;
 class Geometry;
 
-struct RendererOptions
-{
-    bool correctness{false};
-};
-
 struct RenderDiagnostics
 {
     uint path_nan{};
@@ -49,7 +44,6 @@ private:
     static constexpr size_t diagnostic_count  = 4u;
 
     Device& m_device;
-    RendererOptions m_options;
     Buffer<uint> m_diagnostics;
     std::array<uint, diagnostic_count> m_diagnostic_zeros{};
     luisa::vector<luisa::unique_ptr<Resource>> m_resources;
@@ -72,7 +66,7 @@ private:
     luisa::unordered_map<luisa::string, uint> m_named_ids;
 
 public:
-    explicit Renderer(Device& device, RendererOptions options = {}) noexcept;
+    explicit Renderer(Device& device) noexcept;
     ~Renderer() noexcept;
 
     Renderer() noexcept                  = delete;
@@ -152,8 +146,7 @@ public:
     }
 
 public:
-    [[nodiscard]] static luisa::unique_ptr<Renderer> create(Device& device, Stream& stream, const Scene& scene,
-                                                            RendererOptions options = {}) noexcept;
+    [[nodiscard]] static luisa::unique_ptr<Renderer> create(Device& device, Stream& stream, const Scene& scene) noexcept;
 
     void render(Stream& stream, bool enable_display);
     void render_interactive(Stream& stream);
@@ -164,7 +157,6 @@ public:
     void record_film_non_finite(Expr<bool> has_nan, Expr<bool> has_inf) const noexcept;
 
     [[nodiscard]] auto& device() const noexcept { return m_device; }
-    [[nodiscard]] const auto& options() const noexcept { return m_options; }
     [[nodiscard]] auto& bindless_array() noexcept { return m_bindless_array; }
     [[nodiscard]] auto& bindless_array() const noexcept { return m_bindless_array; }
     [[nodiscard]] auto spectrum() const noexcept { return m_spectrum.get(); }

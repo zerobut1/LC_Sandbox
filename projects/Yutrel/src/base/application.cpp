@@ -17,16 +17,15 @@ Application::Application(ApplicationOptions options, const SceneSpec& scene)
     auto mode = m_interactive ? "interactive" : m_headless ? "offline-headless"
                                                            : "offline-display";
     LUISA_INFO(
-        "Starting Yutrel: backend={}, mode={}, correctness={}.",
+        "Starting Yutrel: backend={}, mode={}.",
         options.backend,
-        mode,
-        options.correctness);
+        mode);
 
     m_device = m_context.create_device(options.backend);
     m_stream = m_device.create_stream(StreamTag::GRAPHICS);
 
     m_scene    = Scene::create(scene);
-    m_renderer = Renderer::create(m_device, m_stream, *m_scene, RendererOptions{.correctness = options.correctness});
+    m_renderer = Renderer::create(m_device, m_stream, *m_scene);
 }
 
 Application::~Application() noexcept = default;

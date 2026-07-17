@@ -63,7 +63,7 @@ luisa::string command_line_usage(luisa::string_view bin)
 {
     return luisa::format(
         "Usage: {} <backend> <scene.pbrt> [--interactive|-i] [--headless] "
-        "[--spp N] [--seed N] [--resolution WIDTHxHEIGHT] [--output PATH.exr] [--correctness]. "
+        "[--spp N] [--seed N] [--resolution WIDTHxHEIGHT] [--output PATH.exr]. "
         "<backend>: cuda, dx, vk, metal",
         bin);
 }
@@ -105,12 +105,6 @@ CommandLineOptions parse_command_line(int argc, char* argv[])
         {
             if (options.headless) { fail("Duplicate --headless option."); }
             options.headless = true;
-            continue;
-        }
-        if (arg == "--correctness")
-        {
-            if (options.overrides.correctness) { fail("Duplicate --correctness option."); }
-            options.overrides.correctness = true;
             continue;
         }
         if (arg == "--spp")
@@ -165,10 +159,6 @@ CommandLineOptions parse_command_line(int argc, char* argv[])
     if (options.interactive && options.headless)
     {
         fail("--interactive and --headless cannot be used together.");
-    }
-    if (options.interactive && options.overrides.correctness)
-    {
-        fail("--correctness cannot be used with --interactive.");
     }
     return options;
 }

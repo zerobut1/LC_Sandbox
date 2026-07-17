@@ -21,7 +21,6 @@ struct ApplicationOptions
     luisa::string_view backend;
     bool interactive{false};
     bool headless{false};
-    bool correctness{false};
 };
 
 class Application final

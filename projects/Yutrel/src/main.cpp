@@ -21,7 +21,6 @@ try
         .backend     = cli.backend,
         .interactive = cli.interactive,
         .headless    = cli.headless,
-        .correctness = cli.overrides.correctness,
     };
 
     Application app{std::move(options), scene};

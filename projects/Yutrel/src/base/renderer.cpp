@@ -9,9 +9,8 @@
 
 namespace Yutrel
 {
-Renderer::Renderer(Device& device, RendererOptions options) noexcept
+Renderer::Renderer(Device& device) noexcept
     : m_device(device),
-      m_options(options),
       m_diagnostics(device.create_buffer<uint>(diagnostic_count)),
       m_bindless_array(device.create_bindless_array()) {}
 
@@ -41,11 +40,10 @@ uint Renderer::register_light(CommandBuffer& command_buffer, const Light* light)
     return tag;
 }
 
-luisa::unique_ptr<Renderer> Renderer::create(Device& device, Stream& stream, const Scene& scene,
-                                             RendererOptions options) noexcept
+luisa::unique_ptr<Renderer> Renderer::create(Device& device, Stream& stream, const Scene& scene) noexcept
 {
     Clock clock;
-    auto renderer = luisa::make_unique<Renderer>(device, options);
+    auto renderer = luisa::make_unique<Renderer>(device);
 
     CommandBuffer command_buffer{stream};
 

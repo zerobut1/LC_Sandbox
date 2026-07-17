@@ -12,6 +12,7 @@
 #include <luisa/runtime/stream.h>
 
 #include "base/film.h"
+#include "base/interaction.h"
 #include "base/renderer.h"
 #include "utils/frame.h"
 
@@ -81,6 +82,31 @@ namespace
            std::abs(values[2u].z) < 1e-4f;
 }
 
+[[nodiscard]] bool test_geometric_normal_ray_offset(Device& device)
+{
+    auto stream = device.create_stream();
+    auto output = device.create_buffer<float3>(1u);
+
+    Kernel1D kernel = [](BufferFloat3 result) noexcept
+    {
+        Interaction it{
+            .n_g     = make_float3(0.0f, 1.0f, 0.0f),
+            .p_s     = make_float3(0.0f),
+            .shading = Frame::make(make_float3(1.0f, 0.0f, 0.0f)),
+        };
+        result.write(0u, it.p_robust(normalize(make_float3(1.0f, -1.0f, 0.0f))));
+    };
+    auto shader = device.compile(kernel);
+    float3 value{};
+    stream << shader(output).dispatch(1u)
+           << output.copy_to(&value)
+           << synchronize();
+
+    return std::abs(value.x) < 1e-7f &&
+           std::abs(value.y + 1e-4f) < 1e-7f &&
+           std::abs(value.z) < 1e-7f;
+}
+
 [[nodiscard]] bool test_non_finite_diagnostics(Device& device)
 {
     Renderer renderer{device, RendererOptions{.correctness = true}};
@@ -138,6 +164,11 @@ int main(int argc, char* argv[])
     {
         LUISA_WARNING("Non-finite diagnostic counter test failed.");
         return 4;
+    }
+    if (!test_geometric_normal_ray_offset(device))
+    {
+        LUISA_WARNING("Geometric-normal ray offset test failed.");
+        return 5;
     }
     return 0;
 }

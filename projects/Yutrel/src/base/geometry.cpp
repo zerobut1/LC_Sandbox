@@ -265,12 +265,14 @@ ShadingAttribute Geometry::shading_point(const Shape::Handle& instance, const Va
     auto dpdv           = ite(det == 0.f, fallback_frame.t(), m * dpdv_local);
     auto mn             = transpose(inverse(m));
     auto ns             = ite(instance.has_vertex_normal(), normalize(mn * ns_local), ng);
+    // Match PBRT: interpolated shading normals are authoritative.
+    ng                  = ite(dot(ns, ng) < 0.f, -ng, ng);
     auto uv             = ite(instance.has_vertex_uv(), triangle_interpolate(bary, uv0, uv1, uv2), bary);
     return {.pg   = p,
             .ng   = ng,
             .area = area,
             .ps   = p,
-            .ns   = ite(dot(ns, ng) < 0.f, -ns, ns),
+            .ns   = ns,
             .dpdu = dpdu,
             .dpdv = dpdv,
             .uv   = uv};

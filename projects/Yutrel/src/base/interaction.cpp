@@ -4,7 +4,8 @@ namespace Yutrel
 {
 Float3 Interaction::p_robust(Expr<float3> w) const noexcept
 {
-    auto front = dot(shading.n(), w) > 0.0f;
+    // Select the offset side with the geometric normal, as PBRT does.
+    auto front = dot(n_g, w) > 0.0f;
     auto n     = ite(front, n_g, -n_g);
     return p_s + n * 1e-4f;
 }

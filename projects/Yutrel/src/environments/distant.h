@@ -43,10 +43,10 @@ public:
 
     [[nodiscard]] Evaluation evaluate(
         Expr<float3> wi, const SampledWavelengths& swl,
-        Expr<float> time) const noexcept override;
+        Expr<float> time, bool allow_incomplete_pdf) const noexcept override;
     [[nodiscard]] Sample sample(
         const SampledWavelengths& swl, Expr<float> time,
-        Expr<float2> u) const noexcept override;
+        Expr<float2> u, bool allow_incomplete_pdf) const noexcept override;
 };
 
 class DistantEnvironmentSpec final : public EnvironmentSpec

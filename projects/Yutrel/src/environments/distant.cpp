@@ -21,17 +21,21 @@ bool DistantEnvironment::is_black() const noexcept
 }
 
 Environment::Evaluation DistantEnvironment::Instance::evaluate(
-    Expr<float3> wi, const SampledWavelengths& swl, Expr<float> time) const noexcept
+    Expr<float3> wi, const SampledWavelengths& swl, Expr<float> time,
+    bool allow_incomplete_pdf) const noexcept
 {
     static_cast<void>(wi);
     static_cast<void>(time);
+    static_cast<void>(allow_incomplete_pdf);
     return Evaluation::zero(swl.dimension());
 }
 
 Environment::Sample DistantEnvironment::Instance::sample(
-    const SampledWavelengths& swl, Expr<float> time, Expr<float2> u) const noexcept
+    const SampledWavelengths& swl, Expr<float> time, Expr<float2> u,
+    bool allow_incomplete_pdf) const noexcept
 {
     static_cast<void>(u);
+    static_cast<void>(allow_incomplete_pdf);
     Interaction it{};
     auto environment = base<DistantEnvironment>();
     auto L = _emission->evaluate_illuminant_spectrum(it, swl, time).value * environment->scale();

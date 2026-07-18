@@ -1,10 +1,12 @@
 #include <array>
 #include <bit>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <numeric>
 
 #include <luisa/luisa-compute.h>
 
@@ -203,6 +205,168 @@ void write_pfm(const std::filesystem::path& path, const char* magic,
     return true;
 }
 
+class TemporaryDirectory
+{
+private:
+    std::filesystem::path _path;
+
+public:
+    TemporaryDirectory()
+        : _path{std::filesystem::temp_directory_path() /
+                ("yutrel_environment_distribution_" +
+                 std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()))}
+    {
+        std::filesystem::create_directories(_path);
+    }
+
+    ~TemporaryDirectory()
+    {
+        std::error_code error;
+        std::filesystem::remove_all(_path, error);
+    }
+
+    [[nodiscard]] const auto& path() const noexcept { return _path; }
+};
+
+[[nodiscard]] std::filesystem::path write_environment_scene(
+    const std::filesystem::path& root, const char* name,
+    const std::array<float, 4u>& weights)
+{
+    auto directory = root / name;
+    std::filesystem::create_directories(directory);
+    auto image_path = directory / "environment.pfm";
+    luisa::vector<float> pixels;
+    pixels.reserve(12u);
+    for (auto y = 2u; y-- > 0u;)
+    {
+        for (auto x = 0u; x < 2u; x++)
+        {
+            auto value = weights[y * 2u + x];
+            pixels.emplace_back(value);
+            pixels.emplace_back(value);
+            pixels.emplace_back(value);
+        }
+    }
+    write_pfm(image_path, "PF", 2u, 2u, -1.0f, pixels);
+
+    auto scene_path = directory / "scene.pbrt";
+    std::ofstream scene{scene_path};
+    scene << "Integrator \"path\"\n"
+             "Sampler \"independent\"\n"
+             "    \"integer pixelsamples\" [ 1 ]\n"
+             "PixelFilter \"triangle\"\n"
+             "Film \"rgb\"\n"
+             "    \"string filename\" [ \"output.exr\" ]\n"
+             "    \"integer xresolution\" [ 1 ]\n"
+             "    \"integer yresolution\" [ 1 ]\n"
+             "Camera \"perspective\"\n"
+             "WorldBegin\n"
+             "Material \"diffuse\"\n"
+             "    \"rgb reflectance\" [ 0.5 0.5 0.5 ]\n"
+             "Shape \"sphere\"\n"
+             "LightSource \"infinite\"\n"
+             "    \"string filename\" [ \"environment.pfm\" ]\n";
+    return scene_path;
+}
+
+[[nodiscard]] bool test_environment_distribution_case(
+    Device& device, Stream& stream, const std::filesystem::path& scene_path,
+    const std::array<float, 4u>& weights)
+{
+    auto parsed = PbrtParser::parse(scene_path);
+    auto spec = PbrtImporter::import(std::move(parsed));
+    auto scene = Scene::create(spec);
+    auto renderer = Renderer::create(device, stream, *scene);
+    if (renderer->environment() == nullptr)
+    {
+        return false;
+    }
+
+    auto output = device.create_buffer<float4>(5u);
+    Kernel1D kernel = [&renderer](BufferFloat4 result) noexcept
+    {
+        auto swl = renderer->spectrum()->sample(0.5f);
+        for (auto i = 0u; i < 4u; i++)
+        {
+            auto uv = make_float2(
+                (static_cast<float>(i % 2u) + 0.5f) * 0.5f,
+                (static_cast<float>(i / 2u) + 0.5f) * 0.5f);
+            auto wi = equal_area_square_to_sphere(uv);
+            auto complete = renderer->environment()->evaluate(wi, swl, 0.0f, false);
+            auto incomplete = renderer->environment()->evaluate(wi, swl, 0.0f, true);
+            result.write(i, make_float4(complete.pdf, incomplete.pdf, length(wi), 0.0f));
+        }
+        auto complete_sample = renderer->environment()->sample(
+            swl, 0.0f, make_float2(0.37f, 0.73f), false);
+        auto incomplete_sample = renderer->environment()->sample(
+            swl, 0.0f, make_float2(0.37f, 0.73f), true);
+        auto complete_evaluation = renderer->environment()->evaluate(
+            complete_sample.wi, swl, 0.0f, false);
+        auto incomplete_evaluation = renderer->environment()->evaluate(
+            incomplete_sample.wi, swl, 0.0f, true);
+        result.write(4u, make_float4(
+                             complete_sample.eval.pdf,
+                             complete_evaluation.pdf,
+                             incomplete_sample.eval.pdf,
+                             incomplete_evaluation.pdf));
+    };
+    auto shader = device.compile(kernel);
+    std::array<float4, 5u> result{};
+    stream << shader(output).dispatch(1u)
+           << output.copy_to(result.data())
+           << synchronize();
+
+    auto total = std::accumulate(weights.begin(), weights.end(), 0.0);
+    auto average = static_cast<float>(total / weights.size());
+    auto compensated = weights;
+    for (auto& weight : compensated)
+    {
+        weight = std::max(weight - average, 0.0f);
+    }
+    auto compensated_total = std::accumulate(compensated.begin(), compensated.end(), 0.0);
+    if (compensated_total == 0.0)
+    {
+        compensated.fill(1.0f);
+        compensated_total = compensated.size();
+    }
+
+    constexpr auto cell_count = 4.0;
+    auto inv_four_pi = 0.25 / std::acos(-1.0);
+    auto complete_integral = 0.0;
+    auto incomplete_integral = 0.0;
+    for (auto i = 0u; i < 4u; i++)
+    {
+        auto expected_complete = weights[i] / total * cell_count * inv_four_pi;
+        auto expected_incomplete = compensated[i] / compensated_total * cell_count * inv_four_pi;
+        if (!nearly_equal(result[i].x, static_cast<float>(expected_complete), 1e-5f) ||
+            !nearly_equal(result[i].y, static_cast<float>(expected_incomplete), 1e-5f) ||
+            !nearly_equal(result[i].z, 1.0f, 1e-3f))
+        {
+            return false;
+        }
+        complete_integral += result[i].x * std::acos(-1.0);
+        incomplete_integral += result[i].y * std::acos(-1.0);
+    }
+    auto sampled = result[4u];
+    return nearly_equal(static_cast<float>(complete_integral), 1.0f, 1e-5f) &&
+           nearly_equal(static_cast<float>(incomplete_integral), 1.0f, 1e-5f) &&
+           nearly_equal(sampled.x, sampled.y, 1e-5f) &&
+           nearly_equal(sampled.z, sampled.w, 1e-5f) &&
+           std::isfinite(sampled.x) && sampled.x > 0.0f &&
+           std::isfinite(sampled.z) && sampled.z > 0.0f;
+}
+
+[[nodiscard]] bool test_environment_distributions(Device& device, Stream& stream)
+{
+    TemporaryDirectory directory;
+    std::array hotspot{1.0f, 1.0f, 1.0f, 5.0f};
+    std::array constant{2.0f, 2.0f, 2.0f, 2.0f};
+    auto hotspot_scene = write_environment_scene(directory.path(), "hotspot", hotspot);
+    auto constant_scene = write_environment_scene(directory.path(), "constant", constant);
+    return test_environment_distribution_case(device, stream, hotspot_scene, hotspot) &&
+           test_environment_distribution_case(device, stream, constant_scene, constant);
+}
+
 [[nodiscard]] luisa::unique_ptr<Scene> load_infinite_diffuse_scene()
 {
     auto parsed      = PbrtParser::parse("tests/scenes/infinite_diffuse.pbrt");
@@ -231,8 +395,8 @@ void write_pfm(const std::filesystem::path& path, const char* magic,
     Kernel1D kernel = [&renderer](BufferFloat4 result) noexcept
     {
         auto swl       = renderer->spectrum()->sample(0.5f);
-        auto sample    = renderer->environment()->sample(swl, 0.0f, make_float2(0.37f, 0.73f));
-        auto evaluated = renderer->environment()->evaluate(sample.wi, swl, 0.0f);
+        auto sample    = renderer->environment()->sample(swl, 0.0f, make_float2(0.37f, 0.73f), true);
+        auto evaluated = renderer->environment()->evaluate(sample.wi, swl, 0.0f, true);
         result.write(0u, make_float4(sample.eval.pdf, evaluated.pdf, length(sample.wi), sample.eval.L[0u]));
     };
     auto shader = device.compile(kernel);
@@ -271,17 +435,20 @@ void write_pfm(const std::filesystem::path& path, const char* magic,
     Kernel1D kernel = [&renderer](BufferFloat4 result) noexcept
     {
         auto swl       = renderer->spectrum()->sample(0.5f);
-        auto sample_a  = renderer->environment()->sample(swl, 0.0f, make_float2(0.1f, 0.2f));
-        auto sample_b  = renderer->environment()->sample(swl, 0.0f, make_float2(0.8f, 0.9f));
-        auto evaluated = renderer->environment()->evaluate(sample_a.wi, swl, 0.0f);
+        auto sample_a  = renderer->environment()->sample(swl, 0.0f, make_float2(0.1f, 0.2f), false);
+        auto sample_b  = renderer->environment()->sample(swl, 0.0f, make_float2(0.8f, 0.9f), true);
+        auto evaluated_complete = renderer->environment()->evaluate(sample_a.wi, swl, 0.0f, false);
+        auto evaluated_incomplete = renderer->environment()->evaluate(sample_a.wi, swl, 0.0f, true);
         result.write(0u, make_float4(sample_a.wi, sample_a.eval.pdf));
         result.write(1u, make_float4(sample_b.wi, sample_b.eval.pdf));
         result.write(2u, make_float4(
             ite(sample_a.delta, 1.0f, 0.0f),
             ite(sample_b.delta, 1.0f, 0.0f),
-            evaluated.pdf,
+            evaluated_complete.pdf,
             sample_a.eval.L[0u]));
-        result.write(3u, make_float4(evaluated.L[0u]));
+        result.write(3u, make_float4(
+                             evaluated_complete.L[0u], evaluated_incomplete.L[0u],
+                             evaluated_complete.pdf, evaluated_incomplete.pdf));
     };
     auto shader = device.compile(kernel);
     std::array<float4, 4u> result{};
@@ -297,7 +464,8 @@ void write_pfm(const std::filesystem::path& path, const char* magic,
            nearly_equal(a.w, 1.0f) && nearly_equal(b.w, 1.0f) &&
            nearly_equal(values.x, 1.0f) && nearly_equal(values.y, 1.0f) &&
            nearly_equal(values.z, 0.0f) && std::isfinite(values.w) && values.w > 0.0f &&
-           nearly_equal(result[3u].x, 0.0f);
+           nearly_equal(result[3u].x, result[3u].y) &&
+           nearly_equal(result[3u].z, result[3u].w);
 }
 
 } // namespace
@@ -325,18 +493,22 @@ int main(int argc, char* argv[])
     {
         return 4;
     }
-    if (!test_infinite_environment(device, stream, *scene))
+    if (!test_environment_distributions(device, stream))
     {
         return 5;
+    }
+    if (!test_infinite_environment(device, stream, *scene))
+    {
+        return 6;
     }
     auto distant_scene = load_distant_scene();
     if (distant_scene == nullptr)
     {
-        return 6;
+        return 7;
     }
     if (!test_distant_environment(device, stream, *distant_scene))
     {
-        return 7;
+        return 8;
     }
     return 0;
 }

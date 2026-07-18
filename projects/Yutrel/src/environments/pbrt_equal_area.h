@@ -38,6 +38,8 @@ private:
     uint2 _resolution;
     uint _alias_buffer_id;
     uint _pdf_buffer_id;
+    uint _alias_distribution_stride;
+    uint _pdf_distribution_stride;
 
 private:
     [[nodiscard]] SampledSpectrum _evaluate_radiance(
@@ -46,15 +48,20 @@ private:
 public:
     Instance(const Renderer& renderer, const PBRTEqualAreaEnvironment* environment,
              const Texture::Instance* emission, uint2 resolution,
-             uint alias_buffer_id, uint pdf_buffer_id) noexcept
+             uint alias_buffer_id, uint pdf_buffer_id,
+             uint alias_distribution_stride, uint pdf_distribution_stride) noexcept
         : Environment::Instance{renderer, environment},
           _emission{emission}, _resolution{resolution},
-          _alias_buffer_id{alias_buffer_id}, _pdf_buffer_id{pdf_buffer_id} {}
+          _alias_buffer_id{alias_buffer_id}, _pdf_buffer_id{pdf_buffer_id},
+          _alias_distribution_stride{alias_distribution_stride},
+          _pdf_distribution_stride{pdf_distribution_stride} {}
 
     [[nodiscard]] Evaluation evaluate(
-        Expr<float3> wi, const SampledWavelengths& swl, Expr<float> time) const noexcept override;
+        Expr<float3> wi, const SampledWavelengths& swl, Expr<float> time,
+        bool allow_incomplete_pdf) const noexcept override;
     [[nodiscard]] Sample sample(
-        const SampledWavelengths& swl, Expr<float> time, Expr<float2> u) const noexcept override;
+        const SampledWavelengths& swl, Expr<float> time, Expr<float2> u,
+        bool allow_incomplete_pdf) const noexcept override;
 };
 
 class PBRTEqualAreaEnvironmentSpec final : public EnvironmentSpec

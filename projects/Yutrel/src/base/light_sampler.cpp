@@ -55,7 +55,9 @@ LightSampler::Evaluation LightSampler::evaluate_miss(
     {
         return Evaluation::zero(swl.dimension());
     }
-    auto eval = renderer().environment()->evaluate(wi, swl, time);
+    constexpr auto allow_incomplete_pdf = true;
+    auto eval = renderer().environment()->evaluate(
+        wi, swl, time, allow_incomplete_pdf);
     auto environment_probability = renderer().lights().empty() ? 1.0f : 0.5f;
     eval.pdf *= environment_probability;
     return eval;
@@ -169,7 +171,9 @@ LightSampler::Sample LightSampler::sample_environment(
     const SampledWavelengths& swl, Expr<float> time) const noexcept
 {
     LUISA_ASSERT(renderer().environment() != nullptr, "No environment in the scene.");
-    auto environment_sample = renderer().environment()->sample(swl, time, u);
+    constexpr auto allow_incomplete_pdf = true;
+    auto environment_sample = renderer().environment()->sample(
+        swl, time, u, allow_incomplete_pdf);
     environment_sample.eval.pdf *= sel.prob;
     return Sample::from_environment(environment_sample, it_from);
 }

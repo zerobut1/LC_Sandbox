@@ -15,6 +15,53 @@ namespace Yutrel
 namespace
 {
 constexpr auto inv_four_pi = 0.25f * inv_pi;
+
+struct AliasDistribution2D
+{
+    luisa::vector<AliasEntry> aliases;
+    luisa::vector<float> pdfs;
+};
+
+[[nodiscard]] AliasDistribution2D create_alias_distribution_2d(
+    luisa::span<const float> weights, uint2 resolution) noexcept
+{
+    auto pixel_count = static_cast<size_t>(resolution.x) * resolution.y;
+    LUISA_ASSERT(
+        weights.size() == pixel_count,
+        "Invalid 2D alias distribution size: expected {}, got {}.",
+        pixel_count,
+        weights.size());
+
+    luisa::vector<float> row_averages(resolution.y);
+    AliasDistribution2D distribution{
+        .aliases = luisa::vector<AliasEntry>(resolution.y + pixel_count),
+        .pdfs = luisa::vector<float>(pixel_count),
+    };
+    for (auto y = 0u; y < resolution.y; y++)
+    {
+        auto row = weights.subspan(static_cast<size_t>(y) * resolution.x, resolution.x);
+        auto row_sum = std::accumulate(row.begin(), row.end(), 0.0);
+        row_averages[y] = static_cast<float>(row_sum / resolution.x);
+        auto [row_aliases, row_pdfs] = create_alias_table(row);
+        std::copy(row_aliases.begin(), row_aliases.end(),
+                  distribution.aliases.begin() + resolution.y + static_cast<size_t>(y) * resolution.x);
+        std::copy(row_pdfs.begin(), row_pdfs.end(),
+                  distribution.pdfs.begin() + static_cast<size_t>(y) * resolution.x);
+    }
+
+    auto [marginal_aliases, marginal_pdfs] = create_alias_table(row_averages);
+    std::copy(marginal_aliases.begin(), marginal_aliases.end(), distribution.aliases.begin());
+    auto uv_cell_count = static_cast<float>(pixel_count);
+    for (auto y = 0u; y < resolution.y; y++)
+    {
+        auto scale = marginal_pdfs[y] * uv_cell_count;
+        for (auto x = 0u; x < resolution.x; x++)
+        {
+            distribution.pdfs[static_cast<size_t>(y) * resolution.x + x] *= scale;
+        }
+    }
+    return distribution;
+}
 }
 
 SampledSpectrum PBRTEqualAreaEnvironment::Instance::_evaluate_radiance(
@@ -27,8 +74,10 @@ SampledSpectrum PBRTEqualAreaEnvironment::Instance::_evaluate_radiance(
 }
 
 Environment::Evaluation PBRTEqualAreaEnvironment::Instance::evaluate(
-    Expr<float3> wi, const SampledWavelengths& swl, Expr<float> time) const noexcept
+    Expr<float3> wi, const SampledWavelengths& swl, Expr<float> time,
+    bool allow_incomplete_pdf) const noexcept
 {
+    auto pdf_offset = allow_incomplete_pdf ? _pdf_distribution_stride : 0u;
     auto result = Evaluation::zero(swl.dimension());
     $outline
     {
@@ -39,7 +88,8 @@ Environment::Evaluation PBRTEqualAreaEnvironment::Instance::evaluate(
         auto pixel = make_uint2(
             cast<uint>(clamp(uv.x * size.x, 0.0f, size.x - 1.0f)),
             cast<uint>(clamp(uv.y * size.y, 0.0f, size.y - 1.0f)));
-        auto p_uv = renderer().buffer<float>(_pdf_buffer_id).read(pixel.y * _resolution.x + pixel.x);
+        auto p_uv = renderer().buffer<float>(_pdf_buffer_id).read(
+            pdf_offset + pixel.y * _resolution.x + pixel.x);
         result = {
             .L = _evaluate_radiance(uv, swl, time),
             .pdf = p_uv * inv_four_pi,
@@ -51,18 +101,23 @@ Environment::Evaluation PBRTEqualAreaEnvironment::Instance::evaluate(
 }
 
 Environment::Sample PBRTEqualAreaEnvironment::Instance::sample(
-    const SampledWavelengths& swl, Expr<float> time, Expr<float2> u) const noexcept
+    const SampledWavelengths& swl, Expr<float> time, Expr<float2> u,
+    bool allow_incomplete_pdf) const noexcept
 {
+    auto alias_offset = allow_incomplete_pdf ? _alias_distribution_stride : 0u;
+    auto pdf_offset   = allow_incomplete_pdf ? _pdf_distribution_stride : 0u;
     auto result = Sample::zero(swl.dimension());
     $outline
     {
         auto aliases = renderer().buffer<AliasEntry>(_alias_buffer_id);
-        auto [iy, uy] = sample_alias_table(aliases, _resolution.y, u.y);
-        auto row_offset = _resolution.y + iy * _resolution.x;
+        auto [iy, uy] = sample_alias_table(
+            aliases, _resolution.y, u.y, alias_offset);
+        auto row_offset = alias_offset + _resolution.y + iy * _resolution.x;
         auto [ix, ux] = sample_alias_table(aliases, _resolution.x, u.x, row_offset);
         auto uv = (make_float2(cast<float>(ix) + ux, cast<float>(iy) + uy)) /
                   make_float2(_resolution);
-        auto p_uv = renderer().buffer<float>(_pdf_buffer_id).read(iy * _resolution.x + ix);
+        auto p_uv = renderer().buffer<float>(_pdf_buffer_id).read(
+            pdf_offset + iy * _resolution.x + ix);
         auto wi_local = equal_area_square_to_sphere(uv);
         Float3x3 transform_to_world = base<PBRTEqualAreaEnvironment>()->transform_to_world();
         auto wi = normalize(transform_to_world * wi_local);
@@ -128,33 +183,38 @@ luisa::unique_ptr<Environment::Instance> PBRTEqualAreaEnvironment::build(
         return nullptr;
     }
 
-    luisa::vector<float> row_averages(resolution.y);
-    luisa::vector<float> pdfs(pixel_count);
-    luisa::vector<AliasEntry> aliases(resolution.y + pixel_count);
-    for (auto y = 0u; y < resolution.y; y++)
+    // PBRT-v4's incomplete PDF removes the image-wide average so that
+    // direct-light samples focus on energy that BSDF sampling is less likely to find.
+    auto compensated_weights = weights;
+    auto average = static_cast<float>(total_weight / pixel_count);
+    for (auto& weight : compensated_weights)
     {
-        auto row = luisa::span<const float>{weights}.subspan(
-            static_cast<size_t>(y) * resolution.x, resolution.x);
-        auto row_sum = std::accumulate(row.begin(), row.end(), 0.0);
-        row_averages[y] = static_cast<float>(row_sum / resolution.x);
-        auto [row_aliases, row_pdfs] = create_alias_table(row);
-        std::copy(row_aliases.begin(), row_aliases.end(),
-                  aliases.begin() + resolution.y + static_cast<size_t>(y) * resolution.x);
-        std::copy(row_pdfs.begin(), row_pdfs.end(),
-                  pdfs.begin() + static_cast<size_t>(y) * resolution.x);
+        weight = std::max(weight - average, 0.0f);
+    }
+    if (std::all_of(
+            compensated_weights.begin(), compensated_weights.end(),
+            [](auto weight) noexcept { return weight == 0.0f; }))
+    {
+        std::fill(compensated_weights.begin(), compensated_weights.end(), 1.0f);
     }
 
-    auto [marginal_aliases, marginal_pdfs] = create_alias_table(row_averages);
-    std::copy(marginal_aliases.begin(), marginal_aliases.end(), aliases.begin());
-    auto uv_cell_count = static_cast<float>(pixel_count);
-    for (auto y = 0u; y < resolution.y; y++)
-    {
-        auto scale = marginal_pdfs[y] * uv_cell_count;
-        for (auto x = 0u; x < resolution.x; x++)
-        {
-            pdfs[static_cast<size_t>(y) * resolution.x + x] *= scale;
-        }
-    }
+    auto complete = create_alias_distribution_2d(weights, resolution);
+    auto incomplete = create_alias_distribution_2d(compensated_weights, resolution);
+    auto alias_distribution_stride = static_cast<uint>(complete.aliases.size());
+    auto pdf_distribution_stride = static_cast<uint>(complete.pdfs.size());
+    LUISA_ASSERT(
+        incomplete.aliases.size() == alias_distribution_stride &&
+            incomplete.pdfs.size() == pdf_distribution_stride,
+        "Mismatched complete and incomplete environment distribution sizes.");
+
+    luisa::vector<AliasEntry> aliases(static_cast<size_t>(alias_distribution_stride) * 2u);
+    luisa::vector<float> pdfs(static_cast<size_t>(pdf_distribution_stride) * 2u);
+    std::copy(complete.aliases.begin(), complete.aliases.end(), aliases.begin());
+    std::copy(incomplete.aliases.begin(), incomplete.aliases.end(),
+              aliases.begin() + alias_distribution_stride);
+    std::copy(complete.pdfs.begin(), complete.pdfs.end(), pdfs.begin());
+    std::copy(incomplete.pdfs.begin(), incomplete.pdfs.end(),
+              pdfs.begin() + pdf_distribution_stride);
 
     auto [alias_buffer, alias_buffer_id] = renderer.bindless_arena_buffer<AliasEntry>(aliases.size());
     auto [pdf_buffer, pdf_buffer_id] = renderer.bindless_arena_buffer<float>(pdfs.size());
@@ -163,7 +223,8 @@ luisa::unique_ptr<Environment::Instance> PBRTEqualAreaEnvironment::build(
                    << commit();
 
     return luisa::make_unique<Instance>(
-        renderer, this, texture, resolution, alias_buffer_id, pdf_buffer_id);
+        renderer, this, texture, resolution, alias_buffer_id, pdf_buffer_id,
+        alias_distribution_stride, pdf_distribution_stride);
 }
 
 luisa::optional<luisa::string> PBRTEqualAreaEnvironmentSpec::validate() const noexcept

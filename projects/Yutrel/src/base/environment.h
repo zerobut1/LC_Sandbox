@@ -59,12 +59,14 @@ public:
         [[nodiscard]] virtual Evaluation evaluate(
             Expr<float3> wi,
             const SampledWavelengths& swl,
-            Expr<float> time) const noexcept = 0;
+            Expr<float> time,
+            bool allow_incomplete_pdf) const noexcept = 0;
 
         [[nodiscard]] virtual Sample sample(
             const SampledWavelengths& swl,
             Expr<float> time,
-            Expr<float2> u) const noexcept = 0;
+            Expr<float2> u,
+            bool allow_incomplete_pdf) const noexcept = 0;
     };
 
 public:

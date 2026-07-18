@@ -4,10 +4,7 @@ namespace Yutrel
 {
 Float3 Interaction::p_robust(Expr<float3> w) const noexcept
 {
-    // Select the offset side with the geometric normal, as PBRT does.
-    auto front = dot(n_g, w) > 0.0f;
-    auto n     = ite(front, n_g, -n_g);
-    return p_s + n * 1e-4f;
+    return offset_ray_origin(p_s, n_g, w);
 }
 
 Var<Ray> Interaction::spawn_ray(Expr<float3> wi, Expr<float> t_max) const noexcept

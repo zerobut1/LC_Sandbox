@@ -94,10 +94,6 @@ public:
 
     [[nodiscard]] luisa::optional<luisa::string> validate() const noexcept override
     {
-        if (_max_depth == 0u)
-        {
-            return spec_validation_error("Path integrator max depth must be greater than zero.");
-        }
         return luisa::nullopt;
     }
     [[nodiscard]] const Integrator* build(SceneBuilder& builder) const noexcept override;

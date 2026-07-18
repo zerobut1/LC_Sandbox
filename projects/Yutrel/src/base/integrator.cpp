@@ -307,7 +307,8 @@ Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> f
     auto ray          = camera_ray;
     auto pdf_bsdf     = def(1e16f);
     auto delta_bounce = def(true);
-    $for(depth, max_depth())
+    auto depth = 0u;
+    $loop
     {
         // trace
         auto wo = -ray->direction();
@@ -323,7 +324,7 @@ Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> f
                 auto weight = ite(
                     (depth == 0u) | delta_bounce,
                     1.0f,
-                    balance_heuristic(pdf_bsdf, eval.pdf));
+                    power_heuristic(pdf_bsdf, eval.pdf));
                 Li += beta * eval.L * weight;
             }
             $break;
@@ -337,14 +338,20 @@ Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> f
                 $if(it->shape.has_light())
                 {
                     auto eval   = light_sampler()->evaluate_hit(*it, ray->origin(), swl, time);
-                    auto weight = ite(delta_bounce, 1.0f, balance_heuristic(pdf_bsdf, eval.pdf));
+                    auto weight = ite(delta_bounce, 1.0f, power_heuristic(pdf_bsdf, eval.pdf));
                     Li += beta * eval.L * weight;
                 };
             };
         };
 
+        // Match PBRT-v4 maxdepth semantics: evaluate emission at the terminal
+        // vertex, then stop before direct lighting or another scattering event.
+        $if(depth == max_depth()) { $break; };
+
         // no surface
         $if(!it->shape.has_surface()) { $break; };
+
+        depth += 1u;
 
         // sample light
         auto u_light_selection = sampler()->generate_1d();
@@ -380,7 +387,7 @@ Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> f
                     auto wi   = light_sample.shadow_ray->direction();
                     auto eval = closure->evaluate(wo, wi);
                     auto mis  = ite(light_sample.delta, 1.0f,
-                                     balance_heuristic(light_sample.eval.pdf, eval.pdf));
+                                     power_heuristic(light_sample.eval.pdf, eval.pdf));
                     auto w    = mis / light_sample.eval.pdf;
                     Li += w * beta * eval.f * light_sample.eval.L;
                 };
@@ -422,7 +429,7 @@ Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> f
         // Match PBRT-v4: start RR after the second scattering event and base
         // the survival probability on throughput adjusted for refraction.
         auto rr_beta_max = beta.max() * eta_scale;
-        $if((depth + 1u > 1u) & (rr_beta_max < 1.0f))
+        $if((depth > 1u) & (rr_beta_max < 1.0f))
         {
             auto q = max(0.0f, 1.0f - rr_beta_max);
             auto u_rr = sampler()->generate_1d();

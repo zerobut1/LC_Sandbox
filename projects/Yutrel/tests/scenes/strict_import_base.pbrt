@@ -1,0 +1,27 @@
+Integrator "path"
+Sampler "independent"
+    "integer pixelsamples" [ 1 ]
+PixelFilter "triangle"
+Film "rgb"
+    "string filename" [ "strict-import.exr" ]
+    "integer xresolution" [ 1 ]
+    "integer yresolution" [ 1 ]
+Camera "perspective"
+
+WorldBegin
+
+Texture "fixture" "spectrum" "checkerboard"
+    "rgb tex1" [ 0.25 0.25 0.25 ]
+    "rgb tex2" [ 0.75 0.75 0.75 ]
+MakeNamedMaterial "Floor"
+    "string type" [ "diffuse" ]
+    "texture reflectance" [ "fixture" ]
+NamedMaterial "Floor"
+AreaLightSource "diffuse"
+    "rgb L" [ 1 1 1 ]
+Shape "trianglemesh"
+    "point3 P" [ -1 -1 1  1 -1 1  0 1 1 ]
+    "normal N" [ 0 0 -1  0 0 -1  0 0 -1 ]
+    "integer indices" [ 0 1 2 ]
+LightSource "infinite"
+    "string filename" [ "fixture.pfm" ]

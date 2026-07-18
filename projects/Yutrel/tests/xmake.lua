@@ -11,8 +11,8 @@ local function yutrel_test(name, files)
     target_end()
 end
 
-yutrel_test("book_parse", {
-    "test_book_parse.cpp",
+yutrel_test("pbrt_parse", {
+    "test_pbrt_parse.cpp",
     "../src/pbrt/pbrt_parser.cpp",
 })
 
@@ -37,7 +37,7 @@ local function yutrel_core_test(name, common)
     target_end()
 end
 
-yutrel_core_test("book_import")
+yutrel_core_test("pbrt_import")
 yutrel_core_test("robustness", true)
 yutrel_core_test("coated_diffuse")
 yutrel_core_test("color_space")

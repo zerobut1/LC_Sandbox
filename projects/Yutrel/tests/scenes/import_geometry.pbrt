@@ -1,10 +1,11 @@
 Integrator "path"
+    "integer maxdepth" [ 5 ]
 PixelFilter "triangle"
 Sampler "independent"
     "integer pixelsamples" [ 1 ]
     "integer seed" [ 37 ]
 Film "rgb"
-    "string filename" [ "book-geometry.exr" ]
+    "string filename" [ "import-geometry.exr" ]
     "integer xresolution" [ 16 ]
     "integer yresolution" [ 16 ]
 Camera "perspective"
@@ -17,7 +18,7 @@ AttributeBegin
         "rgb reflectance" [ 0.5 0.5 0.5 ]
     Scale 0.213 0.213 0.213
     Shape "plymesh"
-        "string filename" [ "../../scene/pbrt-book/geometry/mesh_00001.ply" ]
+        "string filename" [ "mesh_00001.ply" ]
 AttributeEnd
 
 AttributeBegin
@@ -27,7 +28,7 @@ AttributeBegin
     Rotate 77.3425 0.403388 -0.754838 -0.517202
     Scale 0.5 0.5 0.5
     Shape "plymesh"
-        "string filename" [ "../../scene/pbrt-book/geometry/mesh_00002.ply" ]
+        "string filename" [ "mesh_00002.ply" ]
 AttributeEnd
 
 AttributeBegin
@@ -37,5 +38,5 @@ AttributeBegin
     Rotate 77.3425 0.403388 -0.754838 -0.517202
     Scale 0.5 0.5 0.5
     Shape "plymesh"
-        "string filename" [ "../../scene/pbrt-book/geometry/mesh_00003.ply" ]
+        "string filename" [ "mesh_00003.ply" ]
 AttributeEnd

@@ -62,26 +62,46 @@ namespace
 [[nodiscard]] bool test_geometric_normal_ray_offset(Device& device)
 {
     auto stream = device.create_stream();
-    auto output = device.create_buffer<float3>(1u);
+    auto output = device.create_buffer<float3>(4u);
 
     Kernel1D kernel = [](BufferFloat3 result) noexcept
     {
-        Interaction it{
+        Interaction near_origin{
             .n_g     = make_float3(0.0f, 1.0f, 0.0f),
             .p_s     = make_float3(0.0f),
             .shading = Frame::make(make_float3(1.0f, 0.0f, 0.0f)),
         };
-        result.write(0u, it.p_robust(normalize(make_float3(1.0f, -1.0f, 0.0f))));
+        Interaction large_scale{
+            .n_g     = make_float3(0.0f, 1.0f, 0.0f),
+            .p_s     = make_float3(1.0e6f),
+            .shading = Frame::make(make_float3(1.0f, 0.0f, 0.0f)),
+        };
+        result.write(0u, near_origin.p_robust(make_float3(0.0f, 1.0f, 0.0f)));
+        result.write(1u, near_origin.p_robust(make_float3(0.0f, -1.0f, 0.0f)));
+        result.write(2u, large_scale.p_robust(make_float3(0.0f, 1.0f, 0.0f)));
+        result.write(3u, large_scale.p_robust(make_float3(0.0f, -1.0f, 0.0f)));
     };
     auto shader = device.compile(kernel);
-    float3 value{};
+    std::array<float3, 4u> values{};
     stream << shader(output).dispatch(1u)
-           << output.copy_to(&value)
+           << output.copy_to(luisa::span{values})
            << synchronize();
 
-    return std::abs(value.x) < 1e-7f &&
-           std::abs(value.y + 1e-4f) < 1e-7f &&
-           std::abs(value.z) < 1e-7f;
+    for (auto value : values)
+    {
+        if (!std::isfinite(value.x) || !std::isfinite(value.y) || !std::isfinite(value.z))
+        {
+            return false;
+        }
+    }
+    auto near_up_offset    = values[0u].y;
+    auto near_down_offset  = -values[1u].y;
+    auto large_up_offset   = values[2u].y - 1.0e6f;
+    auto large_down_offset = 1.0e6f - values[3u].y;
+    return std::abs(values[0u].x) < 1e-7f && std::abs(values[0u].z) < 1e-7f &&
+           std::abs(values[1u].x) < 1e-7f && std::abs(values[1u].z) < 1e-7f &&
+           near_up_offset > 0.0f && near_down_offset > 0.0f &&
+           large_up_offset > near_up_offset && large_down_offset > near_down_offset;
 }
 
 [[nodiscard]] bool test_non_finite_diagnostics(Device& device)

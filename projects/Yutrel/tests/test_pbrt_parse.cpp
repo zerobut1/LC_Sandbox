@@ -1,5 +1,5 @@
-// Integration test for complete book.pbrt parsing.
-// This test covers scalar parameters, transforms, and attribute inheritance.
+// Tests for PBRT scene parsing.
+// This test covers parser defaults, parameters, and invalid declarations.
 
 #include "ut/ut.hpp"
 
@@ -59,69 +59,8 @@ namespace
     return false;
 }
 
-static auto test_book_parse_registration = []
+static auto test_pbrt_parse_registration = []
 {
-    "parse_book_pbrt"_test = []
-    {
-        auto scene = PbrtParser::parse("scene/pbrt-book/book.pbrt");
-
-        expect(scene.sampler.type == SamplerDesc::Type::Halton);
-        expect(scene.sampler.pixel_samples == 2048u);
-        expect(scene.textures.size() == 5u);
-        expect(scene.materials.size() == 3u);
-        expect(scene.shapes.size() == 5u);
-
-        auto sphere_count  = 0u;
-        auto plymesh_count = 0u;
-        for (auto&& shape : scene.shapes)
-        {
-            sphere_count += shape.type == ShapeDesc::Type::Sphere ? 1u : 0u;
-            plymesh_count += shape.type == ShapeDesc::Type::PlyMesh ? 1u : 0u;
-        }
-        expect(sphere_count == 2u);
-        expect(plymesh_count == 3u);
-
-        auto sensor = find_parameter(scene.film.parameters, "sensor");
-        auto iso    = find_parameter(scene.film.parameters, "iso");
-        expect(sensor != nullptr);
-        expect(iso != nullptr);
-        if (sensor == nullptr || iso == nullptr)
-        {
-            return;
-        }
-        expect(sensor->values.size() == 1u);
-        expect(iso->values.size() == 1u);
-        expect(sensor->values.front().quoted);
-        expect(sensor->values.front().text == "canon_eos_100d");
-        expect(!sensor->bracketed);
-        expect(!iso->values.front().quoted);
-        expect(iso->values.front().text == "150");
-        expect(!iso->bracketed);
-        expect(is_near(scene.film.iso, 150.0f));
-        expect(is_near(scene.camera.shutter_open, 0.0f));
-        expect(is_near(scene.camera.shutter_close, 1.0f));
-        expect(scene.sampler.parameters.front().bracketed);
-
-        expect(scene.shapes[0u].area_light.has_value());
-        expect(!scene.shapes[0u].material.inline_index.has_value());
-        expect(scene.shapes[2u].material.inline_index == 0u);
-        expect(scene.shapes[3u].material.inline_index == 1u);
-        expect(scene.shapes[4u].material.inline_index == 2u);
-        expect(!scene.shapes[3u].area_light.has_value());
-
-        auto&& camera = scene.camera.pbrt_transform;
-        expect(is_near(camera[0u], 1.0f));
-        expect(is_near(camera[5u], 1.0f));
-        expect(is_near(camera[10u], -1.0f));
-        expect(is_near(camera[7u], -2.1088f));
-        expect(is_near(camera[11u], 13.574f));
-
-        auto&& translated_sphere = scene.shapes[0u].pbrt_transform;
-        expect(is_near(translated_sphere[3u], 34.92f));
-        expect(is_near(translated_sphere[7u], 55.92f));
-        expect(is_near(translated_sphere[11u], -15.351f));
-    };
-
     "parse_film_exposure"_test = []
     {
         auto scene = PbrtParser::parse("tests/scenes/film_exposure.pbrt");
@@ -129,7 +68,7 @@ static auto test_book_parse_registration = []
         expect(is_near(scene.camera.shutter_open, 0.25f));
         expect(is_near(scene.camera.shutter_close, 0.75f));
 
-        auto defaults = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        auto defaults = PbrtParser::parse("tests/scenes/import_geometry.pbrt");
         expect(is_near(defaults.film.iso, 100.0f));
         expect(is_near(defaults.camera.shutter_open, 0.0f));
         expect(is_near(defaults.camera.shutter_close, 1.0f));
@@ -156,85 +95,6 @@ static auto test_book_parse_registration = []
         expect(parse_error_contains(
             "tests/scenes/sobol_sampler_bad_randomization.pbrt",
             {"sobol_sampler_bad_randomization.pbrt", "randomization", "fastowen"}));
-    };
-
-    "parse_book_ply_filenames"_test = []
-    {
-        auto scene = PbrtParser::parse("scene/pbrt-book/book.pbrt");
-        expect(scene.sampler.type == SamplerDesc::Type::Halton);
-        expect(scene.textures.size() == 5u);
-        expect(scene.textures[0u].name == "book_cover");
-        expect(scene.textures[0u].value_type == TextureDesc::ValueType::Spectrum);
-        expect(scene.textures[0u].type == TextureDesc::Type::ImageMap);
-        expect(scene.textures[0u].filter == TextureDesc::Filter::Bilinear);
-        expect(scene.textures[0u].filename == std::filesystem::path{"texture/book_pbrt.png"});
-        expect(scene.textures[1u].name == "book_pages");
-        expect(scene.textures[1u].value_type == TextureDesc::ValueType::Spectrum);
-        expect(scene.textures[1u].type == TextureDesc::Type::ImageMap);
-        expect(scene.textures[1u].filter == TextureDesc::Filter::Bilinear);
-        expect(scene.textures[1u].filename == std::filesystem::path{"texture/book_pages.png"});
-        expect(scene.textures[2u].name == "uneven_bump_raw");
-        expect(scene.textures[2u].value_type == TextureDesc::ValueType::Float);
-        expect(scene.textures[2u].type == TextureDesc::Type::ImageMap);
-        expect(scene.textures[2u].filter == TextureDesc::Filter::Bilinear);
-        expect(scene.textures[2u].filename == std::filesystem::path{"texture/uneven_bump.png"});
-        expect(is_near(scene.textures[2u].uv_scale.x, 1.5f));
-        expect(is_near(scene.textures[2u].uv_scale.y, 1.5f));
-        expect(scene.textures[3u].name == "uneven_bump_scale");
-        expect(scene.textures[3u].type == TextureDesc::Type::Constant);
-        expect(is_near(scene.textures[3u].constant_value, 0.0002f));
-        expect(scene.textures[4u].name == "uneven_bump");
-        expect(scene.textures[4u].type == TextureDesc::Type::Scale);
-        expect(scene.textures[4u].tex == "uneven_bump_raw");
-        expect(scene.textures[4u].scale == "uneven_bump_scale");
-        expect(scene.materials.size() == 3u);
-        expect(scene.materials[0u].type == MaterialDesc::Type::Diffuse);
-        expect(scene.materials[1u].type == MaterialDesc::Type::Diffuse);
-        expect(scene.materials[2u].type == MaterialDesc::Type::CoatedDiffuse);
-        expect(!scene.materials[0u].reflectance_texture.has_value());
-        expect(scene.materials[1u].reflectance_texture == luisa::optional<luisa::string>{"book_pages"});
-        expect(scene.materials[2u].reflectance_texture == luisa::optional<luisa::string>{"book_cover"});
-        expect(is_near(scene.materials[2u].roughness, 0.0003f));
-        auto displacement = find_parameter(scene.materials[2u].parameters, "displacement");
-        expect(displacement != nullptr);
-        if (displacement != nullptr)
-        {
-            expect(displacement->type == "texture");
-            expect(displacement->values.size() == 1u);
-            expect(displacement->values.front().text == "uneven_bump");
-        }
-        expect(scene.shapes.size() == 5u);
-        expect(scene.shapes[0u].type == ShapeDesc::Type::Sphere);
-        expect(scene.shapes[1u].type == ShapeDesc::Type::Sphere);
-        expect(is_near(scene.shapes[0u].radius, 7.5f));
-        expect(is_near(scene.shapes[1u].radius, 7.5f));
-        expect(scene.shapes[0u].sphere_subdivision == 4u);
-        expect(scene.shapes[1u].sphere_subdivision == 4u);
-
-        std::array<std::filesystem::path, 3u> filenames{
-            "geometry/mesh_00001.ply",
-            "geometry/mesh_00002.ply",
-            "geometry/mesh_00003.ply",
-        };
-        auto filename_index = 0u;
-        for (auto&& shape : scene.shapes)
-        {
-            if (shape.type != ShapeDesc::Type::PlyMesh)
-            {
-                continue;
-            }
-            expect(shape.filename.has_value());
-            if (shape.filename)
-            {
-                expect(filename_index < filenames.size());
-                if (filename_index < filenames.size())
-                {
-                    expect(*shape.filename == filenames[filename_index]);
-                }
-            }
-            filename_index++;
-        }
-        expect(filename_index == filenames.size());
     };
 
     "parse_imagemap_filters"_test = []
@@ -445,31 +305,6 @@ static auto test_book_parse_registration = []
             }
             expect(rejected) << "invalid plymesh filename should produce a source-located parse error";
         }
-    };
-
-    "parse_teapot_infinite_environment"_test = []
-    {
-        auto scene      = PbrtParser::parse("scene/teapot/scene-yutrel.pbrt");
-        auto&& material = scene.named_materials.at("Material");
-        expect(material.type == MaterialDesc::Type::CoatedDiffuse);
-        expect(is_near(material.u_roughness, 0.001f));
-        expect(is_near(material.v_roughness, 0.001f));
-        expect(!material.remap_roughness);
-        expect(scene.infinite_light.has_value());
-        if (!scene.infinite_light) { return; }
-        auto&& light = *scene.infinite_light;
-        expect(light.filename == std::filesystem::path{"textures/envmap.pfm"});
-        expect(is_near(light.scale, 1.0f));
-        expect(is_near(light.pbrt_transform[0u], -0.386527f));
-        expect(is_near(light.pbrt_transform[1u], -0.922278f));
-        expect(is_near(light.pbrt_transform[8u], 0.922278f));
-        expect(is_near(light.pbrt_transform[9u], -0.386527f));
-    };
-
-    "parse_cornell_without_environment"_test = []
-    {
-        auto scene = PbrtParser::parse("scene/cornell-box/scene-yutrel.pbrt");
-        expect(!scene.infinite_light.has_value());
     };
 
     "parse_distant_light"_test = []

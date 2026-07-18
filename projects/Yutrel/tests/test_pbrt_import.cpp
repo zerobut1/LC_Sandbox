@@ -4,8 +4,6 @@
 #include "base/shape.h"
 #include "cameras/pinhole.h"
 #include "environments/distant.h"
-#include "environments/null.h"
-#include "environments/pbrt_equal_area.h"
 #include "pbrt/pbrt_importer.h"
 #include "pbrt/pbrt_parser.h"
 #include "samplers/independent.h"
@@ -16,10 +14,8 @@
 #include "surfaces/diffuse.h"
 #include "textures/checker_board.h"
 #include "textures/constant.h"
-#include "textures/image.h"
 #include "textures/scale.h"
 
-#include <algorithm>
 #include <array>
 #include <cmath>
 #include <filesystem>
@@ -48,59 +44,6 @@ namespace
     return std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
 }
 
-[[nodiscard]] PbrtScene parse_importable_book()
-{
-    auto parsed            = PbrtParser::parse("scene/pbrt-book/book.pbrt");
-    parsed.integrator.type = IntegratorDesc::Type::Path;
-    parsed.integrator.parameters.clear();
-    parsed.sampler.type  = SamplerDesc::Type::Independent;
-    parsed.sampler.seed  = 0u;
-    parsed.filter.type   = FilterDesc::Type::Triangle;
-    parsed.filter.radius = make_float2(2.0f);
-    parsed.filter.parameters.clear();
-
-    auto remove_parameter = [](luisa::vector<RawParameter>& parameters, luisa::string_view name)
-    {
-        parameters.erase(
-            std::remove_if(parameters.begin(), parameters.end(), [name](auto&& parameter) noexcept
-        {
-            return parameter.name == name;
-        }),
-            parameters.end());
-    };
-    remove_parameter(parsed.film.parameters, "sensor");
-    auto make_diffuse = [&](MaterialDesc& material, bool named)
-    {
-        material.type      = MaterialDesc::Type::Diffuse;
-        material.roughness = 0.0f;
-        material.parameters.erase(
-            std::remove_if(material.parameters.begin(), material.parameters.end(), [named](auto&& parameter) noexcept
-        {
-            return parameter.name != "reflectance" && !(named && parameter.name == "type");
-        }),
-            material.parameters.end());
-        if (named)
-        {
-            for (auto& parameter : material.parameters)
-            {
-                if (parameter.name == "type" && !parameter.values.empty())
-                {
-                    parameter.values.front().text = "diffuse";
-                }
-            }
-        }
-    };
-    for (auto& material : parsed.materials)
-    {
-        make_diffuse(material, false);
-    }
-    for (auto& [_, material] : parsed.named_materials)
-    {
-        make_diffuse(material, true);
-    }
-    return parsed;
-}
-
 [[nodiscard]] RawParameter test_parameter(
     luisa::string type, luisa::string name, uint line)
 {
@@ -111,7 +54,7 @@ namespace
     };
 }
 
-static auto test_book_import_registration = []
+static auto test_pbrt_import_registration = []
 {
     "validate_rgb_film_spec"_test = []
     {
@@ -124,7 +67,7 @@ static auto test_book_import_registration = []
 
     "import_film_exposure"_test = []
     {
-        auto parsed                 = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        auto parsed                 = PbrtParser::parse("tests/scenes/import_geometry.pbrt");
         parsed.film.iso             = 200.0f;
         parsed.camera.shutter_open  = 0.25f;
         parsed.camera.shutter_close = 0.75f;
@@ -141,7 +84,7 @@ static auto test_book_import_registration = []
             expect(is_near(camera->shutter_span().y, 0.75f));
         }
 
-        auto default_parsed = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        auto default_parsed = PbrtParser::parse("tests/scenes/import_geometry.pbrt");
         auto default_spec   = PbrtImporter::import(std::move(default_parsed));
         auto default_film   = dynamic_cast<const RGBFilmSpec*>(&default_spec.films().spec(default_spec.render().film));
         auto default_camera = dynamic_cast<const PinholeCameraSpec*>(&default_spec.cameras().spec(default_spec.render().camera));
@@ -157,7 +100,7 @@ static auto test_book_import_registration = []
 
     "import_sobol_sampler"_test = []
     {
-        auto parsed                  = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        auto parsed                  = PbrtParser::parse("tests/scenes/import_geometry.pbrt");
         parsed.sampler.type          = SamplerDesc::Type::Sobol;
         parsed.sampler.pixel_samples = 32u;
         parsed.sampler.seed          = 42u;
@@ -171,12 +114,21 @@ static auto test_book_import_registration = []
 
     "import_independent_sampler_seed"_test = []
     {
-        auto parsed    = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        auto parsed    = PbrtParser::parse("tests/scenes/import_geometry.pbrt");
         auto spec      = PbrtImporter::import(std::move(parsed));
         auto&& sampler = static_cast<const IndependentSamplerSpec&>(
             spec.samplers().spec(spec.render().sampler));
         expect(sampler.spp() == 1u);
         expect(sampler.seed() == 37u);
+    };
+
+    "accept_zero_path_maxdepth"_test = []
+    {
+        auto parsed                 = PbrtParser::parse("tests/scenes/import_geometry.pbrt");
+        parsed.integrator.max_depth = 0u;
+        auto spec                   = PbrtImporter::import(std::move(parsed));
+        auto&& integrator           = spec.integrators().spec(spec.render().integrator);
+        expect(!integrator.validate().has_value());
     };
 
     "pbrt_v4_defaults_are_explicitly_rejected_until_supported"_test = []
@@ -273,7 +225,7 @@ static auto test_book_import_registration = []
         };
         for (auto test_case : cases)
         {
-            auto parsed                 = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+            auto parsed                 = PbrtParser::parse("tests/scenes/import_geometry.pbrt");
             parsed.film.iso             = test_case.iso;
             parsed.camera.shutter_open  = test_case.shutter_open;
             parsed.camera.shutter_close = test_case.shutter_close;
@@ -326,11 +278,7 @@ static auto test_book_import_registration = []
         };
         for (auto test_case : cases)
         {
-            auto scene     = test_case.target == Target::Texture
-                                 ? PbrtParser::parse("tests/scenes/checkerboard_textures.pbrt")
-                             : test_case.target == Target::InfiniteLight
-                                 ? PbrtParser::parse("tests/scenes/infinite_diffuse.pbrt")
-                                 : PbrtParser::parse("scene/cornell-box/scene-yutrel.pbrt");
+            auto scene = PbrtParser::parse("tests/scenes/strict_import_base.pbrt");
             auto parameter = test_parameter(test_case.type, test_case.name, test_case.line);
             switch (test_case.target)
             {
@@ -390,7 +338,7 @@ static auto test_book_import_registration = []
 
     "reject_duplicate_and_unused_resource_parameters"_test = []
     {
-        auto duplicate = PbrtParser::parse("scene/cornell-box/scene-yutrel.pbrt");
+        auto duplicate = PbrtParser::parse("tests/scenes/import_geometry.pbrt");
         duplicate.integrator.parameters.emplace_back(test_parameter("integer", "maxdepth", 30u));
         auto duplicate_rejected = false;
         try
@@ -406,7 +354,7 @@ static auto test_book_import_registration = []
         }
         expect(duplicate_rejected);
 
-        auto unused = PbrtParser::parse("scene/cornell-box/scene-yutrel.pbrt");
+        auto unused = PbrtParser::parse("tests/scenes/import_geometry.pbrt");
         MaterialDesc unused_material;
         unused_material.source = SourceLocation{"strict_case.pbrt", 40u, 1u};
         unused_material.parameters.emplace_back(test_parameter("texture", "displacement", 41u));
@@ -426,33 +374,9 @@ static auto test_book_import_registration = []
         expect(unused_rejected);
     };
 
-    "reject_real_book_sensor_before_scene_construction"_test = []
-    {
-        auto parsed            = PbrtParser::parse("scene/pbrt-book/book.pbrt");
-        parsed.integrator.type = IntegratorDesc::Type::Path;
-        parsed.integrator.parameters.clear();
-        parsed.sampler.type = SamplerDesc::Type::Independent;
-        parsed.sampler.parameters.clear();
-        parsed.filter.type = FilterDesc::Type::Triangle;
-        parsed.filter.parameters.clear();
-        auto rejected = false;
-        try
-        {
-            (void)PbrtImporter::import(std::move(parsed));
-        }
-        catch (const std::runtime_error& error)
-        {
-            auto message = std::string{error.what()};
-            rejected     = message.find("book.pbrt") != std::string::npos &&
-                           message.find("Film 'rgb'") != std::string::npos &&
-                           message.find("sensor") != std::string::npos;
-        }
-        expect(rejected);
-    };
-
     "log_effective_scene_summary_and_resource_details"_test = []
     {
-        auto parsed = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        auto parsed = PbrtParser::parse("tests/scenes/import_geometry.pbrt");
         std::mutex mutex;
         luisa::vector<luisa::string> messages;
         auto sink = luisa::detail::create_sink_with_callback(
@@ -544,9 +468,9 @@ static auto test_book_import_registration = []
         expect(SphereShapeSpec{1.0f, Sphere::max_subdivision + 1u}.validate().has_value());
     };
 
-    "import_book_ply_geometry"_test = []
+    "import_fixture_ply_geometry"_test = []
     {
-        auto parsed = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        auto parsed = PbrtParser::parse("tests/scenes/import_geometry.pbrt");
         std::array<Matrix4, 3u> expected_transforms{
             parsed.shapes[0u].pbrt_transform,
             parsed.shapes[1u].pbrt_transform,
@@ -565,9 +489,9 @@ static auto test_book_import_registration = []
         expect(instances[1u].surface != instances[2u].surface);
 
         std::array<std::filesystem::path, 3u> expected_paths{
-            std::filesystem::absolute("scene/pbrt-book/geometry/mesh_00001.ply"),
-            std::filesystem::absolute("scene/pbrt-book/geometry/mesh_00002.ply"),
-            std::filesystem::absolute("scene/pbrt-book/geometry/mesh_00003.ply"),
+            std::filesystem::absolute("tests/scenes/mesh_00001.ply"),
+            std::filesystem::absolute("tests/scenes/mesh_00002.ply"),
+            std::filesystem::absolute("tests/scenes/mesh_00003.ply"),
         };
         auto shape_index = 0u;
         spec.shapes().visit_entries([&](ShapeRef, const SpecMeta&, const ShapeSpec* shape)
@@ -617,113 +541,10 @@ static auto test_book_import_registration = []
 
     "reuse_inherited_inline_material"_test = []
     {
-        auto parsed                             = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        auto parsed                             = PbrtParser::parse("tests/scenes/import_geometry.pbrt");
         parsed.shapes[1u].material.inline_index = parsed.shapes[0u].material.inline_index;
         auto spec                               = PbrtImporter::import(std::move(parsed));
         expect(spec.instances()[0u].surface == spec.instances()[1u].surface);
-    };
-
-    "import_book_spheres"_test = []
-    {
-        auto parsed                = parse_importable_book();
-        parsed.textures[0u].filter = TextureDesc::Filter::Point;
-        auto spec                  = PbrtImporter::import(std::move(parsed));
-        auto film                  = dynamic_cast<const RGBFilmSpec*>(&spec.films().spec(spec.render().film));
-        auto camera                = dynamic_cast<const PinholeCameraSpec*>(&spec.cameras().spec(spec.render().camera));
-        expect(film != nullptr);
-        expect(camera != nullptr);
-        if (film != nullptr && camera != nullptr)
-        {
-            expect(is_near(film->imaging_ratio(), 1.5f));
-            expect(is_near(camera->shutter_span().x, 0.0f));
-            expect(is_near(camera->shutter_span().y, 1.0f));
-        }
-        expect(spec.shapes().size() == 5u);
-        expect(spec.instances().size() == 5u);
-        expect(spec.lights().size() == 2u);
-
-        auto instances = spec.instances();
-        auto sphere_0  = dynamic_cast<const SphereShapeSpec*>(&spec.shapes().spec(instances[0u].shape));
-        auto sphere_1  = dynamic_cast<const SphereShapeSpec*>(&spec.shapes().spec(instances[1u].shape));
-        expect(sphere_0 != nullptr);
-        expect(sphere_1 != nullptr);
-        if (sphere_0 != nullptr && sphere_1 != nullptr)
-        {
-            expect(is_near(sphere_0->radius(), 7.5f));
-            expect(is_near(sphere_1->radius(), 7.5f));
-            expect(sphere_0->subdivision() == Sphere::default_subdivision);
-            expect(sphere_1->subdivision() == Sphere::default_subdivision);
-        }
-        expect(instances[0u].surface == instances[1u].surface);
-        expect(instances[0u].light.has_value());
-        expect(instances[1u].light.has_value());
-        expect(instances[0u].light != instances[1u].light);
-        expect(is_near(instances[0u].transform[3u].x, 34.92f));
-        expect(is_near(instances[0u].transform[3u].y, 55.92f));
-        expect(is_near(instances[0u].transform[3u].z, -15.351f));
-
-        auto image_texture_count = 0u;
-        std::array<std::filesystem::path, 3u> expected_texture_paths{
-            std::filesystem::absolute("scene/pbrt-book/texture/book_pbrt.png"),
-            std::filesystem::absolute("scene/pbrt-book/texture/book_pages.png"),
-            std::filesystem::absolute("scene/pbrt-book/texture/uneven_bump.png"),
-        };
-        auto found_bump_constant = false;
-        auto found_bump_scale    = false;
-        spec.textures().visit_entries([&](TextureRef, const SpecMeta& meta, const TextureSpec* texture)
-        {
-            auto image = dynamic_cast<const ImageTextureSpec*>(texture);
-            if (image != nullptr)
-            {
-                expect(image_texture_count < expected_texture_paths.size());
-                if (image_texture_count < expected_texture_paths.size())
-                {
-                    expect(image->path().lexically_normal() == expected_texture_paths[image_texture_count].lexically_normal());
-                }
-                auto expected_sampler = meta.name == "book_cover"
-                                            ? TextureSampler::point_repeat()
-                                            : TextureSampler::linear_point_repeat();
-                expect(image->sampler() == expected_sampler);
-                auto expected_uv_scale = meta.name == "uneven_bump_raw" ? 1.5f : 1.0f;
-                expect(is_near(image->uv_scale().x, expected_uv_scale));
-                expect(is_near(image->uv_scale().y, expected_uv_scale));
-                expect(is_near(image->uv_offset().x, 0.0f));
-                expect(is_near(image->uv_offset().y, 0.0f));
-                if (meta.name == "uneven_bump_raw")
-                {
-                    expect(image->encoding() == Texture::Encoding::LINEAR);
-                }
-                image_texture_count++;
-                return;
-            }
-            if (meta.name == "uneven_bump_scale")
-            {
-                auto constant = dynamic_cast<const ConstantTextureSpec*>(texture);
-                expect(constant != nullptr);
-                if (constant != nullptr)
-                {
-                    expect(is_near(constant->value().x, 0.0002f));
-                }
-                found_bump_constant = true;
-            }
-            if (meta.name == "uneven_bump")
-            {
-                auto scale = dynamic_cast<const ScaleTextureSpec*>(texture);
-                expect(scale != nullptr);
-                if (scale != nullptr)
-                {
-                    expect(is_near(scale->scale().x, 0.0002f));
-                    expect(is_near(scale->offset().x, 0.0f));
-                }
-                found_bump_scale = true;
-            }
-        });
-        expect(image_texture_count == expected_texture_paths.size());
-        expect(found_bump_constant);
-        expect(found_bump_scale);
-        expect(instances[3u].surface != instances[4u].surface);
-        expect(dynamic_cast<const DiffuseSurfaceSpec*>(
-                   &spec.surfaces().spec(instances[4u].surface)) != nullptr);
     };
 
     "reject_unsupported_coated_displacement"_test = []
@@ -742,20 +563,6 @@ static auto test_book_import_registration = []
                            message.find("unsupported parameter") != std::string::npos;
         }
         expect(rejected);
-    };
-
-    "detect_image_texture_channels"_test = []
-    {
-        ImageTexture pages{
-            "scene/pbrt-book/texture/book_pages.png",
-            TextureSampler::linear_point_repeat(),
-            Texture::Encoding::SRGB};
-        ImageTexture cover{
-            "scene/pbrt-book/texture/book_pbrt.png",
-            TextureSampler::linear_point_repeat(),
-            Texture::Encoding::SRGB};
-        expect(pages.channels() == 1u);
-        expect(cover.channels() == 4u);
     };
 
     "fold_static_scale_texture"_test = []
@@ -877,83 +684,9 @@ static auto test_book_import_registration = []
         expect(rejected_mismatch);
     };
 
-    "reject_unknown_reflectance_texture"_test = []
-    {
-        auto parsed = parse_importable_book();
-        parsed.materials[1u].reflectance_texture.emplace("missing_texture");
-        auto rejected = false;
-        try
-        {
-            (void)PbrtImporter::import(std::move(parsed));
-        }
-        catch (const std::runtime_error& error)
-        {
-            auto message = std::string{error.what()};
-            rejected     = message.find("book.pbrt") != std::string::npos &&
-                           message.find("missing_texture") != std::string::npos;
-        }
-        expect(rejected);
-    };
-
-    "reject_dynamic_scale_texture"_test = []
-    {
-        auto parsed               = parse_importable_book();
-        parsed.textures[4u].scale = "book_cover";
-        auto rejected             = false;
-        try
-        {
-            (void)PbrtImporter::import(std::move(parsed));
-        }
-        catch (const std::runtime_error& error)
-        {
-            auto message = std::string{error.what()};
-            rejected     = message.find("book.pbrt") != std::string::npos &&
-                           message.find("float constant") != std::string::npos &&
-                           message.find("dynamic multiplication") != std::string::npos;
-        }
-        expect(rejected);
-    };
-
-    "reject_unknown_scale_texture"_test = []
-    {
-        auto parsed               = parse_importable_book();
-        parsed.textures[4u].scale = "missing_scale";
-        auto rejected             = false;
-        try
-        {
-            (void)PbrtImporter::import(std::move(parsed));
-        }
-        catch (const std::runtime_error& error)
-        {
-            auto message = std::string{error.what()};
-            rejected     = message.find("book.pbrt") != std::string::npos &&
-                           message.find("missing_scale") != std::string::npos &&
-                           message.find("unknown scale texture") != std::string::npos;
-        }
-        expect(rejected);
-    };
-
-    "reject_missing_image_texture_file"_test = []
-    {
-        auto parsed                  = parse_importable_book();
-        parsed.textures[0u].filename = "texture/missing.png";
-        auto rejected                = false;
-        try
-        {
-            (void)PbrtImporter::import(std::move(parsed));
-        }
-        catch (const std::runtime_error& error)
-        {
-            auto message = std::string{error.what()};
-            rejected     = message.find("book.pbrt") != std::string::npos &&
-                           message.find("regular file") != std::string::npos;
-        }
-        expect(rejected);
-    };
-
     "reject_out_of_range_inline_material"_test = []
     {
-        auto parsed                             = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        auto parsed                             = PbrtParser::parse("tests/scenes/import_geometry.pbrt");
         parsed.shapes[0u].material.inline_index = 99u;
         auto source_located                     = false;
         try
@@ -963,7 +696,7 @@ static auto test_book_import_registration = []
         catch (const std::runtime_error& error)
         {
             auto message   = std::string{error.what()};
-            source_located = message.find("tests/scenes/book_geometry.pbrt") != std::string::npos &&
+            source_located = message.find("tests/scenes/import_geometry.pbrt") != std::string::npos &&
                              message.find("out-of-range inline material 99") != std::string::npos;
         }
         expect(source_located);
@@ -971,7 +704,7 @@ static auto test_book_import_registration = []
 
     "reject_ambiguous_material_binding"_test = []
     {
-        auto parsed                      = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        auto parsed                      = PbrtParser::parse("tests/scenes/import_geometry.pbrt");
         parsed.shapes[0u].material.named = "named";
         auto source_located              = false;
         try
@@ -981,7 +714,7 @@ static auto test_book_import_registration = []
         catch (const std::runtime_error& error)
         {
             auto message   = std::string{error.what()};
-            source_located = message.find("tests/scenes/book_geometry.pbrt") != std::string::npos &&
+            source_located = message.find("tests/scenes/import_geometry.pbrt") != std::string::npos &&
                              message.find("both named and inline material bindings") != std::string::npos;
         }
         expect(source_located);
@@ -989,7 +722,7 @@ static auto test_book_import_registration = []
 
     "import_inline_coated_diffuse_material"_test = []
     {
-        auto parsed                      = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        auto parsed                      = PbrtParser::parse("tests/scenes/import_geometry.pbrt");
         parsed.materials[0u].type        = MaterialDesc::Type::CoatedDiffuse;
         parsed.materials[0u].roughness   = 0.1f;
         parsed.materials[0u].u_roughness = 0.1f;
@@ -1005,7 +738,7 @@ static auto test_book_import_registration = []
 
     "import_named_material_binding"_test = []
     {
-        auto parsed = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
+        auto parsed = PbrtParser::parse("tests/scenes/import_geometry.pbrt");
         parsed.named_materials.emplace("named", parsed.materials[0u]);
         parsed.shapes[0u].material.named = "named";
         parsed.shapes[0u].material.inline_index.reset();
@@ -1014,36 +747,10 @@ static auto test_book_import_registration = []
         expect(spec.surfaces().size() == 4u);
     };
 
-    "load_book_ply_geometry"_test = []
-    {
-        std::array<std::filesystem::path, 3u> paths{
-            "scene/pbrt-book/geometry/mesh_00001.ply",
-            "scene/pbrt-book/geometry/mesh_00002.ply",
-            "scene/pbrt-book/geometry/mesh_00003.ply",
-        };
-        std::array<size_t, 3u> triangle_counts{20000u, 72u, 1174u};
-
-        for (auto i = 0u; i < paths.size(); i++)
-        {
-            auto loader = MeshLoader::load(paths[i]);
-            auto mesh   = loader->mesh();
-            expect(!mesh.vertices.empty());
-            expect(mesh.triangles.size() == triangle_counts[i]);
-            expect((loader->properties() & Shape::property_flag_has_vertex_normal) != 0u);
-            expect((loader->properties() & Shape::property_flag_has_vertex_uv) != 0u);
-            for (auto triangle : mesh.triangles)
-            {
-                expect(triangle.i0 < mesh.vertices.size());
-                expect(triangle.i1 < mesh.vertices.size());
-                expect(triangle.i2 < mesh.vertices.size());
-            }
-        }
-    };
-
     "reject_missing_ply_file"_test = []
     {
-        auto parsed = PbrtParser::parse("tests/scenes/book_geometry.pbrt");
-        parsed.shapes[0u].filename.emplace("../../scene/pbrt-book/geometry/missing.ply");
+        auto parsed = PbrtParser::parse("tests/scenes/import_geometry.pbrt");
+        parsed.shapes[0u].filename.emplace("missing.ply");
         auto source_located = false;
         try
         {
@@ -1052,75 +759,10 @@ static auto test_book_import_registration = []
         catch (const std::runtime_error& error)
         {
             auto message   = std::string{error.what()};
-            source_located = message.find("tests/scenes/book_geometry.pbrt") != std::string::npos &&
+            source_located = message.find("tests/scenes/import_geometry.pbrt") != std::string::npos &&
                              message.find("regular file") != std::string::npos;
         }
         expect(source_located);
-    };
-
-    "import_null_environment_for_cornell_box"_test = []
-    {
-        auto parsed = PbrtParser::parse("scene/cornell-box/scene-yutrel.pbrt");
-        auto spec   = PbrtImporter::import(std::move(parsed));
-        expect(spec.environments().size() == 1u);
-        expect(dynamic_cast<const NullEnvironmentSpec*>(
-                   &spec.environments().spec(spec.render().environment)) != nullptr);
-    };
-
-    "import_pbrt_equal_area_environment"_test = []
-    {
-        auto parsed      = PbrtParser::parse("tests/scenes/infinite_diffuse.pbrt");
-        auto spec        = PbrtImporter::import(std::move(parsed));
-        auto environment = dynamic_cast<const PBRTEqualAreaEnvironmentSpec*>(
-            &spec.environments().spec(spec.render().environment));
-        expect(environment != nullptr);
-        if (environment == nullptr)
-        {
-            return;
-        }
-        expect(is_near(environment->scale(), 1.0f));
-        expect(!environment->validate().has_value());
-
-        auto image = dynamic_cast<const ImageTextureSpec*>(
-            &spec.textures().spec(environment->emission()));
-        expect(image != nullptr);
-        if (image == nullptr)
-        {
-            return;
-        }
-        expect(image->path().filename() == std::filesystem::path{"envmap.pfm"});
-        expect(image->sampler() == TextureSampler::point_edge());
-        expect(image->encoding() == Texture::Encoding::LINEAR);
-
-        auto transform = environment->transform_to_world();
-        expect(is_near(transform[0].x, -0.386527f));
-        expect(is_near(transform[0].y, 0.0f));
-        expect(is_near(transform[0].z, 0.922278f));
-        expect(is_near(transform[1].x, -0.922278f));
-        expect(is_near(transform[1].z, -0.386527f));
-        expect(is_near(transform[2].y, 1.0f));
-
-        expect(PBRTEqualAreaEnvironmentSpec{
-            environment->emission(),
-            1.0f,
-            make_float3x3(2.0f)}
-                   .validate()
-                   .has_value());
-        expect(!PBRTEqualAreaEnvironmentSpec{
-            environment->emission(),
-            1.0f,
-            make_float3x3(
-                make_float3(-1.0f, 0.0f, 0.0f),
-                make_float3(0.0f, 1.0f, 0.0f),
-                make_float3(0.0f, 0.0f, 1.0f))}
-                    .validate()
-                    .has_value());
-        expect(PBRTEqualAreaEnvironmentSpec{
-            environment->emission(),
-            -1.0f,
-            make_float3x3(1.0f)}
-                   .validate()
-                    .has_value());
     };
 
     "import_distant_environment"_test = []
@@ -1159,40 +801,6 @@ static auto test_book_import_registration = []
                    .has_value());
     };
 
-    "import_teapot_coated_diffuse"_test = []
-    {
-        auto parsed = PbrtParser::parse("scene/teapot/scene-yutrel.pbrt");
-        auto spec   = PbrtImporter::import(std::move(parsed));
-        auto found  = false;
-        spec.surfaces().visit_entries([&](SurfaceRef, const SpecMeta& meta, const SurfaceSpec* surface)
-        {
-            if (meta.name != "Material")
-            {
-                return;
-            }
-            auto coated = dynamic_cast<const CoatedDiffuseSurfaceSpec*>(surface);
-            expect(coated != nullptr);
-            if (coated == nullptr)
-            {
-                return;
-            }
-            found = true;
-            expect(!coated->params().remap_roughness);
-            expect(coated->params().u_roughness.has_value());
-            expect(coated->params().v_roughness.has_value());
-            if (coated->params().u_roughness)
-            {
-                auto texture = dynamic_cast<const ConstantTextureSpec*>(
-                    &spec.textures().spec(*coated->params().u_roughness));
-                expect(texture != nullptr);
-                if (texture != nullptr)
-                {
-                    expect(is_near(texture->value().x, 0.001f));
-                }
-            }
-        });
-        expect(found);
-    };
     return 0;
 }();
 

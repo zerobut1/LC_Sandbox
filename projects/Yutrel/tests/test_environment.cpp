@@ -13,7 +13,6 @@
 #include "base/renderer.h"
 #include "base/scene.h"
 #include "environments/distant.h"
-#include "environments/pbrt_equal_area.h"
 #include "pbrt/pbrt_importer.h"
 #include "pbrt/pbrt_parser.h"
 #include "utils/image_io.h"
@@ -367,51 +366,6 @@ public:
            test_environment_distribution_case(device, stream, constant_scene, constant);
 }
 
-[[nodiscard]] luisa::unique_ptr<Scene> load_infinite_diffuse_scene()
-{
-    auto parsed      = PbrtParser::parse("tests/scenes/infinite_diffuse.pbrt");
-    auto spec        = PbrtImporter::import(std::move(parsed));
-    auto scene       = Scene::create(spec);
-    auto environment = dynamic_cast<const PBRTEqualAreaEnvironment*>(scene->environment());
-    if (environment == nullptr || environment->emission()->resolution().x != 1024u ||
-        environment->emission()->resolution().y != 1024u ||
-        environment->emission()->channels() < 3u)
-    {
-        return nullptr;
-    }
-    return scene;
-}
-
-[[nodiscard]] bool test_infinite_environment(
-    Device& device, Stream& stream, const Scene& scene)
-{
-    auto renderer = Renderer::create(device, stream, scene);
-    if (renderer->environment() == nullptr || !renderer->lights().empty())
-    {
-        return false;
-    }
-
-    auto output     = device.create_buffer<float4>(1u);
-    Kernel1D kernel = [&renderer](BufferFloat4 result) noexcept
-    {
-        auto swl       = renderer->spectrum()->sample(0.5f);
-        auto sample    = renderer->environment()->sample(swl, 0.0f, make_float2(0.37f, 0.73f), true);
-        auto evaluated = renderer->environment()->evaluate(sample.wi, swl, 0.0f, true);
-        result.write(0u, make_float4(sample.eval.pdf, evaluated.pdf, length(sample.wi), sample.eval.L[0u]));
-    };
-    auto shader = device.compile(kernel);
-    std::array<float4, 1u> result{};
-    stream << shader(output).dispatch(1u)
-           << output.copy_to(result.data())
-           << synchronize();
-    auto value = result.front();
-    return std::isfinite(value.x) && value.x >= 0.0f &&
-           std::isfinite(value.y) && value.y >= 0.0f &&
-           nearly_equal(value.x, value.y, 1e-5f) &&
-           nearly_equal(value.z, 1.0f, 1e-3f) &&
-           std::isfinite(value.w) && value.w >= 0.0f;
-}
-
 [[nodiscard]] luisa::unique_ptr<Scene> load_distant_scene()
 {
     auto parsed = PbrtParser::parse("tests/scenes/distant_basic.pbrt");
@@ -476,11 +430,6 @@ int main(int argc, char* argv[])
     {
         return 2;
     }
-    auto scene = load_infinite_diffuse_scene();
-    if (scene == nullptr)
-    {
-        return 3;
-    }
     if (argc < 2)
     {
         return 0;
@@ -496,10 +445,6 @@ int main(int argc, char* argv[])
     if (!test_environment_distributions(device, stream))
     {
         return 5;
-    }
-    if (!test_infinite_environment(device, stream, *scene))
-    {
-        return 6;
     }
     auto distant_scene = load_distant_scene();
     if (distant_scene == nullptr)

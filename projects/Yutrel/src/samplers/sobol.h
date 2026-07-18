@@ -62,7 +62,7 @@ private:
     uint _seed;
 
 public:
-    SobolSamplerSpec(uint spp, uint seed = 0u) noexcept
+    SobolSamplerSpec(uint spp, uint seed) noexcept
         : _spp{spp}, _seed{seed} {}
 
     [[nodiscard]] uint spp() const noexcept { return _spp; }

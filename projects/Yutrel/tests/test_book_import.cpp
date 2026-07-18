@@ -186,7 +186,7 @@ static auto test_book_import_registration = []
         expect(defaults.integrator.max_depth == 5u);
         expect(defaults.sampler.type == SamplerDesc::Type::ZSobol);
         expect(defaults.sampler.pixel_samples == 16u);
-        expect(defaults.sampler.seed == 0u);
+        expect(defaults.sampler.seed == 20120712u);
         expect(defaults.filter.type == FilterDesc::Type::Gaussian);
         expect(is_near(defaults.filter.radius.x, 1.5f));
         expect(defaults.film.resolution.x == 1280u);

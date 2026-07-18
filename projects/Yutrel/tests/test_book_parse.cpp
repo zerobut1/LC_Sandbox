@@ -145,7 +145,7 @@ static auto test_book_parse_registration = []
         auto defaults = PbrtParser::parse("tests/scenes/sobol_sampler_default.pbrt");
         expect(defaults.sampler.type == SamplerDesc::Type::Sobol);
         expect(defaults.sampler.pixel_samples == 16u);
-        expect(defaults.sampler.seed == 0u);
+        expect(defaults.sampler.seed == 20120712u);
     };
 
     "reject_invalid_sobol_sampler"_test = []

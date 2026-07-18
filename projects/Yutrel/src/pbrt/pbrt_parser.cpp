@@ -896,7 +896,7 @@ private:
             m_desc.sampler.type == SamplerDesc::Type::Sobol ||
             m_desc.sampler.type == SamplerDesc::Type::ZSobol)
         {
-            m_desc.sampler.seed = one_uint(params, "seed", command, 0u);
+            m_desc.sampler.seed = one_uint(params, "seed", command, 20120712u);
         }
         if (m_desc.sampler.type == SamplerDesc::Type::Sobol ||
             m_desc.sampler.type == SamplerDesc::Type::ZSobol)

@@ -44,7 +44,7 @@ private:
     uint _seed;
 
 public:
-    IndependentSamplerSpec(uint spp, uint seed = 0u) noexcept
+    IndependentSamplerSpec(uint spp, uint seed) noexcept
         : _spp{spp}, _seed{seed} {}
 
     [[nodiscard]] uint spp() const noexcept { return _spp; }

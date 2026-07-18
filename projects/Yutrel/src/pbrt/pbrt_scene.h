@@ -87,7 +87,7 @@ struct SamplerDesc
     };
     Type type{Type::ZSobol};
     uint pixel_samples{16u};
-    uint seed{0u};
+    uint seed{20120712u};
     luisa::vector<RawParameter> parameters;
 };
 

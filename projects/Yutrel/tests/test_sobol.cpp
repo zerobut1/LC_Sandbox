@@ -176,12 +176,12 @@ struct SampleBatch
         auto sample_index  = i % batch.spp;
         auto pixel_index   = i / batch.spp;
         auto pixel         = make_uint2(pixel_index % batch.resolution.x, pixel_index / batch.resolution.x);
-        auto index         = sobol_interval_to_index(m, sample_index + batch.seed * batch.spp, pixel);
+        auto index         = sobol_interval_to_index(m, sample_index, pixel);
         auto expected_x    = std::clamp(sobol_sample(index, 0u, 0u, false) * scale - pixel.x, 0.0f, 0x1.fffffep-1f);
         auto expected_y    = std::clamp(sobol_sample(index, 1u, 0u, false) * scale - pixel.y, 0.0f, 0x1.fffffep-1f);
-        auto expected_1d   = sobol_sample(index, 2u, xxhash32(make_uint2(2u, 0u)), true);
-        auto expected_2d_x = sobol_sample(index, 3u, xxhash32(make_uint2(3u, 0u)), true);
-        auto expected_2d_y = sobol_sample(index, 4u, xxhash32(make_uint2(4u, 0u)), true);
+        auto expected_1d   = sobol_sample(index, 2u, xxhash32(make_uint2(2u, batch.seed)), true);
+        auto expected_2d_x = sobol_sample(index, 3u, xxhash32(make_uint2(3u, batch.seed)), true);
+        auto expected_2d_y = sobol_sample(index, 4u, xxhash32(make_uint2(4u, batch.seed)), true);
         auto actual        = batch.first[i];
         if (!nearly_equal(actual.x, expected_x) ||
             !nearly_equal(actual.y, expected_y) ||
@@ -237,7 +237,7 @@ struct SampleBatch
     {
         return false;
     }
-    auto ordinary_dimension_changed = false;
+    auto scrambled_dimension_changed = false;
     for (auto i = 0u; i < a.first.size(); i++)
     {
         if (a.first[i].x != b.first[i].x ||
@@ -248,13 +248,16 @@ struct SampleBatch
         {
             return false;
         }
-        ordinary_dimension_changed |= a.first[i].x != different_seed.first[i].x ||
-                                      a.first[i].y != different_seed.first[i].y ||
-                                      a.first[i].z != different_seed.first[i].z ||
-                                      a.first[i].w != different_seed.first[i].w ||
-                                      a.second[i] != different_seed.second[i];
+        if (a.first[i].x != different_seed.first[i].x ||
+            a.first[i].y != different_seed.first[i].y)
+        {
+            return false;
+        }
+        scrambled_dimension_changed |= a.first[i].z != different_seed.first[i].z ||
+                                       a.first[i].w != different_seed.first[i].w ||
+                                       a.second[i] != different_seed.second[i];
     }
-    return ordinary_dimension_changed;
+    return scrambled_dimension_changed;
 }
 
 } // namespace
@@ -289,6 +292,11 @@ int main(int argc, char* argv[])
     if (!validate_reproducibility(non_power_of_two_resolution, repeated, different_seed))
     {
         return 5;
+    }
+    auto large_seed = generate_samples(device, stream, make_uint2(1u), 4096u, 20120712u);
+    if (!validate_reference(large_seed))
+    {
+        return 6;
     }
     return 0;
 }

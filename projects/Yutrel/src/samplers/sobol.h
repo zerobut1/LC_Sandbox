@@ -17,7 +17,6 @@ public:
         uint2 _resolution{};
         uint _scale{};
         uint _log2_scale{};
-        uint _sample_offset{};
         bool _matrices_uploaded{};
         luisa::optional<uint> _uploaded_vdc_m;
         luisa::optional<UInt2> _pixel;

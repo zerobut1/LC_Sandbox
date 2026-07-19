@@ -5,7 +5,6 @@
 #include <atomic>
 #include <bit>
 #include <cstdint>
-#include <limits>
 
 #include <luisa/dsl/sugar.h>
 
@@ -111,12 +110,6 @@ void SobolSampler::Instance::reset(CommandBuffer& command_buffer, uint2 resoluti
 
     auto spp = base<SobolSampler>()->spp();
     LUISA_ASSERT(spp != 0u, "Sobol sampler requires at least one sample per pixel.");
-    auto sample_offset = static_cast<uint64_t>(base<SobolSampler>()->seed()) * spp;
-    LUISA_ASSERT(sample_offset + spp <= std::numeric_limits<uint>::max(),
-                 "Sobol seed {} and {} spp exceed the supported sample-index range.",
-                 base<SobolSampler>()->seed(),
-                 spp);
-    _sample_offset = static_cast<uint>(sample_offset);
     LUISA_ASSERT(2u * _log2_scale + std::bit_width(spp - 1u) <= SobolMatrixSize,
                  "Sobol sampler index requires more than {} bits at resolution {}x{} and {} spp.",
                  SobolMatrixSize,
@@ -163,15 +156,13 @@ void SobolSampler::Instance::start(UInt2 pixel, UInt index) noexcept
 {
     _pixel.emplace(pixel);
     _dimension.emplace(2u);
-    // Treat each seed as a disjoint sample block so separately rendered shards
-    // retain the low-discrepancy coverage of one contiguous Sobol sequence.
-    _sobol_index.emplace(_sobol_interval_to_index(_log2_scale, index + _sample_offset, pixel));
+    _sobol_index.emplace(_sobol_interval_to_index(_log2_scale, index, pixel));
 }
 
 Float SobolSampler::Instance::generate_1d() noexcept
 {
     *_dimension = ite(*_dimension >= NSobolDimensions, 2u, *_dimension);
-    auto hash   = xxhash32(make_uint2(*_dimension, 0u));
+    auto hash   = xxhash32(make_uint2(*_dimension, base<SobolSampler>()->seed()));
     auto u      = _sobol_sample<true>(*_sobol_index, *_dimension, hash);
     *_dimension += 1u;
     return u;
@@ -180,8 +171,8 @@ Float SobolSampler::Instance::generate_1d() noexcept
 Float2 SobolSampler::Instance::generate_2d() noexcept
 {
     *_dimension = ite(*_dimension + 1u >= NSobolDimensions, 2u, *_dimension);
-    auto hash_x = xxhash32(make_uint2(*_dimension, 0u));
-    auto hash_y = xxhash32(make_uint2(*_dimension + 1u, 0u));
+    auto hash_x = xxhash32(make_uint2(*_dimension, base<SobolSampler>()->seed()));
+    auto hash_y = xxhash32(make_uint2(*_dimension + 1u, base<SobolSampler>()->seed()));
     auto u      = make_float2(
         _sobol_sample<true>(*_sobol_index, *_dimension, hash_x),
         _sobol_sample<true>(*_sobol_index, *_dimension + 1u, hash_y));

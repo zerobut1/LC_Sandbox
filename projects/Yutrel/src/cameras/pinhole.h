@@ -37,8 +37,8 @@ private:
     float m_fov;
 
 public:
-    PinholeCamera(float3 position, float3 lookat, float3 up, float2 shutter_span,
-                  uint shutter_samples_count, float fov, bool swaps_handedness) noexcept;
+    PinholeCamera(float4x4 camera_to_world, float2 shutter_span,
+                  uint shutter_samples_count, float fov) noexcept;
     ~PinholeCamera() noexcept override = default;
 
 public:
@@ -48,34 +48,27 @@ public:
 class PinholeCameraSpec final : public CameraSpec
 {
 private:
-    float3 _position;
-    float3 _lookat;
-    float3 _up;
+    float4x4 _camera_to_world;
     float2 _shutter_span;
     uint _shutter_samples_count;
     float _fov;
-    bool _swaps_handedness;
 
 public:
+    PinholeCameraSpec(float4x4 camera_to_world, float2 shutter_span,
+                      uint shutter_samples_count, float fov) noexcept
+        : _camera_to_world{camera_to_world}, _shutter_span{shutter_span},
+          _shutter_samples_count{shutter_samples_count}, _fov{fov} {}
+
     PinholeCameraSpec(float3 position, float3 lookat, float3 up, float2 shutter_span,
-                      uint shutter_samples_count, float fov,
-                      bool swaps_handedness = false) noexcept
-        : _position{position}, _lookat{lookat}, _up{up}, _shutter_span{shutter_span},
-          _shutter_samples_count{shutter_samples_count}, _fov{fov},
-          _swaps_handedness{swaps_handedness} {}
+                      uint shutter_samples_count, float fov) noexcept
+        : PinholeCameraSpec{make_view_camera_to_world(position, lookat, up),
+                            shutter_span, shutter_samples_count, fov} {}
 
     [[nodiscard]] luisa::optional<luisa::string> validate() const noexcept override
     {
-        if (!std::isfinite(_position.x) || !std::isfinite(_position.y) || !std::isfinite(_position.z) ||
-            !std::isfinite(_lookat.x) || !std::isfinite(_lookat.y) || !std::isfinite(_lookat.z) ||
-            !std::isfinite(_up.x) || !std::isfinite(_up.y) || !std::isfinite(_up.z))
+        if (auto error = validate_camera_to_world(_camera_to_world))
         {
-            return spec_validation_error("Camera basis vectors must be finite.");
-        }
-        auto view = _position - _lookat;
-        if (dot(view, view) < 1e-12f || dot(cross(_up, view), cross(_up, view)) < 1e-12f)
-        {
-            return spec_validation_error("Camera position, look-at and up vectors do not form a valid basis.");
+            return error;
         }
         if (!std::isfinite(_fov) || _fov <= 0.0f || _fov >= 180.0f)
         {
@@ -87,6 +80,7 @@ public:
         }
         return luisa::nullopt;
     }
+    [[nodiscard]] auto camera_to_world() const noexcept { return _camera_to_world; }
     [[nodiscard]] auto shutter_span() const noexcept { return _shutter_span; }
     [[nodiscard]] const Camera* build(SceneBuilder& builder) const noexcept override;
 };

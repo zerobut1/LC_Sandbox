@@ -24,10 +24,11 @@ private:
     float3 m_position{};
     float3 m_forward{0.0f, 1.0f, 0.0f};
     float3 m_world_up{0.0f, 0.0f, 1.0f};
+    float m_orientation_sign{1.0f};
     Config m_config;
 
 public:
-    explicit FpsCameraController(const float4x4& camera_to_world, float3 world_up, Config config) noexcept;
+    explicit FpsCameraController(const float4x4& camera_to_world, Config config) noexcept;
 
     [[nodiscard]] bool update() noexcept;
     [[nodiscard]] float4x4 camera_to_world() const noexcept;

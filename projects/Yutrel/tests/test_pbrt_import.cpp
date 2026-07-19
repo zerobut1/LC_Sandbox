@@ -47,6 +47,24 @@ namespace
     return std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
 }
 
+[[nodiscard]] bool matrix_is_near(
+    const luisa::float4x4& a,
+    const luisa::float4x4& b,
+    float epsilon = 1e-4f) noexcept
+{
+    for (auto column = 0u; column < 4u; column++)
+    {
+        for (auto row = 0u; row < 4u; row++)
+        {
+            if (!is_near(a[column][row], b[column][row], epsilon))
+            {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 [[nodiscard]] RawParameter test_parameter(
     luisa::string type, luisa::string name, uint line)
 {
@@ -98,6 +116,126 @@ static auto test_pbrt_import_registration = []
             expect(is_near(default_film->imaging_ratio(), 1.0f));
             expect(is_near(default_camera->shutter_span().x, 0.0f));
             expect(is_near(default_camera->shutter_span().y, 1.0f));
+        }
+    };
+
+    "import_camera_preserves_full_affine_transform"_test = []
+    {
+        struct Case
+        {
+            Matrix4 camera_from_world;
+            float4x4 expected_camera_to_world;
+        };
+        constexpr Matrix4 identity{
+            1.0f, 0.0f, 0.0f, 0.0f,
+            0.0f, 1.0f, 0.0f, 0.0f,
+            0.0f, 0.0f, 1.0f, 0.0f,
+            0.0f, 0.0f, 0.0f, 1.0f};
+        constexpr Matrix4 look_at_negative_z{
+            1.0f, 0.0f, 0.0f, 0.0f,
+            0.0f, 1.0f, 0.0f, 0.0f,
+            0.0f, 0.0f, -1.0f, 0.0f,
+            0.0f, 0.0f, 0.0f, 1.0f};
+        constexpr Matrix4 single_negative_scale{
+            -1.0f, 0.0f, 0.0f, 0.0f,
+            0.0f, 1.0f, 0.0f, 0.0f,
+            0.0f, 0.0f, 1.0f, 0.0f,
+            0.0f, 0.0f, 0.0f, 1.0f};
+        constexpr Matrix4 double_negative_scale{
+            -1.0f, 0.0f, 0.0f, 0.0f,
+            0.0f, -1.0f, 0.0f, 0.0f,
+            0.0f, 0.0f, 1.0f, 0.0f,
+            0.0f, 0.0f, 0.0f, 1.0f};
+        constexpr Matrix4 affine_inverse{
+            0.5f, -1.0f / 6.0f, 1.0f / 24.0f, -17.0f / 12.0f,
+            0.0f, 1.0f / 3.0f, -1.0f / 12.0f, -7.0f / 6.0f,
+            0.0f, 0.0f, 0.25f, -1.5f,
+            0.0f, 0.0f, 0.0f, 1.0f};
+        std::array cases{
+            Case{
+                identity,
+                make_float4x4(
+                    make_float4(1.0f, 0.0f, 0.0f, 0.0f),
+                    make_float4(0.0f, 1.0f, 0.0f, 0.0f),
+                    make_float4(0.0f, 0.0f, -1.0f, 0.0f),
+                    make_float4(0.0f, 0.0f, 0.0f, 1.0f))},
+            Case{look_at_negative_z, make_float4x4(1.0f)},
+            Case{
+                single_negative_scale,
+                make_float4x4(
+                    make_float4(-1.0f, 0.0f, 0.0f, 0.0f),
+                    make_float4(0.0f, 1.0f, 0.0f, 0.0f),
+                    make_float4(0.0f, 0.0f, -1.0f, 0.0f),
+                    make_float4(0.0f, 0.0f, 0.0f, 1.0f))},
+            Case{
+                double_negative_scale,
+                make_float4x4(
+                    make_float4(-1.0f, 0.0f, 0.0f, 0.0f),
+                    make_float4(0.0f, -1.0f, 0.0f, 0.0f),
+                    make_float4(0.0f, 0.0f, -1.0f, 0.0f),
+                    make_float4(0.0f, 0.0f, 0.0f, 1.0f))},
+            Case{
+                affine_inverse,
+                make_float4x4(
+                    make_float4(2.0f, 0.0f, 0.0f, 0.0f),
+                    make_float4(1.0f, 3.0f, 0.0f, 0.0f),
+                    make_float4(0.0f, -1.0f, -4.0f, 0.0f),
+                    make_float4(4.0f, 5.0f, 6.0f, 1.0f))},
+        };
+
+        for (auto&& test_case : cases)
+        {
+            auto parsed                  = PbrtParser::parse("tests/scenes/import_geometry.pbrt");
+            parsed.camera.pbrt_transform = test_case.camera_from_world;
+            auto spec                    = PbrtImporter::import(std::move(parsed));
+            auto camera                  = dynamic_cast<const PinholeCameraSpec*>(
+                &spec.cameras().spec(spec.render().camera));
+            expect(camera != nullptr);
+            if (camera != nullptr)
+            {
+                expect(matrix_is_near(camera->camera_to_world(), test_case.expected_camera_to_world));
+                auto expected_determinant = camera_linear_determinant(test_case.expected_camera_to_world);
+                auto actual_determinant   = camera_linear_determinant(camera->camera_to_world());
+                expect((expected_determinant < 0.0f) == (actual_determinant < 0.0f));
+            }
+        }
+    };
+
+    "reject_invalid_camera_transform_with_source"_test = []
+    {
+        auto singular = identity_matrix4;
+        singular[0u]  = 0.0f;
+        auto non_finite = identity_matrix4;
+        non_finite[5u]  = std::numeric_limits<float>::infinity();
+        auto non_affine = identity_matrix4;
+        non_affine[12u] = 0.25f;
+        struct Case
+        {
+            Matrix4 transform;
+            const char* expected;
+        };
+        std::array cases{
+            Case{singular, "singular"},
+            Case{non_finite, "finite"},
+            Case{non_affine, "affine"},
+        };
+        for (auto&& test_case : cases)
+        {
+            auto parsed                  = PbrtParser::parse("tests/scenes/import_geometry.pbrt");
+            parsed.camera.source         = SourceLocation{"bad-camera.pbrt", 77u, 3u};
+            parsed.camera.pbrt_transform = test_case.transform;
+            auto rejected                = false;
+            try
+            {
+                (void)PbrtImporter::import(std::move(parsed));
+            }
+            catch (const std::runtime_error& error)
+            {
+                auto message = std::string{error.what()};
+                rejected = message.find("bad-camera.pbrt:77:3") != std::string::npos &&
+                           message.find(test_case.expected) != std::string::npos;
+            }
+            expect(rejected);
         }
     };
 

@@ -14,6 +14,10 @@ using namespace luisa::compute;
 
 class Renderer;
 
+[[nodiscard]] float4x4 make_view_camera_to_world(float3 position, float3 lookat, float3 up) noexcept;
+[[nodiscard]] float camera_linear_determinant(const float4x4& camera_to_world) noexcept;
+[[nodiscard]] luisa::optional<luisa::string> validate_camera_to_world(const float4x4& camera_to_world) noexcept;
+
 class Camera
 {
 public:
@@ -40,8 +44,8 @@ public:
 
         luisa::unique_ptr<Film::Instance> m_film;
         luisa::unique_ptr<Filter::Instance> m_filter;
-        float4x4 m_host_transform;
-        BufferView<float4x4> m_device_transform;
+        float4x4 m_host_camera_to_world;
+        BufferView<float4x4> m_device_camera_to_world;
 
     public:
         Instance(Renderer& renderer, CommandBuffer& command_buffer, const Camera* camera, const Film* film, const Filter* filter) noexcept;
@@ -62,9 +66,9 @@ public:
         }
         [[nodiscard]] auto film() const noexcept { return m_film.get(); }
         [[nodiscard]] auto filter() const noexcept { return m_filter.get(); }
-        [[nodiscard]] auto transform() const noexcept { return m_host_transform; }
+        [[nodiscard]] auto camera_to_world() const noexcept { return m_host_camera_to_world; }
 
-        void set_transform(CommandBuffer& command_buffer, const float4x4& c2w) noexcept;
+        void set_camera_to_world(CommandBuffer& command_buffer, const float4x4& camera_to_world) noexcept;
         [[nodiscard]] Sample generate_ray(Expr<uint2> pixel_coord, Expr<float> time, Expr<float2> u_filter, Expr<float2> u_lens) const noexcept;
 
     private:
@@ -72,14 +76,13 @@ public:
     };
 
 private:
-    float4x4 m_init_transform;
-    float3 m_up;
+    float4x4 m_initial_camera_to_world;
     float2 m_shutter_span;
     uint m_shutter_samples_count;
 
 public:
-    Camera(float3 position, float3 lookat, float3 up, float2 shutter_span,
-           uint shutter_samples_count, bool swaps_handedness = false) noexcept;
+    Camera(float4x4 camera_to_world, float2 shutter_span,
+           uint shutter_samples_count) noexcept;
     virtual ~Camera() noexcept;
 
     Camera()                         = delete;
@@ -91,8 +94,7 @@ public:
 public:
     [[nodiscard]] virtual luisa::unique_ptr<Instance> build(Renderer& renderer, CommandBuffer& command_buffer, const Film* film, const Filter* filter) const noexcept = 0;
 
-    [[nodiscard]] auto init_transform() const noexcept { return m_init_transform; }
-    [[nodiscard]] auto up() const noexcept { return m_up; }
+    [[nodiscard]] auto initial_camera_to_world() const noexcept { return m_initial_camera_to_world; }
     [[nodiscard]] auto shutter_span() const noexcept { return m_shutter_span; }
     [[nodiscard]] luisa::vector<ShutterSample> shutter_samples(uint spp, uint seed) const noexcept;
     [[nodiscard]] virtual bool requires_lens_sampling() const noexcept { return false; }

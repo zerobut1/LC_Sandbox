@@ -2,26 +2,68 @@
 
 #include "base/film.h"
 #include "base/renderer.h"
+#include <cmath>
 #include <numeric>
 #include <random>
 
 namespace Yutrel
 {
-Camera::Camera(float3 position, float3 lookat, float3 up, float2 shutter_span,
-               uint shutter_samples_count, bool swaps_handedness) noexcept
-    : m_up{up},
+float4x4 make_view_camera_to_world(float3 position, float3 lookat, float3 up) noexcept
+{
+    auto w = normalize(position - lookat);
+    auto u = normalize(cross(up, w));
+    auto v = cross(w, u);
+    return make_float4x4(make_float4(u, 0.0f),
+                         make_float4(v, 0.0f),
+                         make_float4(w, 0.0f),
+                         make_float4(position, 1.0f));
+}
+
+float camera_linear_determinant(const float4x4& camera_to_world) noexcept
+{
+    auto x = make_float3(camera_to_world[0]);
+    auto y = make_float3(camera_to_world[1]);
+    auto z = make_float3(camera_to_world[2]);
+    return dot(x, cross(y, z));
+}
+
+luisa::optional<luisa::string> validate_camera_to_world(const float4x4& camera_to_world) noexcept
+{
+    for (auto column = 0u; column < 4u; column++)
+    {
+        for (auto row = 0u; row < 4u; row++)
+        {
+            if (!std::isfinite(camera_to_world[column][row]))
+            {
+                return luisa::string{"Camera-to-world matrix entries must be finite."};
+            }
+        }
+    }
+    constexpr auto affine_epsilon = 1e-6f;
+    if (std::abs(camera_to_world[0].w) > affine_epsilon ||
+        std::abs(camera_to_world[1].w) > affine_epsilon ||
+        std::abs(camera_to_world[2].w) > affine_epsilon ||
+        std::abs(camera_to_world[3].w - 1.0f) > affine_epsilon)
+    {
+        return luisa::string{"Camera-to-world matrix must be affine."};
+    }
+    auto x = make_float3(camera_to_world[0]);
+    auto y = make_float3(camera_to_world[1]);
+    auto z = make_float3(camera_to_world[2]);
+    if (dot(x, x) < 1e-12f || dot(y, y) < 1e-12f || dot(z, z) < 1e-12f ||
+        std::abs(camera_linear_determinant(camera_to_world)) < 1e-8f)
+    {
+        return luisa::string{"Camera-to-world matrix must have a non-singular linear part."};
+    }
+    return luisa::nullopt;
+}
+
+Camera::Camera(float4x4 camera_to_world, float2 shutter_span,
+               uint shutter_samples_count) noexcept
+    : m_initial_camera_to_world{camera_to_world},
       m_shutter_span{shutter_span},
       m_shutter_samples_count{shutter_samples_count}
 {
-    auto w = normalize(position - lookat);
-    auto u = swaps_handedness ? normalize(cross(up, w)) : normalize(cross(w, up));
-    auto v = swaps_handedness ? cross(w, u) : cross(u, w);
-
-    m_init_transform = make_float4x4(make_float4(u, 0.0f),
-                                     make_float4(v, 0.0f),
-                                     make_float4(w, 0.0f),
-                                     make_float4(position, 1.0f));
-
     if (m_shutter_span.y < m_shutter_span.x) [[unlikely]]
     {
         LUISA_ERROR(
@@ -111,19 +153,19 @@ Camera::Instance::Instance(Renderer& renderer, CommandBuffer& command_buffer, co
       m_camera(camera),
       m_film(film->build(renderer, command_buffer)),
       m_filter(filter->build(renderer)),
-      m_host_transform(camera->init_transform()),
-      m_device_transform(renderer.arena_buffer<float4x4>(1u))
+      m_host_camera_to_world(camera->initial_camera_to_world()),
+      m_device_camera_to_world(renderer.arena_buffer<float4x4>(1u))
 {
     command_buffer
-        << m_device_transform.copy_from(&m_host_transform)
+        << m_device_camera_to_world.copy_from(&m_host_camera_to_world)
         << commit();
 }
 
-void Camera::Instance::set_transform(CommandBuffer& command_buffer, const float4x4& c2w) noexcept
+void Camera::Instance::set_camera_to_world(CommandBuffer& command_buffer, const float4x4& camera_to_world) noexcept
 {
-    m_host_transform = c2w;
+    m_host_camera_to_world = camera_to_world;
     command_buffer
-        << m_device_transform.copy_from(&c2w)
+        << m_device_camera_to_world.copy_from(&camera_to_world)
         << commit();
 }
 
@@ -135,7 +177,7 @@ Camera::Sample Camera::Instance::generate_ray(Expr<uint2> pixel_coord, Expr<floa
 
     auto ray_cs = generate_ray_in_camera_space(pixel, time, u_lens);
 
-    auto c2w    = m_device_transform->read(0u);
+    auto c2w    = m_device_camera_to_world->read(0u);
     auto origin = make_float3(c2w * make_float4(ray_cs->origin(), 1.0f));
 
     auto d_camera  = make_float3x3(c2w) * ray_cs->direction();

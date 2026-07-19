@@ -144,7 +144,7 @@ void ProgressiveIntegrator::Instance::render_interactive(Stream& stream)
     sampler()->reset(command_buffer, resolution, resolution.x * resolution.y);
     command_buffer << synchronize();
 
-    FpsCameraController controller{camera->transform(), camera->base()->up(), FpsCameraController::Config{}};
+    FpsCameraController controller{camera->camera_to_world(), FpsCameraController::Config{}};
 
     Kernel2D render_kernel = [&](UInt frame_index, Float time) noexcept
     {
@@ -175,7 +175,7 @@ void ProgressiveIntegrator::Instance::render_interactive(Stream& stream)
         if (controller.update())
         {
             auto c2w = controller.camera_to_world();
-            camera->set_transform(command_buffer, c2w);
+            camera->set_camera_to_world(command_buffer, c2w);
             camera->film()->prepare(command_buffer, true);
             sampler()->reset(command_buffer, resolution, resolution.x * resolution.y);
             global_sample_index = 0u;

@@ -3,12 +3,15 @@
 #include <algorithm>
 #include <cmath>
 
+#include "base/camera.h"
+
 namespace Yutrel
 {
 
-FpsCameraController::FpsCameraController(const float4x4& camera_to_world, float3 world_up, Config config) noexcept
-    : m_world_up(normalize(world_up)), m_config(config)
+FpsCameraController::FpsCameraController(const float4x4& camera_to_world, Config config) noexcept
+    : m_world_up(normalize(make_float3(camera_to_world[1]))), m_config(config)
 {
+    m_orientation_sign = camera_linear_determinant(camera_to_world) < 0.0f ? -1.0f : 1.0f;
 
     auto c0 = camera_to_world[0];
     auto c1 = camera_to_world[1];
@@ -78,11 +81,11 @@ bool FpsCameraController::update() noexcept
         auto dy = static_cast<float>(io.MouseDelta.y);
         if (dx != 0.0f || dy != 0.0f)
         {
-            auto yaw   = -dx * m_config.mouse_sensitivity;
-            auto pitch = -dy * m_config.mouse_sensitivity;
+            auto yaw   = -dx * m_config.mouse_sensitivity * m_orientation_sign;
+            auto pitch = -dy * m_config.mouse_sensitivity * m_orientation_sign;
 
             auto forward = rotate_axis_angle(m_forward, m_world_up, yaw);
-            auto right   = cross(forward, m_world_up);
+            auto right   = m_orientation_sign * cross(forward, m_world_up);
             if (length(right) > 1e-6f)
             {
                 right   = normalize(right);
@@ -116,7 +119,7 @@ bool FpsCameraController::update() noexcept
     {
         float3 move  = make_float3(0.0f);
         auto forward = m_forward;
-        auto right   = cross(forward, m_world_up);
+        auto right   = m_orientation_sign * cross(forward, m_world_up);
         if (length(right) > 1e-6f)
         {
             right = normalize(right);
@@ -169,8 +172,9 @@ float4x4 FpsCameraController::camera_to_world() const noexcept
     // Match Camera constructor convention:
     // w = normalize(position - lookat) = -forward
     auto w = normalize(make_float3(-m_forward.x, -m_forward.y, -m_forward.z));
-    auto u = normalize(cross(m_world_up, w));
-    auto v = cross(w, u);
+    auto canonical_u = normalize(cross(m_world_up, w));
+    auto u           = canonical_u * m_orientation_sign;
+    auto v           = cross(w, canonical_u);
 
     return make_float4x4(
         make_float4(u, 0.0f),

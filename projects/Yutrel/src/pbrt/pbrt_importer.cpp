@@ -499,7 +499,7 @@ void validate_pbrt_scene(const PbrtScene& scene)
 [[nodiscard]] float& at(Matrix4& m, uint32_t row, uint32_t column) noexcept { return m[row * 4u + column]; }
 [[nodiscard]] float at(const Matrix4& m, uint32_t row, uint32_t column) noexcept { return m[row * 4u + column]; }
 
-[[nodiscard]] Matrix4 inverse(Matrix4 m)
+[[nodiscard]] Matrix4 inverse(Matrix4 m, const SourceLocation& source)
 {
     Matrix4 inv{1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
     for (auto column = 0u; column < 4u; column++)
@@ -517,7 +517,7 @@ void validate_pbrt_scene(const PbrtScene& scene)
         }
         if (pivot_abs < 1e-8f)
         {
-            fail("PBRT camera transform is singular.");
+            fail(source, "PBRT camera transform is singular.");
         }
         if (pivot != column)
         {
@@ -550,67 +550,12 @@ void validate_pbrt_scene(const PbrtScene& scene)
     return inv;
 }
 
-[[nodiscard]] float3 transform_point(const Matrix4& m, float3 p) noexcept
-{
-    auto x = at(m, 0u, 0u) * p.x + at(m, 0u, 1u) * p.y + at(m, 0u, 2u) * p.z + at(m, 0u, 3u);
-    auto y = at(m, 1u, 0u) * p.x + at(m, 1u, 1u) * p.y + at(m, 1u, 2u) * p.z + at(m, 1u, 3u);
-    auto z = at(m, 2u, 0u) * p.x + at(m, 2u, 1u) * p.y + at(m, 2u, 2u) * p.z + at(m, 2u, 3u);
-    auto w = at(m, 3u, 0u) * p.x + at(m, 3u, 1u) * p.y + at(m, 3u, 2u) * p.z + at(m, 3u, 3u);
-    if (std::abs(w) > 1e-8f && std::abs(w - 1.0f) > 1e-8f)
-    {
-        x /= w;
-        y /= w;
-        z /= w;
-    }
-    return make_float3(x, y, z);
-}
-
 [[nodiscard]] float3 transform_vector(const Matrix4& m, float3 v) noexcept
 {
     return make_float3(
         at(m, 0u, 0u) * v.x + at(m, 0u, 1u) * v.y + at(m, 0u, 2u) * v.z,
         at(m, 1u, 0u) * v.x + at(m, 1u, 1u) * v.y + at(m, 1u, 2u) * v.z,
         at(m, 2u, 0u) * v.x + at(m, 2u, 1u) * v.y + at(m, 2u, 2u) * v.z);
-}
-
-[[nodiscard]] float3 normalize_host(float3 v)
-{
-    auto len2 = v.x * v.x + v.y * v.y + v.z * v.z;
-    if (len2 < 1e-16f)
-    {
-        fail("PBRT camera transform produced a zero-length direction.");
-    }
-    auto inv_len = 1.0f / std::sqrt(len2);
-    return make_float3(v.x * inv_len, v.y * inv_len, v.z * inv_len);
-}
-
-struct CameraBasis
-{
-    float3 position;
-    float3 forward;
-    float3 up;
-    bool swaps_handedness;
-};
-
-[[nodiscard]] CameraBasis camera_basis(const std::array<float, 16u>& raw)
-{
-    auto world_from_camera = inverse(raw);
-    auto determinant =
-        at(world_from_camera, 0u, 0u) *
-            (at(world_from_camera, 1u, 1u) * at(world_from_camera, 2u, 2u) -
-             at(world_from_camera, 1u, 2u) * at(world_from_camera, 2u, 1u)) -
-        at(world_from_camera, 0u, 1u) *
-            (at(world_from_camera, 1u, 0u) * at(world_from_camera, 2u, 2u) -
-             at(world_from_camera, 1u, 2u) * at(world_from_camera, 2u, 0u)) +
-        at(world_from_camera, 0u, 2u) *
-            (at(world_from_camera, 1u, 0u) * at(world_from_camera, 2u, 1u) -
-             at(world_from_camera, 1u, 1u) * at(world_from_camera, 2u, 0u));
-    return CameraBasis{
-        .position         = transform_point(world_from_camera, make_float3(0.0f)),
-        .forward          = normalize_host(transform_vector(world_from_camera, make_float3(0.0f, 0.0f, 1.0f))),
-        .up               = normalize_host(transform_vector(world_from_camera, make_float3(0.0f, 1.0f, 0.0f))),
-        .swaps_handedness = determinant < 0.0f,
-    };
 }
 
 [[nodiscard]] float4x4 instance_transform(const std::array<float, 16u>& raw) noexcept
@@ -620,6 +565,36 @@ struct CameraBasis
         make_float4(raw[1u], raw[5u], raw[9u], raw[13u]),
         make_float4(raw[2u], raw[6u], raw[10u], raw[14u]),
         make_float4(raw[3u], raw[7u], raw[11u], raw[15u]));
+}
+
+[[nodiscard]] float4x4 camera_to_world(
+    const Matrix4& camera_from_world,
+    const SourceLocation& source)
+{
+    for (auto value : camera_from_world)
+    {
+        if (!std::isfinite(value))
+        {
+            fail(source, "PBRT camera transform entries must be finite.");
+        }
+    }
+    constexpr auto affine_epsilon = 1e-6f;
+    if (std::abs(at(camera_from_world, 3u, 0u)) > affine_epsilon ||
+        std::abs(at(camera_from_world, 3u, 1u)) > affine_epsilon ||
+        std::abs(at(camera_from_world, 3u, 2u)) > affine_epsilon ||
+        std::abs(at(camera_from_world, 3u, 3u) - 1.0f) > affine_epsilon)
+    {
+        fail(source, "PBRT camera transform must be affine.");
+    }
+
+    auto world_from_pbrt_camera = inverse(camera_from_world, source);
+    // PBRT camera rays face +Z while Yutrel camera rays face -Z.
+    // Right-multiply by diag(1, 1, -1, 1) by negating the third column.
+    for (auto row = 0u; row < 4u; row++)
+    {
+        at(world_from_pbrt_camera, row, 2u) *= -1.0f;
+    }
+    return instance_transform(world_from_pbrt_camera);
 }
 
 [[nodiscard]] float3x3 environment_transform(const Matrix4& raw) noexcept
@@ -1059,7 +1034,7 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         });
     }
 
-    auto basis    = camera_basis(scene.camera.pbrt_transform);
+    auto camera_transform = camera_to_world(scene.camera.pbrt_transform, scene.camera.source);
     auto filename = resolve_relative_to_scene(scene.source_path, scene.film.filename);
     if (!is_exr_path(filename))
     {
@@ -1082,13 +1057,10 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
     }
     auto camera = builder.add_camera<PinholeCameraSpec>(
         SpecMeta{.name = "pbrt_camera", .source = scene.camera.source},
-        basis.position,
-        basis.position + basis.forward,
-        basis.up,
+        camera_transform,
         shutter_span,
         0u,
-        scene.camera.fov,
-        basis.swaps_handedness);
+        scene.camera.fov);
     auto film = builder.add_film<RGBFilmSpec>(
         SpecMeta{.name = "pbrt_film", .source = scene.film.source},
         scene.film.resolution,
@@ -1158,19 +1130,27 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         imaging_ratio,
         filename.string());
     LUISA_INFO(
-        "PBRT camera: type=perspective, fov={}, shutter=[{}, {}], position=({}, {}, {}), forward=({}, {}, {}), up=({}, {}, {}).",
+        "PBRT camera: type=perspective, fov={}, shutter=[{}, {}], camera_to_world_columns=[({}, {}, {}, {}), ({}, {}, {}, {}), ({}, {}, {}, {}), ({}, {}, {}, {})], linear_determinant={}.",
         scene.camera.fov,
         scene.camera.shutter_open,
         scene.camera.shutter_close,
-        basis.position.x,
-        basis.position.y,
-        basis.position.z,
-        basis.forward.x,
-        basis.forward.y,
-        basis.forward.z,
-        basis.up.x,
-        basis.up.y,
-        basis.up.z);
+        camera_transform[0].x,
+        camera_transform[0].y,
+        camera_transform[0].z,
+        camera_transform[0].w,
+        camera_transform[1].x,
+        camera_transform[1].y,
+        camera_transform[1].z,
+        camera_transform[1].w,
+        camera_transform[2].x,
+        camera_transform[2].y,
+        camera_transform[2].z,
+        camera_transform[2].w,
+        camera_transform[3].x,
+        camera_transform[3].y,
+        camera_transform[3].z,
+        camera_transform[3].w,
+        camera_linear_determinant(camera_transform));
     if (scene.infinite_light)
     {
         LUISA_INFO(

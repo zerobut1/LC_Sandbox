@@ -22,6 +22,7 @@ public:
     Diffuse(const Texture* reflectance, bool two_sided) noexcept;
 
 public:
+    [[nodiscard]] uint properties() const noexcept override { return property_reflective; }
     [[nodiscard]] luisa::unique_ptr<Surface::Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept override;
 };
 
@@ -37,7 +38,8 @@ public:
 public:
     [[nodiscard]] luisa::string closure_identifier() const noexcept override { return "Diffuse"; }
     [[nodiscard]] luisa::unique_ptr<Surface::Closure> create_closure(SampledWavelengths& swl, Expr<float> time) const noexcept override;
-    void populate_closure(Surface::Closure* closure, const Interaction& it) const noexcept override;
+    void populate_closure(Surface::Closure* closure, const Interaction& it,
+                          Expr<float3> wo, Expr<float> eta_i) const noexcept override;
 };
 
 class Diffuse::Closure : public Surface::Closure
@@ -56,12 +58,18 @@ public:
     using Surface::Closure::Closure;
 
     [[nodiscard]] virtual const Interaction& it() const noexcept override { return context<Context>().it; };
+    [[nodiscard]] UInt lobe_flags() const noexcept override
+    {
+        return Surface::lobe_reflection | Surface::lobe_diffuse;
+    }
 
     void pre_eval() noexcept override;
     void post_eval() noexcept override;
 
-    [[nodiscard]] Surface::Sample sample_impl(Expr<float3> wo, Expr<float> u_lobe, Expr<float2> u) const noexcept override;
-    [[nodiscard]] Surface::Evaluation evaluate_impl(Expr<float3> wo, Expr<float3> wi) const noexcept override;
+    [[nodiscard]] Surface::Sample sample_impl(Expr<float3> wo, Expr<float> u_lobe, Expr<float2> u,
+                                              TransportMode mode, ScatterFlags flags) const noexcept override;
+    [[nodiscard]] Surface::Evaluation evaluate_impl(Expr<float3> wo, Expr<float3> wi,
+                                                    TransportMode mode, ScatterFlags flags) const noexcept override;
 };
 
 class DiffuseSurfaceSpec final : public SurfaceSpec

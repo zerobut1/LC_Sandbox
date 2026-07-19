@@ -307,7 +307,7 @@ Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> f
     auto ray          = camera_ray;
     auto pdf_bsdf     = def(1e16f);
     auto delta_bounce = def(true);
-    auto depth = 0u;
+    auto depth = def(0u);
     $loop
     {
         // trace
@@ -377,7 +377,7 @@ Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> f
             PolymorphicCall<Surface::Closure> call;
             renderer().surfaces().dispatch(it->shape.surface_tag(), [&](auto surface) noexcept
             {
-                surface->closure(call, *it, wo, swl, time);
+                surface->closure(call, *it, wo, swl, time, 1.0f);
             });
             call.execute([&](const Surface::Closure* closure) noexcept
             {

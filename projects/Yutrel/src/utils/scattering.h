@@ -97,6 +97,42 @@ public:
     [[nodiscard]] SampledSpectrum albedo() const noexcept override { return m_reflectance; }
 };
 
+class SpecularReflection final : public BxDF
+{
+private:
+    SampledSpectrum m_reflectance;
+    const FresnelDielectric* m_fresnel;
+
+public:
+    SpecularReflection(const SampledSpectrum& reflectance, const FresnelDielectric* fresnel) noexcept
+        : m_reflectance{reflectance}, m_fresnel{fresnel} {}
+
+    [[nodiscard]] SampledSpectrum evaluate(Expr<float3> wo, Expr<float3> wi, TransportMode mode) const noexcept override;
+    [[nodiscard]] SampledSpectrum sample(Expr<float3> wo, Float3* wi, Expr<float2> u,
+                                         Float* pdf, TransportMode mode) const noexcept override;
+    [[nodiscard]] Float pdf(Expr<float3> wo, Expr<float3> wi, TransportMode mode) const noexcept override;
+    [[nodiscard]] SampledSpectrum albedo() const noexcept override { return m_reflectance; }
+};
+
+class SpecularTransmission final : public BxDF
+{
+private:
+    SampledSpectrum m_transmittance;
+    Float m_eta_a;
+    Float m_eta_b;
+
+public:
+    SpecularTransmission(const SampledSpectrum& transmittance,
+                         Expr<float> eta_a, Expr<float> eta_b) noexcept
+        : m_transmittance{transmittance}, m_eta_a{eta_a}, m_eta_b{eta_b} {}
+
+    [[nodiscard]] SampledSpectrum evaluate(Expr<float3> wo, Expr<float3> wi, TransportMode mode) const noexcept override;
+    [[nodiscard]] SampledSpectrum sample(Expr<float3> wo, Float3* wi, Expr<float2> u,
+                                         Float* pdf, TransportMode mode) const noexcept override;
+    [[nodiscard]] Float pdf(Expr<float3> wo, Expr<float3> wi, TransportMode mode) const noexcept override;
+    [[nodiscard]] SampledSpectrum albedo() const noexcept override { return SampledSpectrum{m_transmittance.dimension()}; }
+};
+
 class MicrofacetReflection final : public BxDF
 {
 private:
@@ -143,6 +179,8 @@ public:
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(Yutrel::BxDF)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(Yutrel::BxDF::SampledDirection)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(Yutrel::LambertianReflection)
+LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(Yutrel::SpecularReflection)
+LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(Yutrel::SpecularTransmission)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(Yutrel::MicrofacetDistribution)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(Yutrel::TrowbridgeReitzDistribution)
 LUISA_DISABLE_DSL_ADDRESS_OF_OPERATOR(Yutrel::FresnelDielectric)

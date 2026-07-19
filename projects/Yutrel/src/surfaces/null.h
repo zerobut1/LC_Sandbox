@@ -11,6 +11,7 @@ public:
     explicit NullSurface(bool two_sided = false) noexcept : Surface{two_sided} {}
 
     [[nodiscard]] bool is_null() const noexcept override { return true; }
+    [[nodiscard]] uint properties() const noexcept override { return 0u; }
     [[nodiscard]] luisa::unique_ptr<Instance> build(Renderer& renderer, CommandBuffer& command_buffer) const noexcept override
     {
         LUISA_ERROR_WITH_LOCATION("NullSurface cannot be instantiated.");

@@ -125,11 +125,60 @@ SampledSpectrum LambertianReflection::evaluate(Expr<float3> wo, Expr<float3> wi,
     return m_reflectance * ite(same_hemisphere(wo, wi), inv_pi, 0.0f);
 }
 
+SampledSpectrum SpecularReflection::evaluate(Expr<float3> wo, Expr<float3> wi, TransportMode mode) const noexcept
+{
+    return SampledSpectrum{m_reflectance.dimension()};
+}
+
+SampledSpectrum SpecularReflection::sample(Expr<float3> wo, Float3* wi, Expr<float2> u,
+                                           Float* pdf, TransportMode mode) const noexcept
+{
+    *wi  = make_float3(-wo.x, -wo.y, wo.z);
+    *pdf = ite(abs_cos_theta(*wi) > 0.0f, 1.0f, 0.0f);
+    return m_reflectance * m_fresnel->evaluate(cos_theta(wo)) /
+           max(abs_cos_theta(*wi), 1e-30f);
+}
+
+Float SpecularReflection::pdf(Expr<float3> wo, Expr<float3> wi, TransportMode mode) const noexcept
+{
+    return 0.0f;
+}
+
+SampledSpectrum SpecularTransmission::evaluate(Expr<float3> wo, Expr<float3> wi, TransportMode mode) const noexcept
+{
+    return SampledSpectrum{m_transmittance.dimension()};
+}
+
+SampledSpectrum SpecularTransmission::sample(Expr<float3> wo, Float3* wi, Expr<float2> u,
+                                             Float* pdf, TransportMode mode) const noexcept
+{
+    auto entering = cos_theta(wo) > 0.0f;
+    auto eta_i    = ite(entering, m_eta_a, m_eta_b);
+    auto eta_t    = ite(entering, m_eta_b, m_eta_a);
+    auto n        = make_float3(0.0f, 0.0f, ite(entering, 1.0f, -1.0f));
+    auto eta      = eta_i / eta_t;
+    auto valid    = refract(wo, n, eta, wi);
+    auto F        = fresnel_dielectric(cos_theta(wo), m_eta_a, m_eta_b);
+    auto ft       = m_transmittance * (1.0f - F) / max(abs_cos_theta(*wi), 1e-30f);
+    if (mode == TransportMode::RADIANCE)
+    {
+        ft *= sqr(eta);
+    }
+    *pdf = ite(valid & (abs_cos_theta(*wi) > 0.0f), 1.0f, 0.0f);
+    return ite(valid, ft, 0.0f);
+}
+
+Float SpecularTransmission::pdf(Expr<float3> wo, Expr<float3> wi, TransportMode mode) const noexcept
+{
+    return 0.0f;
+}
+
 SampledSpectrum MicrofacetReflection::evaluate(Expr<float3> wo, Expr<float3> wi, TransportMode mode) const noexcept
 {
     SampledSpectrum f{m_reflectance.dimension()};
     auto wh = wo + wi;
-    $if(same_hemisphere(wo, wi) & any(wh != 0.0f))
+    $if(same_hemisphere(wo, wi) & any(wh != 0.0f) &
+        (abs_cos_theta(wo) > 0.0f) & (abs_cos_theta(wi) > 0.0f))
     {
         wh     = normalize(wh);
         auto F = m_fresnel->evaluate(dot(wi, ite(wh.z < 0.0f, -wh, wh)));
@@ -163,10 +212,13 @@ SampledSpectrum MicrofacetTransmission::evaluate(Expr<float3> wo, Expr<float3> w
     auto cos_o = cos_theta(wo);
     auto cos_i = cos_theta(wi);
     auto eta   = ite(cos_o > 0.0f, m_eta_b / m_eta_a, m_eta_a / m_eta_b);
-    auto wh    = normalize(wo + wi * eta);
+    auto wh_v  = wo + wi * eta;
+    auto valid_wh = any(wh_v != 0.0f);
+    auto wh    = normalize(ite(valid_wh, wh_v, make_float3(0.0f, 0.0f, 1.0f)));
     wh         = ite(wh.z < 0.0f, -wh, wh);
     SampledSpectrum f{m_transmittance.dimension()};
-    $if(!same_hemisphere(wo, wi) & cos_o != 0.0f & cos_i != 0.0f & dot(wo, wh) * dot(wi, wh) < 0.0f)
+    $if(!same_hemisphere(wo, wi) & valid_wh & cos_o != 0.0f & cos_i != 0.0f &
+        dot(wo, wh) * dot(wi, wh) < 0.0f)
     {
         auto sqrt_denom = dot(wo, wh) + eta * dot(wi, wh);
         auto F          = fresnel_dielectric(dot(wo, wh), m_eta_a, m_eta_b);
@@ -194,9 +246,11 @@ Float MicrofacetTransmission::pdf(Expr<float3> wo, Expr<float3> wi, TransportMod
     auto p        = def(0.0f);
     auto entering = cos_theta(wo) > 0.0f;
     auto eta      = ite(entering, m_eta_b / m_eta_a, m_eta_a / m_eta_b);
-    auto wh       = normalize(wo + wi * eta);
+    auto wh_v     = wo + wi * eta;
+    auto valid_wh = any(wh_v != 0.0f);
+    auto wh       = normalize(ite(valid_wh, wh_v, make_float3(0.0f, 0.0f, 1.0f)));
     wh            = ite(wh.z < 0.0f, -wh, wh);
-    $if(!same_hemisphere(wo, wi) & dot(wo, wh) * dot(wi, wh) < 0.0f)
+    $if(!same_hemisphere(wo, wi) & valid_wh & dot(wo, wh) * dot(wi, wh) < 0.0f)
     {
         auto sqrt_denom = dot(wo, wh) + eta * dot(wi, wh);
         auto dwh_dwi    = sqr(eta / sqrt_denom) * abs_dot(wi, wh);
@@ -213,7 +267,7 @@ Float MicrofacetTransmission::pdf(Expr<float3> wo, Expr<float3> wi, TransportMod
         auto cosThetaI  = dot(n, wi);
         auto sin2ThetaI = max(0.0f, one_minus_sqr(cosThetaI));
         auto sin2ThetaT = sqr(eta) * sin2ThetaI;
-        auto cosThetaT  = sqrt(1.f - sin2ThetaT);
+        auto cosThetaT  = sqrt(max(0.0f, 1.f - sin2ThetaT));
         // Handle total internal reflection for transmission
         auto wt = (eta * cosThetaI - cosThetaT) * n - eta * wi;
         return make_float4(wt, sin2ThetaT);

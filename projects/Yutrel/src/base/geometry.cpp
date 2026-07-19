@@ -234,18 +234,10 @@ luisa::shared_ptr<Interaction> Geometry::interaction(const Var<Ray> ray, const V
     };
 
     auto shape = Shape::Handle::decode(encoded_shape);
-    Interaction it{
-        .shape      = shape,
-        .p_g        = p_g,
-        .n_g        = n_g,
-        .uv         = uv,
-        .p_s        = p_s, // TODO: apply normal offset
-        .shading    = shading,
-        .inst_id    = inst_id,
-        .prim_id    = prim_id,
-        .prim_area  = area,
-        .front_face = front_face,
-    };
+    auto it = Interaction::from_surface(
+        std::move(shape), p_g, n_g, uv,
+        p_s, // TODO: apply normal offset
+        std::move(shading), inst_id, prim_id, area, front_face);
     return luisa::make_shared<Interaction>(std::move(it));
 }
 

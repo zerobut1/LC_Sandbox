@@ -24,7 +24,7 @@ luisa::unique_ptr<Light::Closure> DiffuseLight::Instance::closure(const SampledW
     return luisa::make_unique<Closure>(this, swl, time);
 }
 
-Light::Evaluation DiffuseLight::Closure::evaluate(const Interaction& it_light, Expr<float3> p_from) const noexcept
+Light::Evaluation DiffuseLight::Closure::evaluate(const Interaction& it_light, const Interaction& it_from) const noexcept
 {
     auto eval = Light::Evaluation::zero(swl().dimension());
 
@@ -35,6 +35,7 @@ Light::Evaluation DiffuseLight::Closure::evaluate(const Interaction& it_light, E
 
         auto pdf_triangle = renderer.buffer<float>(it_light.shape.pdf_buffer_id()).read(it_light.prim_id);
         auto pdf_area     = pdf_triangle / it_light.prim_area;
+        auto p_from       = it_from.p_s;
         auto cos_wo       = abs(dot(normalize(p_from - it_light.p_g), it_light.n_g));
         auto L            = light->texture()->evaluate_illuminant_spectrum(it_light, swl(), time()).value * light->base<DiffuseLight>()->scale();
         auto pdf          = distance_squared(it_light.p_g, p_from) * pdf_area * (1.0f / cos_wo);

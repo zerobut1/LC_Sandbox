@@ -47,7 +47,7 @@ public:
     Closure(const Light::Instance* instance, const SampledWavelengths& swl, Expr<float> time) noexcept
         : Light::Closure(instance, swl, time) {}
 
-    [[nodiscard]] Evaluation evaluate(const Interaction& it_light, Expr<float3> p_from) const noexcept override;
+    [[nodiscard]] Evaluation evaluate(const Interaction& it_light, const Interaction& it_from) const noexcept override;
 };
 
 class DiffuseLightSpec final : public LightSpec

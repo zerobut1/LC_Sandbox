@@ -66,16 +66,15 @@ namespace
 
     Kernel1D kernel = [](BufferFloat3 result) noexcept
     {
-        Interaction near_origin{
-            .n_g     = make_float3(0.0f, 1.0f, 0.0f),
-            .p_s     = make_float3(0.0f),
-            .shading = Frame::make(make_float3(1.0f, 0.0f, 0.0f)),
+        auto make_surface = [](Expr<float3> p) noexcept
+        {
+            return Interaction::from_surface(
+                Shape::Handle::decode(make_uint4(0u)), p, make_float3(0.0f, 1.0f, 0.0f),
+                make_float2(0.0f), p, Frame::make(make_float3(1.0f, 0.0f, 0.0f)),
+                0u, 0u, 1.0f, true);
         };
-        Interaction large_scale{
-            .n_g     = make_float3(0.0f, 1.0f, 0.0f),
-            .p_s     = make_float3(1.0e6f),
-            .shading = Frame::make(make_float3(1.0f, 0.0f, 0.0f)),
-        };
+        auto near_origin = make_surface(make_float3(0.0f));
+        auto large_scale = make_surface(make_float3(1.0e6f));
         result.write(0u, near_origin.p_robust(make_float3(0.0f, 1.0f, 0.0f)));
         result.write(1u, near_origin.p_robust(make_float3(0.0f, -1.0f, 0.0f)));
         result.write(2u, large_scale.p_robust(make_float3(0.0f, 1.0f, 0.0f)));

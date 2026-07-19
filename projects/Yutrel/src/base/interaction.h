@@ -37,7 +37,23 @@ public:
     Bool front_face;
 
 public:
-    [[nodiscard]] auto valid() const noexcept { return inst_id != ~0u; }
+    Interaction() noexcept;
+
+    [[nodiscard]] static Interaction from_point(Expr<float3> p) noexcept;
+    [[nodiscard]] static Interaction from_uv(Expr<float2> uv) noexcept;
+    [[nodiscard]] static Interaction from_surface(
+        Shape::Handle shape,
+        Expr<float3> p_g,
+        Expr<float3> n_g,
+        Expr<float2> uv,
+        Expr<float3> p_s,
+        Frame shading,
+        Expr<uint> inst_id,
+        Expr<uint> prim_id,
+        Expr<float> prim_area,
+        Expr<bool> front_face) noexcept;
+
+    [[nodiscard]] Bool is_surface_interaction() const noexcept { return inst_id != ~0u; }
 
 public:
     static constexpr auto default_t_max = std::numeric_limits<float>::max();

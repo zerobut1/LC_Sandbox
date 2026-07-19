@@ -25,10 +25,10 @@ int main(int argc, char* argv[])
     Kernel1D kernel = [&renderer](BufferFloat4 output) noexcept
     {
         SampledWavelengths swl{1u};
-        Interaction it{};
-        it.p_g = make_float3(0.0f);
-        it.n_g = make_float3(0.0f, 0.0f, 1.0f);
-        it.shading = Frame{};
+        auto it = Interaction::from_surface(
+            Shape::Handle::decode(make_uint4(0u)), make_float3(0.0f),
+            make_float3(0.0f, 0.0f, 1.0f), make_float2(0.0f), make_float3(0.0f),
+            Frame{}, 0u, 0u, 1.0f, true);
 
         auto make_layered = [&](const Interaction& layer_it, Expr<float2> alpha,
                                 Expr<float> eta_i, Expr<float> eta_t,

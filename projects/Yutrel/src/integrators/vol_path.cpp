@@ -82,16 +82,17 @@ VolPathIntegrator::Instance::TransmittanceResult VolPathIntegrator::Instance::tr
         boundary_count += 1u;
 
         auto it             = renderer().geometry()->intersect(ray);
-        auto segment_length = ite(it->valid(), distance(ray->origin(), it->p_g), ray->t_max());
+        auto segment_length = ite(it->is_surface_interaction(), distance(ray->origin(), it->p_g), ray->t_max());
 
         if (!renderer().media().empty())
         {
             $if(current_medium != Medium::vacuum_tag)
             {
                 auto properties = Medium::Properties::vacuum(swl.dimension());
+                auto medium_it  = Interaction::from_point(ray->origin());
                 renderer().media().dispatch(current_medium - 1u, [&](auto medium) noexcept
                 {
-                    properties = medium->properties(*it, swl, time);
+                    properties = medium->properties(medium_it, swl, time);
                 });
 
                 $if(properties.sigma_s.is_zero())
@@ -178,7 +179,7 @@ VolPathIntegrator::Instance::TransmittanceResult VolPathIntegrator::Instance::tr
             result.visible = false;
             $break;
         };
-        $if(!it->valid()) { $break; };
+        $if(!it->is_surface_interaction()) { $break; };
         $if(it->shape.has_surface())
         {
             result.visible = false;
@@ -221,7 +222,7 @@ Float3 VolPathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint
         path_iterations += 1u;
 
         auto it                = renderer().geometry()->intersect(ray);
-        auto segment_length    = ite(it->valid(), distance(ray->origin(), it->p_g), std::numeric_limits<float>::max());
+        auto segment_length    = ite(it->is_surface_interaction(), distance(ray->origin(), it->p_g), std::numeric_limits<float>::max());
         auto medium_scattered  = def(false);
         auto medium_terminated = def(false);
 
@@ -230,9 +231,10 @@ Float3 VolPathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint
             $if(current_medium != Medium::vacuum_tag)
             {
                 auto properties = Medium::Properties::vacuum(swl.dimension());
+                auto medium_it  = Interaction::from_point(ray->origin());
                 renderer().media().dispatch(current_medium - 1u, [&](auto medium) noexcept
                 {
-                    properties = medium->properties(*it, swl, time);
+                    properties = medium->properties(medium_it, swl, time);
                 });
 
                 $if(properties.sigma_s.is_zero())
@@ -290,8 +292,9 @@ Float3 VolPathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint
                                     r_u *= T_maj * properties.sigma_s * inv_pdf;
 
                                     auto p            = ray->origin() + ray->direction() * t;
+                                    auto scatter_it   = Interaction::from_point(p);
                                     auto light_sample = light_sampler()->sample(
-                                        p,
+                                        scatter_it,
                                         sampler()->generate_1d(),
                                         sampler()->generate_2d(),
                                         swl,
@@ -366,7 +369,7 @@ Float3 VolPathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint
         $if(path_done) { $break; };
         $if(medium_scattered) { $continue; };
 
-        $if(!it->valid())
+        $if(!it->is_surface_interaction())
         {
             if (renderer().environment() != nullptr)
             {
@@ -387,7 +390,8 @@ Float3 VolPathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint
         {
             $if(it->shape.has_light())
             {
-                auto eval  = light_sampler()->evaluate_hit(*it, ray->origin(), swl, time);
+                auto it_from = Interaction::from_point(ray->origin());
+                auto eval  = light_sampler()->evaluate_hit(*it, it_from, swl, time);
                 auto denom = def(1.0f);
                 $if((depth == 0u) | delta_bounce) { denom = safe_average(r_u); }
                 $else

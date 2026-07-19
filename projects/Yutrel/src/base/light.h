@@ -127,7 +127,7 @@ public:
     [[nodiscard]] auto& swl() const noexcept { return m_swl; }
     [[nodiscard]] auto time() const noexcept { return m_time; }
 
-    [[nodiscard]] virtual Evaluation evaluate(const Interaction& it_light, Expr<float3> p_from) const noexcept = 0;
+    [[nodiscard]] virtual Evaluation evaluate(const Interaction& it_light, const Interaction& it_from) const noexcept = 0;
 };
 
 } // namespace Yutrel

@@ -67,8 +67,7 @@ struct AliasDistribution2D
 SampledSpectrum PBRTEqualAreaEnvironment::Instance::_evaluate_radiance(
     Expr<float2> uv, const SampledWavelengths& swl, Expr<float> time) const noexcept
 {
-    Interaction it{};
-    it.uv = uv;
+    auto it = Interaction::from_uv(uv);
     return _emission->evaluate_illuminant_spectrum(it, swl, time).value *
            base<PBRTEqualAreaEnvironment>()->scale();
 }
@@ -165,8 +164,7 @@ luisa::unique_ptr<Environment::Instance> PBRTEqualAreaEnvironment::build(
     {
         auto pixel = dispatch_id().xy();
         auto uv = (make_float2(pixel) + 0.5f) / make_float2(resolution);
-        Interaction it{};
-        it.uv = uv;
+        auto it = Interaction::from_uv(uv);
         auto rgb = max(texture->evaluate(it, 0.0f).xyz(), 0.0f);
         auto finite = !any(compute::isnan(rgb) || compute::isinf(rgb));
         auto weight = ite(finite, (rgb.x + rgb.y + rgb.z) * (1.0f / 3.0f), 0.0f);

@@ -57,7 +57,7 @@ Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> f
         auto wo                           = -ray->direction();
         luisa::shared_ptr<Interaction> it = renderer().geometry()->intersect(ray);
 
-        $if(!it->valid())
+        $if(!it->is_surface_interaction())
         {
             if (renderer().environment() != nullptr)
             {
@@ -74,7 +74,8 @@ Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> f
             {
                 $if(it->shape.has_light())
                 {
-                    auto eval   = light_sampler()->evaluate_hit(*it, ray->origin(), swl, time);
+                    auto it_from = Interaction::from_point(ray->origin());
+                    auto eval   = light_sampler()->evaluate_hit(*it, it_from, swl, time);
                     auto weight = ite(delta_bounce, 1.0f, power_heuristic(pdf_bsdf, eval.pdf));
                     Li += beta * eval.L * weight;
                 };

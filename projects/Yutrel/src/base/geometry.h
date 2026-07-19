@@ -16,6 +16,12 @@ using namespace luisa::compute;
 class Renderer;
 class Shape;
 
+[[nodiscard]] inline UInt select_medium_interface(
+    Expr<uint2> medium_interface, Expr<float3> n_g, Expr<float3> wi) noexcept
+{
+    return ite(dot(wi, n_g) > 0.0f, medium_interface.y, medium_interface.x);
+}
+
 class Geometry
 {
 public:
@@ -41,6 +47,8 @@ private:
     luisa::unordered_map<uint64_t, MeshGeometry> m_mesh_cache;
     luisa::vector<uint4> m_instances;
     Buffer<uint4> m_instance_buffer;
+    luisa::vector<uint2> m_medium_interfaces;
+    Buffer<uint2> m_medium_interface_buffer;
     luisa::vector<Light::Handle> m_instanced_lights;
 
 public:
@@ -58,6 +66,8 @@ public:
     [[nodiscard]] luisa::shared_ptr<Interaction> interaction(const Var<Ray> ray, const Var<TriangleHit> hit) const noexcept;
     [[nodiscard]] luisa::shared_ptr<Interaction> intersect(const Var<Ray>& ray) const noexcept;
     [[nodiscard]] Bool intersect_any(const Var<Ray>& ray_in) const noexcept;
+    [[nodiscard]] UInt2 medium_interface(Expr<uint> instance_id) const noexcept;
+    [[nodiscard]] UInt next_medium(const Interaction& it, Expr<float3> wi) const noexcept;
     [[nodiscard]] ShadingAttribute shading_point(const Shape::Handle& instance, const Var<Triangle>& triangle, const Var<float2>& bary, const Var<float4x4>& shape_to_world) const noexcept;
 
 private:

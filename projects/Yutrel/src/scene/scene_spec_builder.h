@@ -12,6 +12,7 @@ class SceneSpecBuilder
 private:
     SpecTable<TextureSpec> _textures{"texture"};
     SpecTable<SurfaceSpec> _surfaces{"surface"};
+    SpecTable<MediumSpec> _media{"medium"};
     SpecTable<LightSpec> _lights{"light"};
     SpecTable<EnvironmentSpec> _environments{"environment"};
     SpecTable<ShapeSpec> _shapes{"shape"};
@@ -67,6 +68,16 @@ public:
     }
 
     [[nodiscard]] SurfaceRef reference_surface(luisa::string name, SourceLocation use_site);
+
+    template <typename Impl, typename... Args>
+        requires std::derived_from<Impl, MediumSpec>
+    [[nodiscard]] MediumRef add_medium(SpecMeta meta, Args&&... args)
+    {
+        _ensure_mutable();
+        return _media.add<Impl>(std::move(meta), std::forward<Args>(args)...);
+    }
+
+    [[nodiscard]] MediumRef reference_medium(luisa::string name, SourceLocation use_site);
 
     template <typename Impl, typename... Args>
         requires std::derived_from<Impl, LightSpec>

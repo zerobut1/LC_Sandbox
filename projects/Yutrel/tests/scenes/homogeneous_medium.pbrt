@@ -1,0 +1,20 @@
+Integrator "volpath" "integer maxdepth" [8]
+Sampler "independent" "integer pixelsamples" [1]
+PixelFilter "triangle" "float xradius" [1] "float yradius" [1]
+Film "rgb" "integer xresolution" [8] "integer yresolution" [8] "string filename" "homogeneous.exr"
+Camera "perspective" "float fov" [45]
+WorldBegin
+MakeNamedMedium "fog"
+    "string type" "homogeneous"
+    "rgb sigma_a" [0.1 0.2 0.3]
+    "rgb sigma_s" [0.4 0.5 0.6]
+    "float scale" [2]
+    "float g" [0.25]
+AttributeBegin
+    MediumInterface "fog" ""
+    Material "interface"
+    Shape "sphere" "float radius" [1]
+AttributeEnd
+MediumInterface "" "fog"
+Material "dielectric" "float eta" [1.33] "bool remaproughness" [false]
+Shape "sphere" "float radius" [2]

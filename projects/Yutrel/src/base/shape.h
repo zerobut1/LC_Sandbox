@@ -3,6 +3,7 @@
 #include <luisa/core/stl.h>
 
 #include "base/light.h"
+#include "base/medium.h"
 #include "base/surface.h"
 #include "utils/vertex.h"
 
@@ -50,6 +51,8 @@ struct ShapeInstance
     const Shape* shape;
     const Surface* surface;
     const Light* light;
+    const Medium* inside_medium;
+    const Medium* outside_medium;
     float4x4 transform{make_float4x4(1.0f)};
 };
 

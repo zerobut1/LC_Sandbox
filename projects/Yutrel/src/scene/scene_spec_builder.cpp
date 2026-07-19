@@ -16,6 +16,7 @@ enum class SpecCategory : uint8_t
 {
     Texture,
     Surface,
+    Medium,
     Light,
     Environment,
     Shape,
@@ -55,6 +56,7 @@ public:
 
     void visit(TextureRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Texture, ref.table_id(), ref.index()}); }
     void visit(SurfaceRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Surface, ref.table_id(), ref.index()}); }
+    void visit(MediumRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Medium, ref.table_id(), ref.index()}); }
     void visit(LightRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Light, ref.table_id(), ref.index()}); }
     void visit(EnvironmentRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Environment, ref.table_id(), ref.index()}); }
     void visit(ShapeRef ref) noexcept override { _dependencies.emplace_back(SpecNode{SpecCategory::Shape, ref.table_id(), ref.index()}); }
@@ -79,6 +81,8 @@ public:
         return "texture";
     case SpecCategory::Surface:
         return "surface";
+    case SpecCategory::Medium:
+        return "medium";
     case SpecCategory::Light:
         return "light";
     case SpecCategory::Environment:
@@ -121,6 +125,12 @@ SurfaceRef SceneSpecBuilder::reference_surface(luisa::string name, SourceLocatio
 {
     _ensure_mutable();
     return _surfaces.reference(std::move(name), std::move(use_site));
+}
+
+MediumRef SceneSpecBuilder::reference_medium(luisa::string name, SourceLocation use_site)
+{
+    _ensure_mutable();
+    return _media.reference(std::move(name), std::move(use_site));
 }
 
 LightRef SceneSpecBuilder::reference_light(luisa::string name, SourceLocation use_site)
@@ -201,6 +211,7 @@ SceneSpec SceneSpecBuilder::finish()
     return SceneSpec{
         std::move(_textures),
         std::move(_surfaces),
+        std::move(_media),
         std::move(_lights),
         std::move(_environments),
         std::move(_shapes),
@@ -227,6 +238,7 @@ void SceneSpecBuilder::_validate() const
 {
     _textures.validate_definitions();
     _surfaces.validate_definitions();
+    _media.validate_definitions();
     _lights.validate_definitions();
     _environments.validate_definitions();
     _shapes.validate_definitions();
@@ -272,6 +284,14 @@ void SceneSpecBuilder::_validate() const
         {
             validate_ref(_lights, *instance.light, instance.source);
         }
+        if (instance.inside_medium)
+        {
+            validate_ref(_media, *instance.inside_medium, instance.source);
+        }
+        if (instance.outside_medium)
+        {
+            validate_ref(_media, *instance.outside_medium, instance.source);
+        }
         auto& m = instance.transform;
         for (auto column = 0u; column < 4u; column++)
         {
@@ -300,6 +320,7 @@ void SceneSpecBuilder::_validate() const
     std::array<size_t, category_count> counts{
         _textures.size(),
         _surfaces.size(),
+        _media.size(),
         _lights.size(),
         _environments.size(),
         _shapes.size(),
@@ -341,6 +362,7 @@ void SceneSpecBuilder::_validate() const
 
     append_table(SpecCategory::Texture, _textures);
     append_table(SpecCategory::Surface, _surfaces);
+    append_table(SpecCategory::Medium, _media);
     append_table(SpecCategory::Light, _lights);
     append_table(SpecCategory::Environment, _environments);
     append_table(SpecCategory::Shape, _shapes);
@@ -359,6 +381,8 @@ void SceneSpecBuilder::_validate() const
             return _textures.contains(node.table_id, node.index);
         case SpecCategory::Surface:
             return _surfaces.contains(node.table_id, node.index);
+        case SpecCategory::Medium:
+            return _media.contains(node.table_id, node.index);
         case SpecCategory::Light:
             return _lights.contains(node.table_id, node.index);
         case SpecCategory::Environment:

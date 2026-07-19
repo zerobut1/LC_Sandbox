@@ -40,6 +40,17 @@ uint Renderer::register_light(CommandBuffer& command_buffer, const Light* light)
     return tag;
 }
 
+uint Renderer::register_medium(CommandBuffer& command_buffer, const Medium* medium) noexcept
+{
+    if (auto iter = m_medium_tags.find(medium); iter != m_medium_tags.end())
+    {
+        return iter->second;
+    }
+    auto tag = m_media.emplace(medium->build(*this, command_buffer)) + 1u;
+    m_medium_tags.emplace(medium, tag);
+    return tag;
+}
+
 luisa::unique_ptr<Renderer> Renderer::create(Device& device, Stream& stream, const Scene& scene) noexcept
 {
     Clock clock;

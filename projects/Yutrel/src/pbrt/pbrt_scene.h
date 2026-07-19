@@ -151,6 +151,8 @@ struct MaterialDesc
     {
         Diffuse,
         CoatedDiffuse,
+        Dielectric,
+        Interface,
     };
     Type type{Type::Diffuse};
     float3 reflectance{0.5f, 0.5f, 0.5f};
@@ -173,6 +175,27 @@ struct MaterialDesc
     uint max_depth{10u};
     uint samples{1u};
     luisa::vector<RawParameter> parameters;
+};
+
+struct MediumDesc
+{
+    SourceLocation source;
+    enum class Type
+    {
+        Homogeneous,
+    };
+    Type type{Type::Homogeneous};
+    luisa::float3 sigma_a{0.0f};
+    luisa::float3 sigma_s{0.0f};
+    float scale{1.0f};
+    float g{0.0f};
+    luisa::vector<RawParameter> parameters;
+};
+
+struct MediumInterfaceDesc
+{
+    luisa::string inside;
+    luisa::string outside;
 };
 
 struct MaterialBinding
@@ -242,6 +265,7 @@ struct ShapeDesc
     luisa::vector<RawParameter> parameters;
     MaterialBinding material;
     luisa::optional<AreaLightDesc> area_light;
+    MediumInterfaceDesc medium_interface;
     Matrix4 pbrt_transform{identity_matrix4};
 };
 
@@ -256,6 +280,7 @@ struct PbrtScene
     luisa::vector<TextureDesc> textures;
     luisa::vector<MaterialDesc> materials;
     luisa::unordered_map<luisa::string, MaterialDesc> named_materials;
+    luisa::unordered_map<luisa::string, MediumDesc> named_media;
     luisa::vector<MeshDesc> meshes;
     luisa::vector<ShapeDesc> shapes;
     luisa::optional<InfiniteLightDesc> infinite_light;

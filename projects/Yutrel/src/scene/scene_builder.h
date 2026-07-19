@@ -44,6 +44,7 @@ private:
     const SceneSpec& _spec;
     BuildCache<Texture> _textures;
     BuildCache<Surface> _surfaces;
+    BuildCache<Medium> _media;
     BuildCache<Light> _lights;
     BuildCache<Environment> _environments;
     BuildCache<Shape> _shapes;
@@ -65,6 +66,7 @@ public:
 
     [[nodiscard]] const Texture* resolve(TextureRef ref) noexcept;
     [[nodiscard]] const Surface* resolve(SurfaceRef ref) noexcept;
+    [[nodiscard]] const Medium* resolve(MediumRef ref) noexcept;
     [[nodiscard]] const Light* resolve(LightRef ref) noexcept;
     [[nodiscard]] const Environment* resolve(EnvironmentRef ref) noexcept;
     [[nodiscard]] const Shape* resolve(ShapeRef ref) noexcept;
@@ -90,6 +92,7 @@ public:
 private:
     void _store(luisa::unique_ptr<Texture> texture) noexcept;
     void _store(luisa::unique_ptr<Surface> surface) noexcept;
+    void _store(luisa::unique_ptr<Medium> medium) noexcept;
     void _store(luisa::unique_ptr<Light> light) noexcept;
     void _store(luisa::unique_ptr<Environment> environment) noexcept;
     void _store(luisa::unique_ptr<Shape> shape) noexcept;

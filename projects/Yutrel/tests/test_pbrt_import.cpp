@@ -4,6 +4,8 @@
 #include "base/shape.h"
 #include "cameras/pinhole.h"
 #include "environments/distant.h"
+#include "integrators/vol_path.h"
+#include "media/homogeneous.h"
 #include "pbrt/pbrt_importer.h"
 #include "pbrt/pbrt_parser.h"
 #include "samplers/independent.h"
@@ -12,6 +14,7 @@
 #include "shapes/sphere.h"
 #include "surfaces/coated_diffuse.h"
 #include "surfaces/diffuse.h"
+#include "surfaces/null.h"
 #include "textures/checker_board.h"
 #include "textures/constant.h"
 #include "textures/scale.h"
@@ -131,7 +134,43 @@ static auto test_pbrt_import_registration = []
         expect(!integrator.validate().has_value());
     };
 
-    "pbrt_v4_defaults_are_explicitly_rejected_until_supported"_test = []
+    "import_homogeneous_medium_interfaces_and_volpath"_test = []
+    {
+        auto parsed = PbrtParser::parse("tests/scenes/homogeneous_medium.pbrt");
+        auto spec   = PbrtImporter::import(std::move(parsed));
+        expect(spec.media().size() == 1u);
+        expect(spec.instances().size() == 2u);
+        expect(spec.instances()[0u].inside_medium.has_value());
+        expect(!spec.instances()[0u].outside_medium.has_value());
+        expect(!spec.instances()[1u].inside_medium.has_value());
+        expect(spec.instances()[1u].outside_medium.has_value());
+        if (spec.instances()[0u].inside_medium && spec.instances()[1u].outside_medium)
+        {
+            expect(*spec.instances()[0u].inside_medium == *spec.instances()[1u].outside_medium);
+        }
+        auto&& medium = static_cast<const HomogeneousMediumSpec&>(
+            spec.media().spec(*spec.instances()[0u].inside_medium));
+        expect(!medium.validate().has_value());
+        auto&& integrator = static_cast<const VolPathIntegratorSpec&>(
+            spec.integrators().spec(spec.render().integrator));
+        expect(!integrator.validate().has_value());
+
+        auto undefined = PbrtParser::parse("tests/scenes/homogeneous_medium_undefined.pbrt");
+        auto rejected  = false;
+        try
+        {
+            (void)PbrtImporter::import(std::move(undefined));
+        }
+        catch (const std::runtime_error& error)
+        {
+            auto message = std::string{error.what()};
+            rejected     = message.find("homogeneous_medium_undefined.pbrt") != std::string::npos &&
+                           message.find("missing") != std::string::npos;
+        }
+        expect(rejected);
+    };
+
+    "pbrt_v4_volpath_is_supported_while_other_defaults_are_rejected"_test = []
     {
         auto defaults = PbrtParser::parse("tests/scenes/pbrt_defaults.pbrt");
         expect(defaults.integrator.type == IntegratorDesc::Type::VolPath);
@@ -147,6 +186,16 @@ static auto test_pbrt_import_registration = []
         expect(is_near(defaults.camera.fov, 90.0f));
         expect(is_near(defaults.materials.front().reflectance.x, 0.5f));
 
+        auto supported                  = defaults;
+        supported.sampler.type          = SamplerDesc::Type::Independent;
+        supported.sampler.pixel_samples = 4u;
+        supported.filter.type           = FilterDesc::Type::Triangle;
+        supported.filter.radius         = luisa::make_float2(1.0f);
+        auto volpath_spec               = PbrtImporter::import(std::move(supported));
+        auto&& volpath                  = static_cast<const VolPathIntegratorSpec&>(
+            volpath_spec.integrators().spec(volpath_spec.render().integrator));
+        expect(!volpath.validate().has_value());
+
         auto rejected = false;
         try
         {
@@ -154,7 +203,7 @@ static auto test_pbrt_import_registration = []
         }
         catch (const std::runtime_error& error)
         {
-            rejected = std::string{error.what()}.find("volpath") != std::string::npos;
+            rejected = std::string{error.what()}.find("zsobol") != std::string::npos;
         }
         expect(rejected);
 
@@ -278,7 +327,7 @@ static auto test_pbrt_import_registration = []
         };
         for (auto test_case : cases)
         {
-            auto scene = PbrtParser::parse("tests/scenes/strict_import_base.pbrt");
+            auto scene     = PbrtParser::parse("tests/scenes/strict_import_base.pbrt");
             auto parameter = test_parameter(test_case.type, test_case.name, test_case.line);
             switch (test_case.target)
             {
@@ -792,11 +841,15 @@ static auto test_pbrt_import_registration = []
             expect(is_near(emission->value().z, 8.0f));
         }
         expect(DistantEnvironmentSpec{
-            environment->emission(), -1.0f, make_float3(1.0f, 0.0f, 0.0f)}
+            environment->emission(),
+            -1.0f,
+            make_float3(1.0f, 0.0f, 0.0f)}
                    .validate()
                    .has_value());
         expect(DistantEnvironmentSpec{
-            environment->emission(), 1.0f, make_float3(2.0f, 0.0f, 0.0f)}
+            environment->emission(),
+            1.0f,
+            make_float3(2.0f, 0.0f, 0.0f)}
                    .validate()
                    .has_value());
     };

@@ -7,14 +7,15 @@
 
 namespace Yutrel
 {
-Camera::Camera(float3 position, float3 lookat, float3 up, float2 shutter_span, uint shutter_samples_count) noexcept
+Camera::Camera(float3 position, float3 lookat, float3 up, float2 shutter_span,
+               uint shutter_samples_count, bool swaps_handedness) noexcept
     : m_up{up},
       m_shutter_span{shutter_span},
       m_shutter_samples_count{shutter_samples_count}
 {
     auto w = normalize(position - lookat);
-    auto u = normalize(cross(up, w));
-    auto v = cross(w, u);
+    auto u = swaps_handedness ? normalize(cross(up, w)) : normalize(cross(w, up));
+    auto v = swaps_handedness ? cross(w, u) : cross(u, w);
 
     m_init_transform = make_float4x4(make_float4(u, 0.0f),
                                      make_float4(v, 0.0f),

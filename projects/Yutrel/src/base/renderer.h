@@ -8,6 +8,7 @@
 #include "base/environment.h"
 #include "base/integrator.h"
 #include "base/light.h"
+#include "base/medium.h"
 #include "base/spectrum.h"
 #include "base/surface.h"
 #include "base/texture.h"
@@ -53,8 +54,10 @@ private:
     size_t m_bindless_tex3d_count{0u};
     Polymorphic<Surface::Instance> m_surfaces;
     Polymorphic<Light::Instance> m_lights;
+    Polymorphic<Medium::Instance> m_media;
     luisa::unordered_map<const Surface*, uint> m_surface_tags;
     luisa::unordered_map<const Light*, uint> m_light_tags;
+    luisa::unordered_map<const Medium*, uint> m_medium_tags;
     luisa::unordered_map<const Texture*, luisa::unique_ptr<Texture::Instance>> m_textures;
 
     luisa::unique_ptr<Spectrum::Instance> m_spectrum;
@@ -132,6 +135,7 @@ public:
 
     [[nodiscard]] uint register_surface(CommandBuffer& command_buffer, const Surface* surface) noexcept;
     [[nodiscard]] uint register_light(CommandBuffer& command_buffer, const Light* light) noexcept;
+    [[nodiscard]] uint register_medium(CommandBuffer& command_buffer, const Medium* medium) noexcept;
 
     template <typename Create>
     uint register_named_id(luisa::string_view identifier, Create&& create_id) noexcept
@@ -166,6 +170,7 @@ public:
     [[nodiscard]] auto geometry() const noexcept { return m_geometry.get(); }
     [[nodiscard]] auto& surfaces() const noexcept { return m_surfaces; }
     [[nodiscard]] auto& lights() const noexcept { return m_lights; }
+    [[nodiscard]] auto& media() const noexcept { return m_media; }
     [[nodiscard]] bool has_lighting() const noexcept { return !m_lights.empty() || m_environment != nullptr; }
 
     [[nodiscard]] const Texture::Instance* build_texture(CommandBuffer& command_buffer, const Texture* texture) noexcept;

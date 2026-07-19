@@ -6,8 +6,10 @@
 
 namespace Yutrel
 {
-PinholeCamera::PinholeCamera(float3 position, float3 lookat, float3 up, float2 shutter_span, uint shutter_samples_count, float fov) noexcept
-    : Camera{position, lookat, up, shutter_span, shutter_samples_count},
+PinholeCamera::PinholeCamera(float3 position, float3 lookat, float3 up, float2 shutter_span,
+                             uint shutter_samples_count, float fov,
+                             bool swaps_handedness) noexcept
+    : Camera{position, lookat, up, shutter_span, shutter_samples_count, swaps_handedness},
       m_fov{radians(fov)}
 {
 }
@@ -30,7 +32,14 @@ PinholeCamera::Instance::Instance(Renderer& renderer, CommandBuffer& command_buf
 
 const Camera* PinholeCameraSpec::build(SceneBuilder& builder) const noexcept
 {
-    return builder.emplace<Camera, PinholeCamera>(_position, _lookat, _up, _shutter_span, _shutter_samples_count, _fov);
+    return builder.emplace<Camera, PinholeCamera>(
+        _position,
+        _lookat,
+        _up,
+        _shutter_span,
+        _shutter_samples_count,
+        _fov,
+        _swaps_handedness);
 }
 
 Var<Ray> PinholeCamera::Instance::generate_ray_in_camera_space(Expr<float2> pixel, Expr<float> time, Expr<float2> u_lens) const noexcept

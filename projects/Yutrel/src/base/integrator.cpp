@@ -10,17 +10,12 @@
 #include "base/camera.h"
 #include "base/camera_controller.h"
 #include "base/film.h"
-#include "base/geometry.h"
-#include "base/interaction.h"
 #include "base/light_sampler.h"
 #include "base/renderer.h"
 #include "base/sampler.h"
-#include "scene/scene_builder.h"
 #include "utils/command_buffer.h"
 #include "utils/image_io.h"
 #include "utils/progress_bar.h"
-#include "utils/sampling.h"
-#include "utils/spectra.h"
 
 namespace Yutrel
 {
@@ -34,27 +29,17 @@ Integrator::Instance::Instance(Renderer& renderer, CommandBuffer& command_buffer
 
 Integrator::Instance::~Instance() noexcept = default;
 
-PathIntegrator::PathIntegrator(uint max_depth) noexcept
+ProgressiveIntegrator::ProgressiveIntegrator(uint max_depth) noexcept
     : _max_depth{max_depth}
 {
 }
 
-PathIntegrator::Instance::Instance(Renderer& renderer, CommandBuffer& command_buffer, const PathIntegrator* integrator, const Sampler* sampler) noexcept
+ProgressiveIntegrator::Instance::Instance(Renderer& renderer, CommandBuffer& command_buffer, const ProgressiveIntegrator* integrator, const Sampler* sampler) noexcept
     : Integrator::Instance{renderer, command_buffer, integrator, sampler}
 {
 }
 
-luisa::unique_ptr<Integrator::Instance> PathIntegrator::build(Renderer& renderer, CommandBuffer& command_buffer, const Sampler* sampler) const noexcept
-{
-    return luisa::make_unique<PathIntegrator::Instance>(renderer, command_buffer, this, sampler);
-}
-
-const Integrator* PathIntegratorSpec::build(SceneBuilder& builder) const noexcept
-{
-    return builder.emplace<Integrator, PathIntegrator>(_max_depth);
-}
-
-void PathIntegrator::Instance::render(Stream& stream, bool enable_display)
+void ProgressiveIntegrator::Instance::render(Stream& stream, bool enable_display)
 {
     CommandBuffer command_buffer{stream};
 
@@ -140,7 +125,7 @@ void PathIntegrator::Instance::render(Stream& stream, bool enable_display)
     }
 }
 
-void PathIntegrator::Instance::render_interactive(Stream& stream)
+void ProgressiveIntegrator::Instance::render_interactive(Stream& stream)
 {
     CommandBuffer command_buffer{stream};
 
@@ -210,7 +195,7 @@ void PathIntegrator::Instance::render_interactive(Stream& stream)
         clock_render.toc());
 }
 
-void PathIntegrator::Instance::render_one_camera(CommandBuffer& command_buffer, Camera::Instance* camera)
+void ProgressiveIntegrator::Instance::render_one_camera(CommandBuffer& command_buffer, Camera::Instance* camera)
 {
     auto spp        = sampler()->base()->spp();
     auto resolution = camera->film()->base()->resolution();
@@ -288,162 +273,5 @@ void PathIntegrator::Instance::render_one_camera(CommandBuffer& command_buffer, 
     progress_bar.done();
     LUISA_INFO("Rendering finished in {} ms.", clock_render.toc());
 }
-
-Float3 PathIntegrator::Instance::Li(const Camera::Instance* camera, Expr<uint> frame_index, Expr<uint2> pixel_id, Expr<float> time) const noexcept
-{
-    sampler()->start(pixel_id, frame_index);
-
-    auto u_filter = sampler()->generate_pixel_2d();
-    auto u_lens   = camera->base()->requires_lens_sampling() ? sampler()->generate_2d() : make_float2(0.5f);
-
-    auto [camera_ray, _, camera_weight] = camera->generate_ray(pixel_id, time, u_filter, u_lens);
-
-    auto spectrum = renderer().spectrum();
-    auto swl      = spectrum->sample(spectrum->base()->is_fixed() ? 0.0f : sampler()->generate_1d());
-    SampledSpectrum Li{swl.dimension(), 0.0f};
-    SampledSpectrum beta{swl.dimension(), camera_weight};
-    auto eta_scale = def(1.0f);
-
-    auto ray          = camera_ray;
-    auto pdf_bsdf     = def(1e16f);
-    auto delta_bounce = def(true);
-    auto depth = def(0u);
-    $loop
-    {
-        // trace
-        auto wo = -ray->direction();
-
-        luisa::shared_ptr<Interaction> it = renderer().geometry()->intersect(ray);
-
-        // miss
-        $if(!it->valid())
-        {
-            if (renderer().environment() != nullptr)
-            {
-                auto eval   = light_sampler()->evaluate_miss(ray->direction(), swl, time);
-                auto weight = ite(
-                    (depth == 0u) | delta_bounce,
-                    1.0f,
-                    power_heuristic(pdf_bsdf, eval.pdf));
-                Li += beta * eval.L * weight;
-            }
-            $break;
-        };
-
-        // hit light
-        $if(!renderer().lights().empty())
-        {
-            $outline
-            {
-                $if(it->shape.has_light())
-                {
-                    auto eval   = light_sampler()->evaluate_hit(*it, ray->origin(), swl, time);
-                    auto weight = ite(delta_bounce, 1.0f, power_heuristic(pdf_bsdf, eval.pdf));
-                    Li += beta * eval.L * weight;
-                };
-            };
-        };
-
-        // Match PBRT-v4 maxdepth semantics: evaluate emission at the terminal
-        // vertex, then stop before direct lighting or another scattering event.
-        $if(depth == max_depth()) { $break; };
-
-        // no surface
-        $if(!it->shape.has_surface()) { $break; };
-
-        depth += 1u;
-
-        // sample light
-        auto u_light_selection = sampler()->generate_1d();
-        auto u_light_surface   = sampler()->generate_2d();
-        auto light_sample      = LightSampler::Sample::zero(swl.dimension());
-        $outline
-        {
-            light_sample = light_sampler()->sample(*it, u_light_selection, u_light_surface, swl, time);
-        };
-
-        // cast shadow ray
-        auto occluded = def(false);
-        if (renderer().has_lighting())
-        {
-            occluded = renderer().geometry()->intersect_any(light_sample.shadow_ray);
-        }
-
-        auto u_lobe = sampler()->generate_1d();
-        auto u_bsdf = sampler()->generate_2d();
-
-        $outline
-        {
-            PolymorphicCall<Surface::Closure> call;
-            renderer().surfaces().dispatch(it->shape.surface_tag(), [&](auto surface) noexcept
-            {
-                surface->closure(call, *it, wo, swl, time, 1.0f);
-            });
-            call.execute([&](const Surface::Closure* closure) noexcept
-            {
-                // direct lighting
-                $if(light_sample.eval.pdf > 0.0f & !occluded)
-                {
-                    auto wi   = light_sample.shadow_ray->direction();
-                    auto eval = closure->evaluate(wo, wi);
-                    auto mis  = ite(light_sample.delta, 1.0f,
-                                     power_heuristic(light_sample.eval.pdf, eval.pdf));
-                    auto w    = mis / light_sample.eval.pdf;
-                    Li += w * beta * eval.f * light_sample.eval.L;
-                };
-
-                // sample surface
-                auto surface_sample = closure->sample(wo, u_lobe, u_bsdf);
-                ray                 = it->spawn_ray(surface_sample.wi);
-                pdf_bsdf            = surface_sample.pdf_mis;
-                delta_bounce        = surface_sample.delta;
-                auto w              = ite(surface_sample.eval.pdf > 0.0f, 1.0f / surface_sample.eval.pdf, 0.0f);
-                beta *= w * surface_sample.eval.f;
-                auto transmission = (surface_sample.event & Surface::event_transmit) != 0u;
-                eta_scale *= ite(transmission, sqr(surface_sample.eta), 1.0f);
-            });
-        };
-
-        auto beta_has_nan = beta.any([](const auto& value) noexcept
-        {
-            return compute::isnan(value);
-        });
-        auto beta_has_inf = beta.any([](const auto& value) noexcept
-        {
-            return compute::isinf(value);
-        });
-        auto beta_invalid = beta_has_nan | beta_has_inf;
-        renderer().record_path_non_finite(beta_has_nan, beta_has_inf);
-        beta = beta.map([&](auto value) noexcept
-        {
-            return ite(beta_invalid, 0.0f, value);
-        });
-        $if(beta.all([](auto b) noexcept
-        {
-            return b <= 0.0f;
-        }))
-        {
-            $break;
-        };
-
-        // Match PBRT-v4: start RR after the second scattering event and base
-        // the survival probability on throughput adjusted for refraction.
-        auto rr_beta_max = beta.max() * eta_scale;
-        $if((depth > 1u) & (rr_beta_max < 1.0f))
-        {
-            auto q = max(0.0f, 1.0f - rr_beta_max);
-            auto u_rr = sampler()->generate_1d();
-            $if(u_rr < q)
-            {
-                $break;
-            };
-            beta /= 1.0f - q;
-        };
-    };
-
-    Float3 color = spectrum->srgb(swl, Li);
-
-    return color;
-};
 
 } // namespace Yutrel

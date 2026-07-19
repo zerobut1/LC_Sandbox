@@ -250,6 +250,7 @@ private:
     {
         MaterialBinding material;
         luisa::optional<AreaLightDesc> area_light;
+        MediumInterfaceDesc medium_interface;
         Matrix4 transform;
     };
 
@@ -257,6 +258,7 @@ private:
     Matrix4 m_current_transform{identity_matrix4};
     MaterialBinding m_current_material;
     luisa::optional<AreaLightDesc> m_current_area_light;
+    MediumInterfaceDesc m_current_medium_interface;
     luisa::vector<AttributeState> m_attribute_stack;
 
 public:
@@ -715,6 +717,14 @@ private:
         {
             parse_make_named_material(command);
         }
+        else if (command.text == "MakeNamedMedium")
+        {
+            parse_make_named_medium(command);
+        }
+        else if (command.text == "MediumInterface")
+        {
+            parse_medium_interface(command);
+        }
         else if (command.text == "Material")
         {
             parse_material(command);
@@ -1088,6 +1098,14 @@ private:
         {
             material_type = MaterialDesc::Type::CoatedDiffuse;
         }
+        else if (type == "dielectric")
+        {
+            material_type = MaterialDesc::Type::Dielectric;
+        }
+        else if (type == "interface")
+        {
+            material_type = MaterialDesc::Type::Interface;
+        }
         else
         {
             fail(command, luisa::format("unknown named material type '{}'", type));
@@ -1111,6 +1129,14 @@ private:
         {
             material_type = MaterialDesc::Type::CoatedDiffuse;
         }
+        else if (type == "dielectric")
+        {
+            material_type = MaterialDesc::Type::Dielectric;
+        }
+        else if (type == "interface")
+        {
+            material_type = MaterialDesc::Type::Interface;
+        }
         else
         {
             fail(command, luisa::format("unknown Material '{}'", type));
@@ -1119,6 +1145,76 @@ private:
         m_desc.materials.emplace_back(
             parse_material_desc(command, material_type, std::move(params)));
         m_current_material = MaterialBinding{.inline_index = index};
+    }
+
+    void parse_make_named_medium(const Token& command)
+    {
+        expect_world(command);
+        auto name   = expect_string("named medium name");
+        auto params = parse_parameters();
+        if (name.empty())
+        {
+            fail(command, "MakeNamedMedium name must not be empty");
+        }
+        if (m_desc.named_media.find(name) != m_desc.named_media.end())
+        {
+            fail(command, luisa::format("named medium '{}' is redefined", name));
+        }
+        auto type = one_string(params, "type", command, {});
+        if (type != "homogeneous")
+        {
+            fail(command, luisa::format("unknown named medium type '{}'", type));
+        }
+        auto sigma_a             = one_float3(params, "rgb", "sigma_a", make_float3(0.0f));
+        auto sigma_s             = one_float3(params, "rgb", "sigma_s", make_float3(0.0f));
+        auto scale               = one_float(params, "scale", command, 1.0f);
+        auto g                   = one_float(params, "g", command, 0.0f);
+        auto finite_non_negative = [](float3 value) noexcept
+        {
+            return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z) &&
+                   value.x >= 0.0f && value.y >= 0.0f && value.z >= 0.0f;
+        };
+        if (!finite_non_negative(sigma_a))
+        {
+            auto p = find_param(params, "rgb", "sigma_a");
+            fail(p == nullptr ? command.loc : p->source, "homogeneous sigma_a must be finite and non-negative");
+        }
+        if (!finite_non_negative(sigma_s))
+        {
+            auto p = find_param(params, "rgb", "sigma_s");
+            fail(p == nullptr ? command.loc : p->source, "homogeneous sigma_s must be finite and non-negative");
+        }
+        if (!std::isfinite(scale) || scale < 0.0f)
+        {
+            auto p = find_param(params, "float", "scale");
+            fail(p == nullptr ? command.loc : p->source, "homogeneous scale must be finite and non-negative");
+        }
+        if (!std::isfinite(g) || std::abs(g) >= 1.0f)
+        {
+            auto p = find_param(params, "float", "g");
+            fail(p == nullptr ? command.loc : p->source, "homogeneous g must satisfy abs(g) < 1");
+        }
+        m_desc.named_media.emplace(std::move(name), MediumDesc{
+                                                        .source     = command.loc,
+                                                        .type       = MediumDesc::Type::Homogeneous,
+                                                        .sigma_a    = sigma_a,
+                                                        .sigma_s    = sigma_s,
+                                                        .scale      = scale,
+                                                        .g          = g,
+                                                        .parameters = std::move(params),
+                                                    });
+    }
+
+    void parse_medium_interface(const Token& command)
+    {
+        expect_world(command);
+        auto inside  = expect_string("MediumInterface inside medium");
+        auto outside = expect_string("MediumInterface outside medium");
+        if (!parse_parameters().empty())
+        {
+            fail(command, "MediumInterface does not take parameters");
+        }
+        m_current_medium_interface = {.inside = std::move(inside), .outside = std::move(outside)};
     }
 
     void parse_texture(const Token& command)
@@ -1398,10 +1494,10 @@ private:
                     }
                 }
             }
-            auto L     = one_float3(params, "rgb", "L", make_float3(1.0f));
-            auto scale = one_float(params, "scale", command, 1.0f);
-            auto from  = one_float3(params, "point3", "from", make_float3(0.0f));
-            auto to    = one_float3(params, "point3", "to", make_float3(0.0f, 0.0f, 1.0f));
+            auto L      = one_float3(params, "rgb", "L", make_float3(1.0f));
+            auto scale  = one_float(params, "scale", command, 1.0f);
+            auto from   = one_float3(params, "point3", "from", make_float3(0.0f));
+            auto to     = one_float3(params, "point3", "to", make_float3(0.0f, 0.0f, 1.0f));
             auto finite = [](float3 v) noexcept
             {
                 return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
@@ -1418,7 +1514,7 @@ private:
                 fail(p == nullptr ? command.loc : p->source,
                      "distant LightSource scale must be finite and non-negative");
             }
-            auto direction = from - to;
+            auto direction      = from - to;
             auto length_squared = dot_host(direction, direction);
             if (!finite(from) || !finite(to) || !std::isfinite(length_squared) || length_squared < 1e-16f)
             {
@@ -1481,9 +1577,10 @@ private:
             fail(command, "AttributeBegin does not take parameters");
         }
         m_attribute_stack.emplace_back(AttributeState{
-            .material   = m_current_material,
-            .area_light = m_current_area_light,
-            .transform  = m_current_transform,
+            .material         = m_current_material,
+            .area_light       = m_current_area_light,
+            .medium_interface = m_current_medium_interface,
+            .transform        = m_current_transform,
         });
     }
 
@@ -1500,9 +1597,10 @@ private:
         }
         auto state = std::move(m_attribute_stack.back());
         m_attribute_stack.pop_back();
-        m_current_material   = std::move(state.material);
-        m_current_area_light = std::move(state.area_light);
-        m_current_transform  = state.transform;
+        m_current_material         = std::move(state.material);
+        m_current_area_light       = std::move(state.area_light);
+        m_current_medium_interface = std::move(state.medium_interface);
+        m_current_transform        = state.transform;
     }
 
     void parse_shape(const Token& command)
@@ -1511,11 +1609,12 @@ private:
         auto type   = expect_string("Shape type");
         auto params = parse_parameters();
         ShapeDesc shape{
-            .source         = command.loc,
-            .parameters     = params,
-            .material       = m_current_material,
-            .area_light     = m_current_area_light,
-            .pbrt_transform = m_current_transform,
+            .source           = command.loc,
+            .parameters       = params,
+            .material         = m_current_material,
+            .area_light       = m_current_area_light,
+            .medium_interface = m_current_medium_interface,
+            .pbrt_transform   = m_current_transform,
         };
         if (type == "sphere")
         {

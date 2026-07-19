@@ -20,6 +20,8 @@ struct ShapeInstanceSpec
     ShapeRef shape;
     SurfaceRef surface;
     luisa::optional<LightRef> light;
+    luisa::optional<MediumRef> inside_medium;
+    luisa::optional<MediumRef> outside_medium;
     luisa::float4x4 transform{luisa::make_float4x4(1.0f)};
 };
 
@@ -39,6 +41,7 @@ class SceneSpec
 private:
     SpecTable<TextureSpec> _textures;
     SpecTable<SurfaceSpec> _surfaces;
+    SpecTable<MediumSpec> _media;
     SpecTable<LightSpec> _lights;
     SpecTable<EnvironmentSpec> _environments;
     SpecTable<ShapeSpec> _shapes;
@@ -55,6 +58,7 @@ private:
     SceneSpec(
         SpecTable<TextureSpec> textures,
         SpecTable<SurfaceSpec> surfaces,
+        SpecTable<MediumSpec> media,
         SpecTable<LightSpec> lights,
         SpecTable<EnvironmentSpec> environments,
         SpecTable<ShapeSpec> shapes,
@@ -68,6 +72,7 @@ private:
         RenderSpec render) noexcept
         : _textures{std::move(textures)},
           _surfaces{std::move(surfaces)},
+          _media{std::move(media)},
           _lights{std::move(lights)},
           _environments{std::move(environments)},
           _shapes{std::move(shapes)},
@@ -94,6 +99,7 @@ public:
 
     [[nodiscard]] const SpecTable<TextureSpec>& textures() const noexcept { return _textures; }
     [[nodiscard]] const SpecTable<SurfaceSpec>& surfaces() const noexcept { return _surfaces; }
+    [[nodiscard]] const SpecTable<MediumSpec>& media() const noexcept { return _media; }
     [[nodiscard]] const SpecTable<LightSpec>& lights() const noexcept { return _lights; }
     [[nodiscard]] const SpecTable<EnvironmentSpec>& environments() const noexcept { return _environments; }
     [[nodiscard]] const SpecTable<ShapeSpec>& shapes() const noexcept { return _shapes; }

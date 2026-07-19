@@ -3,9 +3,10 @@
 #include <luisa/luisa-compute.h>
 
 #include "base/camera.h"
+#include "base/environment.h"
 #include "base/film.h"
 #include "base/integrator.h"
-#include "base/environment.h"
+#include "base/medium.h"
 #include "base/shape.h"
 #include "base/spectrum.h"
 #include "base/surface.h"
@@ -32,6 +33,7 @@ private:
 private:
     [[nodiscard]] const Texture* _store(luisa::unique_ptr<Texture> texture) noexcept;
     [[nodiscard]] const Surface* _store(luisa::unique_ptr<Surface> surface) noexcept;
+    [[nodiscard]] const Medium* _store(luisa::unique_ptr<Medium> medium) noexcept;
     [[nodiscard]] const Light* _store(luisa::unique_ptr<Light> light) noexcept;
     [[nodiscard]] const Environment* _store(luisa::unique_ptr<Environment> environment) noexcept;
     [[nodiscard]] const Shape* _store(luisa::unique_ptr<Shape> shape) noexcept;

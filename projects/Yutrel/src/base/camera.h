@@ -78,7 +78,8 @@ private:
     uint m_shutter_samples_count;
 
 public:
-    Camera(float3 position, float3 lookat, float3 up, float2 shutter_span, uint shutter_samples_count) noexcept;
+    Camera(float3 position, float3 lookat, float3 up, float2 shutter_span,
+           uint shutter_samples_count, bool swaps_handedness = false) noexcept;
     virtual ~Camera() noexcept;
 
     Camera()                         = delete;

@@ -17,6 +17,7 @@ public:
         uint2 _resolution{};
         uint _scale{};
         uint _log2_scale{};
+        uint _sample_offset{};
         bool _matrices_uploaded{};
         luisa::optional<uint> _uploaded_vdc_m;
         luisa::optional<UInt2> _pixel;
@@ -29,7 +30,7 @@ public:
     private:
         [[nodiscard]] static UInt _fast_owen_scramble(Expr<uint> seed, UInt v) noexcept;
 
-        template<bool Scramble>
+        template <bool Scramble>
         [[nodiscard]] Float _sobol_sample(ULong index, Expr<uint> dimension, Expr<uint> hash) const noexcept;
 
         [[nodiscard]] ULong _sobol_interval_to_index(uint m, UInt frame, Expr<uint2> pixel) const noexcept;

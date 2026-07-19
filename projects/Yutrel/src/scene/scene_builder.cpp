@@ -12,6 +12,7 @@ SceneBuilder::SceneBuilder(Scene& scene, const SceneSpec& spec) noexcept
       _spec{spec},
       _textures{spec.textures().size()},
       _surfaces{spec.surfaces().size()},
+      _media{spec.media().size()},
       _lights{spec.lights().size()},
       _environments{spec.environments().size()},
       _shapes{spec.shapes().size()},
@@ -34,6 +35,11 @@ void SceneBuilder::_store(luisa::unique_ptr<Surface> surface) noexcept
     (void)_scene._store(std::move(surface));
 }
 
+void SceneBuilder::_store(luisa::unique_ptr<Medium> medium) noexcept
+{
+    (void)_scene._store(std::move(medium));
+}
+
 void SceneBuilder::_store(luisa::unique_ptr<Light> light) noexcept
 {
     (void)_scene._store(std::move(light));
@@ -54,23 +60,25 @@ void SceneBuilder::_store(luisa::unique_ptr<Integrator> object) noexcept { (void
 
 void SceneBuilder::build() noexcept
 {
-    auto& render    = _spec.render();
-    auto spectrum   = resolve(render.spectrum);
+    auto& render     = _spec.render();
+    auto spectrum    = resolve(render.spectrum);
     auto environment = resolve(render.environment);
-    auto camera     = resolve(render.camera);
-    auto film       = resolve(render.film);
-    auto filter     = resolve(render.filter);
-    auto sampler    = resolve(render.sampler);
-    auto integrator = resolve(render.integrator);
+    auto camera      = resolve(render.camera);
+    auto film        = resolve(render.film);
+    auto filter      = resolve(render.filter);
+    auto sampler     = resolve(render.sampler);
+    auto integrator  = resolve(render.integrator);
     _scene._set_render_roots(spectrum, environment, camera, film, filter, sampler, integrator);
 
     for (auto& instance : _spec.instances())
     {
         _scene._add_instance(ShapeInstance{
-            .shape     = resolve(instance.shape),
-            .surface   = resolve(instance.surface),
-            .light     = instance.light ? resolve(*instance.light) : nullptr,
-            .transform = instance.transform,
+            .shape          = resolve(instance.shape),
+            .surface        = resolve(instance.surface),
+            .light          = instance.light ? resolve(*instance.light) : nullptr,
+            .inside_medium  = instance.inside_medium ? resolve(*instance.inside_medium) : nullptr,
+            .outside_medium = instance.outside_medium ? resolve(*instance.outside_medium) : nullptr,
+            .transform      = instance.transform,
         });
     }
 }
@@ -83,6 +91,11 @@ const Texture* SceneBuilder::resolve(TextureRef ref) noexcept
 const Surface* SceneBuilder::resolve(SurfaceRef ref) noexcept
 {
     return _resolve(ref, _spec.surfaces(), _surfaces);
+}
+
+const Medium* SceneBuilder::resolve(MediumRef ref) noexcept
+{
+    return _resolve(ref, _spec.media(), _media);
 }
 
 const Light* SceneBuilder::resolve(LightRef ref) noexcept

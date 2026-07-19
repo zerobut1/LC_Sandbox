@@ -8,6 +8,7 @@ namespace Yutrel
 
 class TextureSpec;
 class SurfaceSpec;
+class MediumSpec;
 class LightSpec;
 class EnvironmentSpec;
 class ShapeSpec;
@@ -44,16 +45,17 @@ public:
     auto operator<=>(const SceneRef&) const noexcept = default;
 };
 
-using TextureRef    = SceneRef<TextureSpec>;
-using SurfaceRef    = SceneRef<SurfaceSpec>;
-using LightRef      = SceneRef<LightSpec>;
+using TextureRef     = SceneRef<TextureSpec>;
+using SurfaceRef     = SceneRef<SurfaceSpec>;
+using MediumRef      = SceneRef<MediumSpec>;
+using LightRef       = SceneRef<LightSpec>;
 using EnvironmentRef = SceneRef<EnvironmentSpec>;
-using ShapeRef      = SceneRef<ShapeSpec>;
-using SpectrumRef   = SceneRef<SpectrumSpec>;
-using CameraRef     = SceneRef<CameraSpec>;
-using FilmRef       = SceneRef<FilmSpec>;
-using FilterRef     = SceneRef<FilterSpec>;
-using SamplerRef    = SceneRef<SamplerSpec>;
-using IntegratorRef = SceneRef<IntegratorSpec>;
+using ShapeRef       = SceneRef<ShapeSpec>;
+using SpectrumRef    = SceneRef<SpectrumSpec>;
+using CameraRef      = SceneRef<CameraSpec>;
+using FilmRef        = SceneRef<FilmSpec>;
+using FilterRef      = SceneRef<FilterSpec>;
+using SamplerRef     = SceneRef<SamplerSpec>;
+using IntegratorRef  = SceneRef<IntegratorSpec>;
 
 } // namespace Yutrel

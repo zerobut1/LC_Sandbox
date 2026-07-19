@@ -1,0 +1,9 @@
+Integrator "volpath"
+Sampler "independent" "integer pixelsamples" [1]
+PixelFilter "triangle" "float xradius" [1] "float yradius" [1]
+Film "rgb" "integer xresolution" [8] "integer yresolution" [8] "string filename" "undefined-medium.exr"
+Camera "perspective"
+WorldBegin
+MediumInterface "missing" ""
+Material "interface"
+Shape "sphere"

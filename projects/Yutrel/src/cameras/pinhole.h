@@ -37,7 +37,8 @@ private:
     float m_fov;
 
 public:
-    PinholeCamera(float3 position, float3 lookat, float3 up, float2 shutter_span, uint shutter_samples_count, float fov) noexcept;
+    PinholeCamera(float3 position, float3 lookat, float3 up, float2 shutter_span,
+                  uint shutter_samples_count, float fov, bool swaps_handedness) noexcept;
     ~PinholeCamera() noexcept override = default;
 
 public:
@@ -53,10 +54,15 @@ private:
     float2 _shutter_span;
     uint _shutter_samples_count;
     float _fov;
+    bool _swaps_handedness;
 
 public:
-    PinholeCameraSpec(float3 position, float3 lookat, float3 up, float2 shutter_span, uint shutter_samples_count, float fov) noexcept
-        : _position{position}, _lookat{lookat}, _up{up}, _shutter_span{shutter_span}, _shutter_samples_count{shutter_samples_count}, _fov{fov} {}
+    PinholeCameraSpec(float3 position, float3 lookat, float3 up, float2 shutter_span,
+                      uint shutter_samples_count, float fov,
+                      bool swaps_handedness = false) noexcept
+        : _position{position}, _lookat{lookat}, _up{up}, _shutter_span{shutter_span},
+          _shutter_samples_count{shutter_samples_count}, _fov{fov},
+          _swaps_handedness{swaps_handedness} {}
 
     [[nodiscard]] luisa::optional<luisa::string> validate() const noexcept override
     {

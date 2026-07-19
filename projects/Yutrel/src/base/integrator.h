@@ -56,46 +56,32 @@ public:
     [[nodiscard]] virtual luisa::unique_ptr<Instance> build(Renderer& renderer, CommandBuffer& command_buffer, const Sampler* sampler) const noexcept = 0;
 };
 
-class PathIntegrator final : public Integrator
+class ProgressiveIntegrator : public Integrator
 {
 public:
-    class Instance final : public Integrator::Instance
+    class Instance : public Integrator::Instance
     {
     public:
-        Instance(Renderer& renderer, CommandBuffer& command_buffer, const PathIntegrator* integrator, const Sampler* sampler) noexcept;
+        Instance(Renderer& renderer, CommandBuffer& command_buffer, const ProgressiveIntegrator* integrator, const Sampler* sampler) noexcept;
 
         void render(Stream& stream, bool enable_display) override;
         void render_interactive(Stream& stream) override;
 
+    protected:
+        [[nodiscard]] uint max_depth() const noexcept { return base<ProgressiveIntegrator>()->max_depth(); }
+        [[nodiscard]] virtual Float3 Li(const Camera::Instance* camera, Expr<uint> frame_index, Expr<uint2> pixel_id, Expr<float> time) const noexcept = 0;
+
     private:
-        [[nodiscard]] uint max_depth() const noexcept { return base<PathIntegrator>()->max_depth(); }
         void render_one_camera(CommandBuffer& command_buffer, Camera::Instance* camera);
-        [[nodiscard]] Float3 Li(const Camera::Instance* camera, Expr<uint> frame_index, Expr<uint2> pixel_id, Expr<float> time) const noexcept;
     };
 
 private:
     uint _max_depth;
 
 public:
-    explicit PathIntegrator(uint max_depth) noexcept;
+    explicit ProgressiveIntegrator(uint max_depth) noexcept;
 
     [[nodiscard]] uint max_depth() const noexcept { return _max_depth; }
-    [[nodiscard]] luisa::unique_ptr<Integrator::Instance> build(Renderer& renderer, CommandBuffer& command_buffer, const Sampler* sampler) const noexcept override;
 };
 
-class PathIntegratorSpec final : public IntegratorSpec
-{
-private:
-    uint _max_depth;
-
-public:
-    explicit PathIntegratorSpec(uint max_depth) noexcept
-        : _max_depth{max_depth} {}
-
-    [[nodiscard]] luisa::optional<luisa::string> validate() const noexcept override
-    {
-        return luisa::nullopt;
-    }
-    [[nodiscard]] const Integrator* build(SceneBuilder& builder) const noexcept override;
-};
 } // namespace Yutrel

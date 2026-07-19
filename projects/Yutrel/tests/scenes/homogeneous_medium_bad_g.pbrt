@@ -1,0 +1,2 @@
+WorldBegin
+MakeNamedMedium "fog" "string type" "homogeneous" "float g" [1]

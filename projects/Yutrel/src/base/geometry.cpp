@@ -18,9 +18,11 @@ void Geometry::build(CommandBuffer& command_buffer, luisa::span<const ShapeInsta
                              m_triangle_count,
                              m_instanced_triangle_count);
 
-    m_instance_buffer = m_renderer.device().create_buffer<uint4>(m_instances.size());
+    m_instance_buffer         = m_renderer.device().create_buffer<uint4>(m_instances.size());
+    m_medium_interface_buffer = m_renderer.device().create_buffer<uint2>(m_medium_interfaces.size());
     command_buffer
         << m_instance_buffer.copy_from(m_instances.data())
+        << m_medium_interface_buffer.copy_from(m_medium_interfaces.data())
         << m_accel.build()
         << commit();
 }
@@ -117,6 +119,13 @@ void Geometry::process_instance(CommandBuffer& command_buffer, const ShapeInstan
             properties |= Shape::property_flag_has_surface;
         }
 
+        auto inside_medium_tag  = instance.inside_medium ? m_renderer.register_medium(command_buffer, instance.inside_medium) : Medium::vacuum_tag;
+        auto outside_medium_tag = instance.outside_medium ? m_renderer.register_medium(command_buffer, instance.outside_medium) : Medium::vacuum_tag;
+        if (inside_medium_tag != Medium::vacuum_tag || outside_medium_tag != Medium::vacuum_tag)
+        {
+            properties |= Shape::property_flag_has_medium;
+        }
+
         m_accel.emplace_back(*mesh.resource, instance.transform);
 
         // lights
@@ -137,6 +146,7 @@ void Geometry::process_instance(CommandBuffer& command_buffer, const ShapeInstan
                 mesh.resource->triangle_count(),
                 0,
                 0));
+        m_medium_interfaces.emplace_back(make_uint2(inside_medium_tag, outside_medium_tag));
 
         if (properties & Shape::property_flag_has_light)
         {
@@ -180,6 +190,16 @@ luisa::shared_ptr<Interaction> Geometry::intersect(const Var<Ray>& ray) const no
 Bool Geometry::intersect_any(const Var<Ray>& ray_in) const noexcept
 {
     return m_accel->intersect_any(ray_in, {});
+}
+
+UInt2 Geometry::medium_interface(Expr<uint> instance_id) const noexcept
+{
+    return m_medium_interface_buffer->read(instance_id);
+}
+
+UInt Geometry::next_medium(const Interaction& it, Expr<float3> wi) const noexcept
+{
+    return select_medium_interface(medium_interface(it.inst_id), it.n_g, wi);
 }
 
 luisa::shared_ptr<Interaction> Geometry::interaction(const Var<Ray> ray, const Var<TriangleHit> hit) const noexcept
@@ -266,8 +286,8 @@ ShadingAttribute Geometry::shading_point(const Shape::Handle& instance, const Va
     auto mn             = transpose(inverse(m));
     auto ns             = ite(instance.has_vertex_normal(), normalize(mn * ns_local), ng);
     // Match PBRT: interpolated shading normals are authoritative.
-    ng                  = ite(dot(ns, ng) < 0.f, -ng, ng);
-    auto uv             = ite(instance.has_vertex_uv(), triangle_interpolate(bary, uv0, uv1, uv2), bary);
+    ng      = ite(dot(ns, ng) < 0.f, -ng, ng);
+    auto uv = ite(instance.has_vertex_uv(), triangle_interpolate(bary, uv0, uv1, uv2), bary);
     return {.pg   = p,
             .ng   = ng,
             .area = area,

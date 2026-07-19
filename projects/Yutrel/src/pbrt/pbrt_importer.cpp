@@ -19,7 +19,10 @@
 #include "environments/null.h"
 #include "environments/pbrt_equal_area.h"
 #include "filters/triangle.h"
+#include "integrators/path.h"
+#include "integrators/vol_path.h"
 #include "lights/diffuse.h"
+#include "media/homogeneous.h"
 #include "samplers/independent.h"
 #include "samplers/sobol.h"
 #include "scene/scene_spec_builder.h"
@@ -28,7 +31,9 @@
 #include "shapes/sphere.h"
 #include "spectrum/hero.h"
 #include "surfaces/coated_diffuse.h"
+#include "surfaces/dielectric.h"
 #include "surfaces/diffuse.h"
+#include "surfaces/null.h"
 #include "textures/checker_board.h"
 #include "textures/constant.h"
 #include "textures/image.h"
@@ -232,22 +237,59 @@ void validate_material(const MaterialDesc& material, luisa::string_view owner, b
         ParameterKey{"integer", "maxdepth"},
         ParameterKey{"integer", "nsamples"},
     };
+    static constexpr std::array dielectric_inline_allowed{
+        ParameterKey{"float", "roughness"},
+        ParameterKey{"texture", "roughness"},
+        ParameterKey{"float", "uroughness"},
+        ParameterKey{"texture", "uroughness"},
+        ParameterKey{"float", "vroughness"},
+        ParameterKey{"texture", "vroughness"},
+        ParameterKey{"float", "eta"},
+        ParameterKey{"texture", "eta"},
+        ParameterKey{"bool", "remaproughness"},
+    };
+    static constexpr std::array dielectric_named_allowed{
+        ParameterKey{"string", "type"},
+        ParameterKey{"float", "roughness"},
+        ParameterKey{"texture", "roughness"},
+        ParameterKey{"float", "uroughness"},
+        ParameterKey{"texture", "uroughness"},
+        ParameterKey{"float", "vroughness"},
+        ParameterKey{"texture", "vroughness"},
+        ParameterKey{"float", "eta"},
+        ParameterKey{"texture", "eta"},
+        ParameterKey{"bool", "remaproughness"},
+    };
+    static constexpr std::array interface_named_allowed{ParameterKey{"string", "type"}};
     if (material.type == MaterialDesc::Type::Diffuse)
     {
         validate_parameters(material.parameters, owner, named ? luisa::span<const ParameterKey>{diffuse_named_allowed} : luisa::span<const ParameterKey>{diffuse_inline_allowed});
         return;
     }
-    validate_parameters(material.parameters, owner, named ? luisa::span<const ParameterKey>{coated_named_allowed} : luisa::span<const ParameterKey>{coated_inline_allowed});
+    if (material.type == MaterialDesc::Type::CoatedDiffuse)
+    {
+        validate_parameters(material.parameters, owner, named ? luisa::span<const ParameterKey>{coated_named_allowed} : luisa::span<const ParameterKey>{coated_inline_allowed});
+        return;
+    }
+    if (material.type == MaterialDesc::Type::Dielectric)
+    {
+        validate_parameters(material.parameters, owner, named ? luisa::span<const ParameterKey>{dielectric_named_allowed} : luisa::span<const ParameterKey>{dielectric_inline_allowed});
+        return;
+    }
+    if (named)
+    {
+        validate_parameters(material.parameters, owner, interface_named_allowed);
+    }
+    else
+    {
+        validate_parameters(material.parameters, owner, luisa::span<const ParameterKey>{});
+    }
 }
 
 void validate_pbrt_scene(const PbrtScene& scene)
 {
-    if (scene.integrator.type == IntegratorDesc::Type::VolPath)
-    {
-        fail(scene.integrator.source, "PBRT Integrator 'volpath' is not implemented by Yutrel.");
-    }
     static constexpr std::array integrator_allowed{ParameterKey{"integer", "maxdepth"}};
-    validate_parameters(scene.integrator.parameters, "Integrator 'path'", integrator_allowed);
+    validate_parameters(scene.integrator.parameters, scene.integrator.type == IntegratorDesc::Type::Path ? "Integrator 'path'" : "Integrator 'volpath'", integrator_allowed);
 
     if (scene.sampler.type == SamplerDesc::Type::Halton ||
         scene.sampler.type == SamplerDesc::Type::ZSobol)
@@ -380,6 +422,18 @@ void validate_pbrt_scene(const PbrtScene& scene)
     for (auto i = 0u; i < scene.materials.size(); i++)
     {
         validate_material(scene.materials[i], luisa::format("inline Material #{}", i), false);
+    }
+
+    static constexpr std::array homogeneous_medium_allowed{
+        ParameterKey{"string", "type"},
+        ParameterKey{"rgb", "sigma_a"},
+        ParameterKey{"rgb", "sigma_s"},
+        ParameterKey{"float", "scale"},
+        ParameterKey{"float", "g"},
+    };
+    for (auto&& [name, medium] : scene.named_media)
+    {
+        validate_parameters(medium.parameters, luisa::format("MakeNamedMedium '{}'", name), homogeneous_medium_allowed);
     }
 
     static constexpr std::array area_light_allowed{ParameterKey{"rgb", "L"}};
@@ -535,15 +589,27 @@ struct CameraBasis
     float3 position;
     float3 forward;
     float3 up;
+    bool swaps_handedness;
 };
 
 [[nodiscard]] CameraBasis camera_basis(const std::array<float, 16u>& raw)
 {
     auto world_from_camera = inverse(raw);
+    auto determinant =
+        at(world_from_camera, 0u, 0u) *
+            (at(world_from_camera, 1u, 1u) * at(world_from_camera, 2u, 2u) -
+             at(world_from_camera, 1u, 2u) * at(world_from_camera, 2u, 1u)) -
+        at(world_from_camera, 0u, 1u) *
+            (at(world_from_camera, 1u, 0u) * at(world_from_camera, 2u, 2u) -
+             at(world_from_camera, 1u, 2u) * at(world_from_camera, 2u, 0u)) +
+        at(world_from_camera, 0u, 2u) *
+            (at(world_from_camera, 1u, 0u) * at(world_from_camera, 2u, 1u) -
+             at(world_from_camera, 1u, 1u) * at(world_from_camera, 2u, 0u));
     return CameraBasis{
-        .position = transform_point(world_from_camera, make_float3(0.0f)),
-        .forward  = normalize_host(transform_vector(world_from_camera, make_float3(0.0f, 0.0f, 1.0f))),
-        .up       = normalize_host(transform_vector(world_from_camera, make_float3(0.0f, 1.0f, 0.0f))),
+        .position         = transform_point(world_from_camera, make_float3(0.0f)),
+        .forward          = normalize_host(transform_vector(world_from_camera, make_float3(0.0f, 0.0f, 1.0f))),
+        .up               = normalize_host(transform_vector(world_from_camera, make_float3(0.0f, 1.0f, 0.0f))),
+        .swaps_handedness = determinant < 0.0f,
     };
 }
 
@@ -609,8 +675,8 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
     {
         if (scene.distant_light)
         {
-            auto&& desc = *scene.distant_light;
-            auto direction = transform_vector(desc.pbrt_transform, desc.from - desc.to);
+            auto&& desc         = *scene.distant_light;
+            auto direction      = transform_vector(desc.pbrt_transform, desc.from - desc.to);
             auto length_squared = dot(direction, direction);
             if (!std::isfinite(length_squared) || length_squared < 1e-16f)
             {
@@ -618,7 +684,8 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
             }
             direction *= 1.0f / std::sqrt(length_squared);
             auto texture = builder.add_anonymous_texture<ConstantTextureSpec>(
-                desc.source, make_float4(desc.L, 1.0f));
+                desc.source,
+                make_float4(desc.L, 1.0f));
             return builder.add_environment<DistantEnvironmentSpec>(
                 SpecMeta{.name = "pbrt_distant_environment", .source = desc.source},
                 texture,
@@ -793,6 +860,36 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
             return add_constant_texture(parameter, value);
         };
 
+        if (material.type == MaterialDesc::Type::Interface)
+        {
+            if (name.empty())
+            {
+                return builder.add_anonymous_surface<NullSurfaceSpec>(material.source, true);
+            }
+            return builder.add_surface<NullSurfaceSpec>(
+                SpecMeta{.name = luisa::string{name}, .source = material.source},
+                true);
+        }
+
+        if (material.type == MaterialDesc::Type::Dielectric)
+        {
+            DielectricSurfaceParams params{
+                .roughness       = luisa::nullopt,
+                .u_roughness     = resolve_texture("uroughness", make_float4(material.u_roughness), material.u_roughness_texture),
+                .v_roughness     = resolve_texture("vroughness", make_float4(material.v_roughness), material.v_roughness_texture),
+                .eta             = resolve_texture("eta", make_float4(material.eta), material.eta_texture),
+                .remap_roughness = material.remap_roughness,
+                .two_sided       = false,
+            };
+            if (name.empty())
+            {
+                return builder.add_anonymous_surface<DielectricSurfaceSpec>(material.source, std::move(params));
+            }
+            return builder.add_surface<DielectricSurfaceSpec>(
+                SpecMeta{.name = luisa::string{name}, .source = material.source},
+                std::move(params));
+        }
+
         auto reflectance = resolve_texture(
             "reflectance",
             make_float4(material.reflectance.x, material.reflectance.y, material.reflectance.z, 1.0f),
@@ -835,6 +932,19 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
     for (auto& [name, material] : scene.named_materials)
     {
         (void)make_material_surface(material, name);
+    }
+
+    for (auto& [name, medium] : scene.named_media)
+    {
+        auto sigma_a = builder.add_texture<ConstantTextureSpec>(
+            SpecMeta{.name = luisa::format("{}::sigma_a", name), .source = medium.source},
+            make_float4(medium.sigma_a.x, medium.sigma_a.y, medium.sigma_a.z, 1.0f));
+        auto sigma_s = builder.add_texture<ConstantTextureSpec>(
+            SpecMeta{.name = luisa::format("{}::sigma_s", name), .source = medium.source},
+            make_float4(medium.sigma_s.x, medium.sigma_s.y, medium.sigma_s.z, 1.0f));
+        (void)builder.add_medium<HomogeneousMediumSpec>(
+            SpecMeta{.name = name, .source = medium.source},
+            HomogeneousMediumParams{.sigma_a = sigma_a, .sigma_s = sigma_s, .scale = medium.scale, .g = medium.g});
     }
 
     luisa::vector<SurfaceRef> inline_surface_refs;
@@ -935,11 +1045,17 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
             light = builder.add_anonymous_light<DiffuseLightSpec>(shape.area_light->source, emission, 1.0f, false);
         }
         builder.add_instance(ShapeInstanceSpec{
-            .source    = shape.source,
-            .shape     = shape_ref,
-            .surface   = surface,
-            .light     = light,
-            .transform = instance_transform(shape.pbrt_transform),
+            .source         = shape.source,
+            .shape          = shape_ref,
+            .surface        = surface,
+            .light          = light,
+            .inside_medium  = shape.medium_interface.inside.empty()
+                                  ? luisa::nullopt
+                                  : luisa::optional<MediumRef>{builder.reference_medium(shape.medium_interface.inside, shape.source)},
+            .outside_medium = shape.medium_interface.outside.empty()
+                                  ? luisa::nullopt
+                                  : luisa::optional<MediumRef>{builder.reference_medium(shape.medium_interface.outside, shape.source)},
+            .transform      = instance_transform(shape.pbrt_transform),
         });
     }
 
@@ -971,7 +1087,8 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         basis.up,
         shutter_span,
         0u,
-        scene.camera.fov);
+        scene.camera.fov,
+        basis.swaps_handedness);
     auto film = builder.add_film<RGBFilmSpec>(
         SpecMeta{.name = "pbrt_film", .source = scene.film.source},
         scene.film.resolution,
@@ -1008,7 +1125,9 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         }
         fail("Unsupported PBRT sampler type.");
     }();
-    auto integrator = builder.add_integrator<PathIntegratorSpec>(SpecMeta{.name = "pbrt_integrator", .source = scene.integrator.source}, scene.integrator.max_depth);
+    auto integrator = scene.integrator.type == IntegratorDesc::Type::Path
+                          ? builder.add_integrator<PathIntegratorSpec>(SpecMeta{.name = "pbrt_integrator", .source = scene.integrator.source}, scene.integrator.max_depth)
+                          : builder.add_integrator<VolPathIntegratorSpec>(SpecMeta{.name = "pbrt_integrator", .source = scene.integrator.source}, scene.integrator.max_depth);
     builder.set_render(RenderSpec{
         .spectrum    = spectrum,
         .environment = environment,
@@ -1022,7 +1141,8 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
 
     auto randomization = scene.sampler.type == SamplerDesc::Type::Sobol ? "fastowen" : "n/a";
     LUISA_INFO(
-        "PBRT render config: integrator=path, max_depth={}, rr=pbrt-v4, light_sampler=yutrel-uniform; sampler={}, spp={}, seed={}, randomization={}; filter=triangle, radius=({}, {}).",
+        "PBRT render config: integrator={}, max_depth={}, rr=pbrt-v4, light_sampler=yutrel-uniform; sampler={}, spp={}, seed={}, randomization={}; filter=triangle, radius=({}, {}).",
+        scene.integrator.type == IntegratorDesc::Type::Path ? "path" : "volpath",
         scene.integrator.max_depth,
         sampler_name(scene.sampler.type),
         scene.sampler.pixel_samples,

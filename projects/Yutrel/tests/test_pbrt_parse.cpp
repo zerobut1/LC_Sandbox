@@ -204,8 +204,8 @@ static auto test_pbrt_parse_registration = []
         catch (const std::runtime_error& error)
         {
             auto message = std::string{error.what()};
-            rejected = message.find("imagemap_missing_filename.pbrt") != std::string::npos &&
-                       message.find("filename") != std::string::npos;
+            rejected     = message.find("imagemap_missing_filename.pbrt") != std::string::npos &&
+                           message.find("filename") != std::string::npos;
         }
         expect(rejected);
     };
@@ -220,8 +220,8 @@ static auto test_pbrt_parse_registration = []
         catch (const std::runtime_error& error)
         {
             auto message = std::string{error.what()};
-            rejected = message.find("material_reflectance_conflict.pbrt") != std::string::npos &&
-                       message.find("both rgb and texture") != std::string::npos;
+            rejected     = message.find("material_reflectance_conflict.pbrt") != std::string::npos &&
+                           message.find("both rgb and texture") != std::string::npos;
         }
         expect(rejected);
     };
@@ -261,6 +261,33 @@ static auto test_pbrt_parse_registration = []
         expect(is_near(named_material.reflectance.z, 0.5f));
         expect(is_near(named_material.roughness, 0.0f));
         expect(named_material.remap_roughness);
+    };
+
+    "parse_homogeneous_medium_and_interfaces"_test = []
+    {
+        auto scene = PbrtParser::parse("tests/scenes/homogeneous_medium.pbrt");
+        expect(scene.integrator.type == IntegratorDesc::Type::VolPath);
+        expect(scene.named_media.size() == 1u);
+        auto&& medium = scene.named_media.at("fog");
+        expect(medium.type == MediumDesc::Type::Homogeneous);
+        expect(is_near(medium.sigma_a.x, 0.1f));
+        expect(is_near(medium.sigma_s.z, 0.6f));
+        expect(is_near(medium.scale, 2.0f));
+        expect(is_near(medium.g, 0.25f));
+        expect(scene.shapes.size() == 2u);
+        expect(scene.shapes[0u].medium_interface.inside == "fog");
+        expect(scene.shapes[0u].medium_interface.outside.empty());
+        expect(scene.shapes[1u].medium_interface.inside.empty());
+        expect(scene.shapes[1u].medium_interface.outside == "fog");
+        expect(scene.materials[0u].type == MaterialDesc::Type::Interface);
+        expect(scene.materials[1u].type == MaterialDesc::Type::Dielectric);
+    };
+
+    "reject_invalid_homogeneous_media"_test = []
+    {
+        expect(parse_error_contains("tests/scenes/homogeneous_medium_duplicate.pbrt", {"homogeneous_medium_duplicate.pbrt", "redefined"}));
+        expect(parse_error_contains("tests/scenes/homogeneous_medium_negative.pbrt", {"homogeneous_medium_negative.pbrt", "sigma_a", "non-negative"}));
+        expect(parse_error_contains("tests/scenes/homogeneous_medium_bad_g.pbrt", {"homogeneous_medium_bad_g.pbrt", "abs(g) < 1"}));
     };
 
     "reject_invalid_sphere_parameters"_test = []
@@ -312,7 +339,10 @@ static auto test_pbrt_parse_registration = []
         auto scene = PbrtParser::parse("tests/scenes/distant_basic.pbrt");
         expect(scene.distant_light.has_value());
         expect(!scene.infinite_light.has_value());
-        if (!scene.distant_light) { return; }
+        if (!scene.distant_light)
+        {
+            return;
+        }
         auto&& light = *scene.distant_light;
         expect(is_near(light.L.x, 8.0f));
         expect(is_near(light.L.y, 8.0f));

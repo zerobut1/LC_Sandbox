@@ -20,3 +20,13 @@ uv run python tools/compare_exr.py --actual actual.exr --reference reference.exr
 
 The tools never generate or update `reference.exr`. Regression outputs and JSON reports are
 written below `build/Yutrel/regression/`.
+
+Split a static PMX model into one binary PLY per material and generate a PBRT-v4 scene:
+
+```text
+uv run python tools/pmx_to_pbrt.py path/to/model.pmx
+```
+
+Outputs are written to `path/to/pbrt/` by default. The conversion preserves positions,
+normals, UVs, base textures, material triangle ranges, and texture alpha masks. Bones,
+morphs, and animation are intentionally not exported.

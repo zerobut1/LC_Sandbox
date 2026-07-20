@@ -618,6 +618,28 @@ private:
         return values;
     }
 
+    [[nodiscard]] luisa::vector<float3> optional_float3_array(luisa::span<const RawParameter> params, luisa::string_view type, luisa::string_view name) const
+    {
+        auto p = find_param(params, type, name);
+        if (p == nullptr)
+        {
+            return {};
+        }
+        if (p->values.size() % 3u != 0u)
+        {
+            fail(p->source, luisa::format("'{} {}' value count must be a multiple of 3", type, name));
+        }
+        luisa::vector<float3> values;
+        values.reserve(p->values.size() / 3u);
+        for (auto i = 0u; i < p->values.size(); i += 3u)
+        {
+            values.emplace_back(make_float3(parse_float_token(p->values[i]),
+                                            parse_float_token(p->values[i + 1u]),
+                                            parse_float_token(p->values[i + 2u])));
+        }
+        return values;
+    }
+
     [[nodiscard]] luisa::vector<float2> optional_float2_array(luisa::span<const RawParameter> params, luisa::string_view type, luisa::string_view name) const
     {
         auto p = find_param(params, type, name);
@@ -1283,6 +1305,7 @@ private:
             desc.uv_scale = make_float2(
                 one_float(desc.parameters, "uscale", command, 1.0f),
                 one_float(desc.parameters, "vscale", command, 1.0f));
+            desc.image_scale = one_float(desc.parameters, "scale", command, 1.0f);
         }
         else if (desc.type == TextureDesc::Type::Constant)
         {
@@ -1377,7 +1400,7 @@ private:
             if (desc.type == TextureDesc::Type::ImageMap)
             {
                 supported = (p.type == "string" && (p.name == "filename" || p.name == "filter")) ||
-                            (p.type == "float" && (p.name == "uscale" || p.name == "vscale"));
+                            (p.type == "float" && (p.name == "uscale" || p.name == "vscale" || p.name == "scale"));
             }
             else if (desc.type == TextureDesc::Type::Constant)
             {
@@ -1417,6 +1440,10 @@ private:
             (!std::isfinite(desc.uv_scale.x) || !std::isfinite(desc.uv_scale.y)))
         {
             fail(command, "texture UV scale must be finite");
+        }
+        if (desc.type == TextureDesc::Type::ImageMap && !std::isfinite(desc.image_scale))
+        {
+            fail(command, "imagemap texture scale must be finite");
         }
         if (desc.type == TextureDesc::Type::Checkerboard)
         {
@@ -1691,7 +1718,7 @@ private:
         {
             shape.type     = ShapeDesc::Type::TriangleMesh;
             auto positions = float3_array(params, "point3", "P", command);
-            auto normals   = float3_array(params, "normal", "N", command);
+            auto normals   = optional_float3_array(params, "normal", "N");
             auto uvs       = optional_float2_array(params, "point2", "uv");
             if (!normals.empty() && normals.size() != positions.size())
             {

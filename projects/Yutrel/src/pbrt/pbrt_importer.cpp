@@ -351,6 +351,7 @@ void validate_pbrt_scene(const PbrtScene& scene)
                 ParameterKey{"string", "filter"},
                 ParameterKey{"float", "uscale"},
                 ParameterKey{"float", "vscale"},
+                ParameterKey{"float", "scale"},
             };
             validate_parameters(texture.parameters, owner, allowed);
             break;
@@ -706,12 +707,29 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
             auto sampler  = texture.filter == TextureDesc::Filter::Point
                                 ? TextureSampler::point_repeat()
                                 : TextureSampler::linear_point_repeat();
-            (void)builder.add_texture<ImageTextureSpec>(
-                std::move(meta),
-                std::move(path),
-                sampler,
-                encoding,
-                texture.uv_scale);
+            if (texture.image_scale == 1.0f)
+            {
+                (void)builder.add_texture<ImageTextureSpec>(
+                    std::move(meta),
+                    std::move(path),
+                    sampler,
+                    encoding,
+                    texture.uv_scale);
+            }
+            else
+            {
+                auto image = builder.add_anonymous_texture<ImageTextureSpec>(
+                    texture.source,
+                    std::move(path),
+                    sampler,
+                    encoding,
+                    texture.uv_scale);
+                (void)builder.add_texture<ScaleTextureSpec>(
+                    std::move(meta),
+                    image,
+                    make_float4(texture.image_scale),
+                    make_float4(0.0f));
+            }
             continue;
         }
         if (texture.type == TextureDesc::Type::Constant)
@@ -1213,7 +1231,7 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         {
         case TextureDesc::Type::ImageMap:
             LUISA_VERBOSE(
-                "PBRT texture #{} '{}' type=imagemap, value_type={}, file='{}', filter={}, uv_scale=({}, {}), source={}.",
+                "PBRT texture #{} '{}' type=imagemap, value_type={}, file='{}', filter={}, uv_scale=({}, {}), scale={}, source={}.",
                 i,
                 texture.name,
                 texture.value_type == TextureDesc::ValueType::Float ? "float" : "spectrum",
@@ -1221,6 +1239,7 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
                 texture.filter == TextureDesc::Filter::Point ? "point" : "bilinear",
                 texture.uv_scale.x,
                 texture.uv_scale.y,
+                texture.image_scale,
                 format_source_location(texture.source));
             break;
         case TextureDesc::Type::Constant:

@@ -1,0 +1,16 @@
+Integrator "path"
+Sampler "independent"
+    "integer pixelsamples" [ 1 ]
+PixelFilter "triangle"
+Film "rgb"
+    "integer xresolution" [ 1 ]
+    "integer yresolution" [ 1 ]
+Camera "perspective"
+
+WorldBegin
+
+Material "diffuse"
+    "rgb reflectance" [ 0.16 0.18 0.22 ]
+Shape "trianglemesh"
+    "point3 P" [ -1 0 -1  1 0 -1  1 0 1  -1 0 1 ]
+    "integer indices" [ 0 2 1  0 3 2 ]

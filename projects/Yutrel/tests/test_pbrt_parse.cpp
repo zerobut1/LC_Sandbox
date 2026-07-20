@@ -106,6 +106,14 @@ static auto test_pbrt_parse_registration = []
         expect(scene.textures[2u].filter == TextureDesc::Filter::Bilinear);
     };
 
+    "parse_imagemap_scale"_test = []
+    {
+        auto scene = PbrtParser::parse("tests/scenes/imagemap_scale.pbrt");
+        expect(scene.textures.size() == 2u);
+        expect(is_near(scene.textures[0u].image_scale, 0.25f));
+        expect(is_near(scene.textures[1u].image_scale, 1.0f));
+    };
+
     "parse_checkerboard_textures"_test = []
     {
         auto scene = PbrtParser::parse("tests/scenes/checkerboard_textures.pbrt");
@@ -194,6 +202,13 @@ static auto test_pbrt_parse_registration = []
             {"imagemap_duplicate_filter.pbrt", "duplicate texture parameter", "string filter"}));
     };
 
+    "reject_nonfinite_imagemap_scale"_test = []
+    {
+        expect(parse_error_contains(
+            "tests/scenes/imagemap_nonfinite_scale.pbrt",
+            {"imagemap_nonfinite_scale.pbrt", "imagemap texture scale", "finite"}));
+    };
+
     "reject_imagemap_without_filename"_test = []
     {
         auto rejected = false;
@@ -236,6 +251,23 @@ static auto test_pbrt_parse_registration = []
         expect(scene.shapes[1u].type == ShapeDesc::Type::Sphere);
         expect(is_near(scene.shapes[1u].radius, 1.0f));
         expect(scene.shapes[1u].sphere_subdivision == ShapeDesc::sphere_default_subdivision);
+    };
+
+    "parse_trianglemesh_without_normals"_test = []
+    {
+        auto scene = PbrtParser::parse("tests/scenes/trianglemesh_without_normals.pbrt");
+        expect(scene.meshes.size() == 1u);
+        expect(scene.meshes[0u].positions.size() == 4u);
+        expect(scene.meshes[0u].normals.empty());
+        expect(scene.meshes[0u].uvs.empty());
+        expect(scene.meshes[0u].indices.size() == 2u);
+    };
+
+    "reject_trianglemesh_normal_count_mismatch"_test = []
+    {
+        expect(parse_error_contains(
+            "tests/scenes/trianglemesh_normal_count_mismatch.pbrt",
+            {"trianglemesh_normal_count_mismatch.pbrt", "normal N", "count", "point3 P"}));
     };
 
     "parse_coated_diffuse_materials"_test = []

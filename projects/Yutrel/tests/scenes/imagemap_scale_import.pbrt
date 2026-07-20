@@ -1,0 +1,11 @@
+PixelFilter "triangle"
+Sampler "independent"
+
+WorldBegin
+
+Texture "scaled" "float" "imagemap"
+    "string filename" [ "imagemap_scale_import.pbrt" ]
+    "float scale" [ 0.25 ]
+
+Material "diffuse"
+Shape "sphere"

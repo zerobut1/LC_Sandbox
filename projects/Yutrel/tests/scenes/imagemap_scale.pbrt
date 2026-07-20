@@ -1,0 +1,7 @@
+WorldBegin
+
+Texture "scaled" "float" "imagemap"
+    "string filename" [ "scaled.png" ]
+    "float scale" [ 0.25 ]
+Texture "default" "spectrum" "imagemap"
+    "string filename" [ "default.png" ]

@@ -1,0 +1,4 @@
+WorldBegin
+Texture "invalid" "float" "imagemap"
+    "string filename" [ "invalid.png" ]
+    "float scale" [ inf ]

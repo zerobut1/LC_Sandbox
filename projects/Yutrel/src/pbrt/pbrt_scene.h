@@ -136,6 +136,7 @@ struct TextureDesc
     Filter filter{Filter::Bilinear};
     std::filesystem::path filename;
     float2 uv_scale{1.0f, 1.0f};
+    float image_scale{1.0f};
     float constant_value{0.0f};
     luisa::string tex;
     luisa::string scale;

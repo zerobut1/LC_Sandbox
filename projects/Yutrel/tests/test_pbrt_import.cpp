@@ -17,6 +17,7 @@
 #include "surfaces/null.h"
 #include "textures/checker_board.h"
 #include "textures/constant.h"
+#include "textures/image.h"
 #include "textures/scale.h"
 
 #include <array>
@@ -766,6 +767,37 @@ static auto test_pbrt_import_registration = []
             expect(is_near(value->w, 1.5f));
         }
         expect(scaled.channels() == base.channels());
+    };
+
+    "import_scaled_imagemap"_test = []
+    {
+        auto parsed = PbrtParser::parse("tests/scenes/imagemap_scale_import.pbrt");
+        auto spec   = PbrtImporter::import(std::move(parsed));
+
+        const ScaleTextureSpec* scaled = nullptr;
+        spec.textures().visit_entries([&](TextureRef, const SpecMeta& meta, const TextureSpec* texture)
+        {
+            if (meta.name == "scaled")
+            {
+                scaled = dynamic_cast<const ScaleTextureSpec*>(texture);
+            }
+        });
+
+        expect(scaled != nullptr);
+        if (scaled != nullptr)
+        {
+            expect(is_near(scaled->scale().x, 0.25f));
+            auto image = dynamic_cast<const ImageTextureSpec*>(&spec.textures().spec(scaled->base()));
+            expect(image != nullptr);
+        }
+    };
+
+    "import_trianglemesh_without_normals"_test = []
+    {
+        auto parsed = PbrtParser::parse("tests/scenes/trianglemesh_without_normals.pbrt");
+        auto spec   = PbrtImporter::import(std::move(parsed));
+        expect(spec.shapes().size() == 1u);
+        expect(spec.instances().size() == 1u);
     };
 
     "import_checkerboard_textures"_test = []

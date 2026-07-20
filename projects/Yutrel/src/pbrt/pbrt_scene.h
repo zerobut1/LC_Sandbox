@@ -220,8 +220,10 @@ struct AreaLightDesc
 struct InfiniteLightDesc
 {
     SourceLocation source;
+    luisa::optional<float3> L;
     std::filesystem::path filename;
     float scale{1.0f};
+    luisa::optional<float> illuminance;
     Matrix4 pbrt_transform{identity_matrix4};
     luisa::vector<RawParameter> parameters;
 };

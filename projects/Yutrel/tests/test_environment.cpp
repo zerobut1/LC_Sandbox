@@ -13,6 +13,7 @@
 #include "base/renderer.h"
 #include "base/scene.h"
 #include "environments/distant.h"
+#include "environments/uniform.h"
 #include "pbrt/pbrt_importer.h"
 #include "pbrt/pbrt_parser.h"
 #include "utils/image_io.h"
@@ -422,6 +423,73 @@ public:
            nearly_equal(result[3u].z, result[3u].w);
 }
 
+[[nodiscard]] luisa::unique_ptr<Scene> load_uniform_scene()
+{
+    auto parsed = PbrtParser::parse("tests/scenes/infinite_uniform.pbrt");
+    auto spec   = PbrtImporter::import(std::move(parsed));
+    auto scene  = Scene::create(spec);
+    return dynamic_cast<const UniformEnvironment*>(scene->environment()) == nullptr
+               ? nullptr
+               : std::move(scene);
+}
+
+[[nodiscard]] bool test_uniform_environment(
+    Device& device, Stream& stream, const Scene& scene)
+{
+    auto renderer = Renderer::create(device, stream, scene);
+    if (renderer->environment() == nullptr || !renderer->lights().empty())
+    {
+        return false;
+    }
+
+    auto output = device.create_buffer<float4>(4u);
+    Kernel1D kernel = [&renderer](BufferFloat4 result) noexcept
+    {
+        auto swl = renderer->spectrum()->sample(0.5f);
+        auto sample_complete = renderer->environment()->sample(
+            swl, 0.0f, make_float2(0.1f, 0.2f), false);
+        auto sample_incomplete = renderer->environment()->sample(
+            swl, 0.0f, make_float2(0.8f, 0.9f), true);
+        auto evaluated_complete = renderer->environment()->evaluate(
+            make_float3(1.0f, 0.0f, 0.0f), swl, 0.0f, false);
+        auto evaluated_incomplete = renderer->environment()->evaluate(
+            make_float3(0.0f, 1.0f, 0.0f), swl, 0.0f, true);
+        result.write(0u, make_float4(sample_complete.wi, sample_complete.eval.pdf));
+        result.write(1u, make_float4(sample_incomplete.wi, sample_incomplete.eval.pdf));
+        result.write(2u, make_float4(
+                             ite(sample_complete.delta, 1.0f, 0.0f),
+                             ite(sample_incomplete.delta, 1.0f, 0.0f),
+                             evaluated_complete.pdf,
+                             evaluated_incomplete.pdf));
+        result.write(3u, make_float4(
+                             sample_complete.eval.L[0u],
+                             sample_incomplete.eval.L[0u],
+                             evaluated_complete.L[0u],
+                             evaluated_incomplete.L[0u]));
+    };
+    auto shader = device.compile(kernel);
+    std::array<float4, 4u> result{};
+    stream << shader(output).dispatch(1u)
+           << output.copy_to(result.data())
+           << synchronize();
+
+    auto expected_pdf = 0.25f / std::acos(-1.0f);
+    auto flags_and_pdfs = result[2u];
+    auto radiance = result[3u];
+    return nearly_equal(length(result[0u].xyz()), 1.0f, 1e-5f) &&
+           nearly_equal(length(result[1u].xyz()), 1.0f, 1e-5f) &&
+           nearly_equal(result[0u].w, expected_pdf, 1e-6f) &&
+           nearly_equal(result[1u].w, expected_pdf, 1e-6f) &&
+           nearly_equal(flags_and_pdfs.x, 0.0f) &&
+           nearly_equal(flags_and_pdfs.y, 0.0f) &&
+           nearly_equal(flags_and_pdfs.z, expected_pdf, 1e-6f) &&
+           nearly_equal(flags_and_pdfs.w, expected_pdf, 1e-6f) &&
+           std::isfinite(radiance.x) && radiance.x > 0.0f &&
+           nearly_equal(radiance.x, radiance.y, 1e-6f) &&
+           nearly_equal(radiance.x, radiance.z, 1e-6f) &&
+           nearly_equal(radiance.x, radiance.w, 1e-6f);
+}
+
 } // namespace
 
 int main(int argc, char* argv[])
@@ -454,6 +522,15 @@ int main(int argc, char* argv[])
     if (!test_distant_environment(device, stream, *distant_scene))
     {
         return 8;
+    }
+    auto uniform_scene = load_uniform_scene();
+    if (uniform_scene == nullptr)
+    {
+        return 9;
+    }
+    if (!test_uniform_environment(device, stream, *uniform_scene))
+    {
+        return 10;
     }
     return 0;
 }

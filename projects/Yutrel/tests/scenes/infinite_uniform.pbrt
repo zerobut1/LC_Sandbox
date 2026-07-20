@@ -1,0 +1,13 @@
+Integrator "path" "integer maxdepth" [2]
+Sampler "independent" "integer pixelsamples" [1]
+PixelFilter "triangle"
+Film "rgb" "string filename" ["infinite_uniform.exr"] "integer xresolution" [8] "integer yresolution" [8]
+Camera "perspective"
+
+WorldBegin
+LightSource "infinite"
+    "rgb L" [0.8 0.9 1.0]
+    "float scale" [2.0]
+    "float illuminance" [0.05]
+Material "diffuse" "rgb reflectance" [0.5 0.5 0.5]
+Shape "sphere" "float radius" [1]

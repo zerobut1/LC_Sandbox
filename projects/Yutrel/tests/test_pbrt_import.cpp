@@ -4,6 +4,7 @@
 #include "base/shape.h"
 #include "cameras/pinhole.h"
 #include "environments/distant.h"
+#include "environments/uniform.h"
 #include "integrators/vol_path.h"
 #include "media/homogeneous.h"
 #include "pbrt/pbrt_importer.h"
@@ -463,7 +464,7 @@ static auto test_pbrt_import_registration = []
             Case{Target::Material, "texture", "displacement", 17u},
             Case{Target::AreaLight, "float", "scale", 18u},
             Case{Target::Shape, "float", "displacement", 19u},
-            Case{Target::InfiniteLight, "rgb", "L", 20u},
+            Case{Target::InfiniteLight, "float", "power", 20u},
         };
         for (auto test_case : cases)
         {
@@ -1067,6 +1068,53 @@ static auto test_pbrt_import_registration = []
                              message.find("regular file") != std::string::npos;
         }
         expect(source_located);
+    };
+
+    "import_uniform_infinite_environment"_test = []
+    {
+        auto parsed      = PbrtParser::parse("tests/scenes/infinite_uniform.pbrt");
+        auto spec        = PbrtImporter::import(std::move(parsed));
+        auto environment = dynamic_cast<const UniformEnvironmentSpec*>(
+            &spec.environments().spec(spec.render().environment));
+        expect(environment != nullptr);
+        if (environment == nullptr)
+        {
+            return;
+        }
+        auto expected_scale = 2.0f * 0.05f / std::acos(-1.0f);
+        expect(is_near(environment->scale(), expected_scale, 1e-8f));
+        expect(!environment->validate().has_value());
+
+        auto emission = dynamic_cast<const ConstantTextureSpec*>(
+            &spec.textures().spec(environment->emission()));
+        expect(emission != nullptr);
+        if (emission != nullptr)
+        {
+            expect(is_near(emission->value().x, 0.8f));
+            expect(is_near(emission->value().y, 0.9f));
+            expect(is_near(emission->value().z, 1.0f));
+        }
+        expect(UniformEnvironmentSpec{environment->emission(), -1.0f}
+                   .validate()
+                   .has_value());
+
+        auto default_parsed = PbrtParser::parse("tests/scenes/infinite_missing_filename.pbrt");
+        auto default_spec   = PbrtImporter::import(std::move(default_parsed));
+        auto default_environment = dynamic_cast<const UniformEnvironmentSpec*>(
+            &default_spec.environments().spec(default_spec.render().environment));
+        expect(default_environment != nullptr);
+        if (default_environment != nullptr)
+        {
+            auto default_emission = dynamic_cast<const ConstantTextureSpec*>(
+                &default_spec.textures().spec(default_environment->emission()));
+            expect(default_emission != nullptr);
+            if (default_emission != nullptr)
+            {
+                expect(is_near(default_emission->value().x, 1.0f));
+                expect(is_near(default_emission->value().y, 1.0f));
+                expect(is_near(default_emission->value().z, 1.0f));
+            }
+        }
     };
 
     "import_distant_environment"_test = []

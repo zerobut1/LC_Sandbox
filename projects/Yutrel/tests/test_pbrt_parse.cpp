@@ -433,12 +433,52 @@ static auto test_pbrt_parse_registration = []
         }
     };
 
+    "parse_uniform_infinite_light"_test = []
+    {
+        auto scene = PbrtParser::parse("tests/scenes/infinite_uniform.pbrt");
+        expect(scene.infinite_light.has_value());
+        expect(!scene.distant_light.has_value());
+        if (!scene.infinite_light)
+        {
+            return;
+        }
+        auto&& light = *scene.infinite_light;
+        expect(light.L.has_value());
+        expect(light.filename.empty());
+        expect(light.illuminance.has_value());
+        if (light.L)
+        {
+            expect(is_near(light.L->x, 0.8f));
+            expect(is_near(light.L->y, 0.9f));
+            expect(is_near(light.L->z, 1.0f));
+        }
+        expect(is_near(light.scale, 2.0f));
+        if (light.illuminance)
+        {
+            expect(is_near(*light.illuminance, 0.05f));
+        }
+
+        auto defaults = PbrtParser::parse("tests/scenes/infinite_missing_filename.pbrt");
+        expect(defaults.infinite_light.has_value());
+        if (defaults.infinite_light)
+        {
+            expect(!defaults.infinite_light->L.has_value());
+            expect(defaults.infinite_light->filename.empty());
+            expect(!defaults.infinite_light->illuminance.has_value());
+            expect(is_near(defaults.infinite_light->scale, 1.0f));
+        }
+    };
+
     "reject_invalid_infinite_lights"_test = []
     {
         for (auto path : {
-                 "tests/scenes/infinite_missing_filename.pbrt",
                  "tests/scenes/infinite_invalid_scale.pbrt",
+                 "tests/scenes/infinite_invalid_radiance.pbrt",
+                 "tests/scenes/infinite_nonfinite_illuminance.pbrt",
+                 "tests/scenes/infinite_image_illuminance.pbrt",
+                 "tests/scenes/infinite_l_and_filename.pbrt",
                  "tests/scenes/infinite_duplicate.pbrt",
+                 "tests/scenes/infinite_duplicate_parameter.pbrt",
                  "tests/scenes/infinite_unknown_type.pbrt",
                  "tests/scenes/infinite_unsupported_parameter.pbrt",
              })

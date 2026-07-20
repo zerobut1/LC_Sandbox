@@ -1,0 +1,4 @@
+WorldBegin
+LightSource "infinite"
+    "string filename" ["env.pfm"]
+    "float illuminance" [1]

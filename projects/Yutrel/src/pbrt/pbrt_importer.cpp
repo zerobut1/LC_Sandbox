@@ -20,6 +20,7 @@
 #include "environments/distant.h"
 #include "environments/null.h"
 #include "environments/pbrt_equal_area.h"
+#include "environments/uniform.h"
 #include "filters/triangle.h"
 #include "integrators/path.h"
 #include "integrators/vol_path.h"
@@ -442,8 +443,10 @@ void validate_pbrt_scene(const PbrtScene& scene)
 
     static constexpr std::array area_light_allowed{ParameterKey{"rgb", "L"}};
     static constexpr std::array infinite_light_allowed{
+        ParameterKey{"rgb", "L"},
         ParameterKey{"string", "filename"},
         ParameterKey{"float", "scale"},
+        ParameterKey{"float", "illuminance"},
     };
     static constexpr std::array distant_light_allowed{
         ParameterKey{"rgb", "L"},
@@ -453,7 +456,32 @@ void validate_pbrt_scene(const PbrtScene& scene)
     };
     if (scene.infinite_light)
     {
-        validate_parameters(scene.infinite_light->parameters, "LightSource 'infinite'", infinite_light_allowed);
+        auto&& light = *scene.infinite_light;
+        validate_parameters(light.parameters, "LightSource 'infinite'", infinite_light_allowed);
+        auto finite = [](float3 v) noexcept
+        {
+            return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+        };
+        if (light.L && (!finite(*light.L) || light.L->x < 0.0f || light.L->y < 0.0f || light.L->z < 0.0f))
+        {
+            fail(light.source, "PBRT infinite LightSource radiance must be finite and non-negative.");
+        }
+        if (!std::isfinite(light.scale) || light.scale < 0.0f)
+        {
+            fail(light.source, "PBRT infinite LightSource scale must be finite and non-negative.");
+        }
+        if (light.illuminance && !std::isfinite(*light.illuminance))
+        {
+            fail(light.source, "PBRT infinite LightSource illuminance must be finite.");
+        }
+        if (light.L && !light.filename.empty())
+        {
+            fail(light.source, "PBRT infinite LightSource cannot specify both L and filename.");
+        }
+        if (!light.filename.empty() && light.illuminance)
+        {
+            fail(light.source, "PBRT image infinite LightSource does not support illuminance.");
+        }
     }
     if (scene.distant_light)
     {
@@ -689,6 +717,26 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
                 SpecMeta{.name = "pbrt_null_environment", .source = SourceLocation{scene.source_path}});
         }
         auto&& desc  = *scene.infinite_light;
+        if (desc.filename.empty())
+        {
+            auto L = desc.L.value_or(make_float3(1.0f));
+            auto texture = builder.add_anonymous_texture<ConstantTextureSpec>(
+                desc.source,
+                make_float4(L, 1.0f));
+            // Yutrel's illuminant decoding and spectrum-to-RGB conversion already
+            // normalize D65. PBRT performs the corresponding normalization in the
+            // light because its PixelSensor integrates the spectrum without the
+            // CIE Y divisor; applying it here would make the result too dark.
+            auto scale = desc.scale;
+            if (desc.illuminance && *desc.illuminance > 0.0f)
+            {
+                scale *= *desc.illuminance * inv_pi;
+            }
+            return builder.add_environment<UniformEnvironmentSpec>(
+                SpecMeta{.name = "pbrt_uniform_environment", .source = desc.source},
+                texture,
+                scale);
+        }
         auto path    = resolve_relative_to_scene(desc.source.file, desc.filename);
         auto texture = builder.add_anonymous_texture<ImageTextureSpec>(
             desc.source,
@@ -1237,14 +1285,26 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         camera_linear_determinant(camera_transform));
     if (scene.infinite_light)
     {
-        LUISA_INFO(
-            "PBRT environment: type=infinite, file='{}', scale={}.",
-            resolve_relative_to_scene(scene.infinite_light->source.file, scene.infinite_light->filename).string(),
-            scene.infinite_light->scale);
+        auto&& light = *scene.infinite_light;
+        if (light.filename.empty())
+        {
+            auto L = light.L.value_or(make_float3(1.0f));
+            LUISA_INFO(
+                "PBRT environment: type=uniform-infinite, L=({}, {}, {}), scale={}, illuminance={}.",
+                L.x, L.y, L.z, light.scale,
+                light.illuminance.value_or(-1.0f));
+        }
+        else
+        {
+            LUISA_INFO(
+                "PBRT environment: type=infinite, file='{}', scale={}.",
+                resolve_relative_to_scene(light.source.file, light.filename).string(),
+                light.scale);
+        }
         LUISA_VERBOSE(
             "PBRT environment transform={}, source={}.",
-            format_matrix(scene.infinite_light->pbrt_transform),
-            format_source_location(scene.infinite_light->source));
+            format_matrix(light.pbrt_transform),
+            format_source_location(light.source));
     }
     else if (scene.distant_light)
     {

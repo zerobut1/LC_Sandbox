@@ -1561,36 +1561,73 @@ private:
         for (auto i = 0u; i < params.size(); i++)
         {
             auto&& param   = params[i];
-            auto supported = (param.type == "string" && param.name == "filename") ||
-                             (param.type == "float" && param.name == "scale");
+            auto supported = (param.type == "rgb" && param.name == "L") ||
+                             (param.type == "string" && param.name == "filename") ||
+                             (param.type == "float" && (param.name == "scale" || param.name == "illuminance"));
             if (!supported)
             {
                 fail(param.source, luisa::format("unsupported parameter '\"{} {}\"' for infinite LightSource", param.type, param.name));
             }
             for (auto j = 0u; j < i; j++)
             {
-                if (params[j].type == param.type && params[j].name == param.name)
+                if (params[j].name == param.name)
                 {
                     fail(param.source, luisa::format("duplicate infinite LightSource parameter '\"{} {}\"'", param.type, param.name));
                 }
             }
         }
-        auto filename = one_string(params, "filename", command, {});
-        if (filename.empty())
+        luisa::optional<float3> L;
+        if (find_param(params, "rgb", "L") != nullptr)
         {
-            fail(command, "infinite LightSource requires a non-empty 'string filename' parameter");
+            L.emplace(one_float3(params, "rgb", "L", make_float3(1.0f)));
+        }
+        auto filename = one_string(params, "filename", command, {});
+        if (L && !filename.empty())
+        {
+            auto p = find_param(params, "string", "filename");
+            fail(p == nullptr ? command.loc : p->source,
+                 "infinite LightSource cannot specify both 'rgb L' and 'string filename'");
         }
         auto scale = one_float(params, "scale", command, 1.0f);
+        luisa::optional<float> illuminance;
+        if (find_param(params, "float", "illuminance") != nullptr)
+        {
+            illuminance.emplace(one_float(params, "illuminance", command, -1.0f));
+        }
+        auto finite = [](float3 v) noexcept
+        {
+            return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+        };
+        if (L && (!finite(*L) || L->x < 0.0f || L->y < 0.0f || L->z < 0.0f))
+        {
+            auto p = find_param(params, "rgb", "L");
+            fail(p == nullptr ? command.loc : p->source,
+                 "infinite LightSource radiance must be finite and non-negative");
+        }
         if (!std::isfinite(scale) || scale < 0.0f)
         {
             auto p = find_param(params, "float", "scale");
             fail(p == nullptr ? command.loc : p->source,
                  "infinite LightSource scale must be finite and non-negative");
         }
+        if (illuminance && !std::isfinite(*illuminance))
+        {
+            auto p = find_param(params, "float", "illuminance");
+            fail(p == nullptr ? command.loc : p->source,
+                 "infinite LightSource illuminance must be finite");
+        }
+        if (!filename.empty() && illuminance)
+        {
+            auto p = find_param(params, "float", "illuminance");
+            fail(p == nullptr ? command.loc : p->source,
+                 "illuminance for image infinite LightSource is not supported");
+        }
         m_desc.infinite_light.emplace(InfiniteLightDesc{
             .source         = command.loc,
+            .L              = L,
             .filename       = std::filesystem::path{std::move(filename)},
             .scale          = scale,
+            .illuminance    = illuminance,
             .pbrt_transform = m_current_transform,
             .parameters     = std::move(params),
         });

@@ -14,8 +14,8 @@ class FpsCameraController
 public:
     struct Config
     {
-        float move_speed{3.0f};
-        float fast_move_speed{10.0f};
+        float move_speed{10.0f};
+        float fast_move_speed{30.0f};
         float mouse_sensitivity{1.0f / 600.0f};
         float max_pitch_radians{1.55334306f}; // ~89 degrees
     };

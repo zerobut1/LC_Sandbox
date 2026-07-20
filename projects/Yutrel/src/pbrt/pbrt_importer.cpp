@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <stdexcept>
 #include <utility>
 
@@ -34,6 +36,7 @@
 #include "surfaces/dielectric.h"
 #include "surfaces/diffuse.h"
 #include "surfaces/null.h"
+#include "surfaces/opacity.h"
 #include "textures/checker_board.h"
 #include "textures/constant.h"
 #include "textures/image.h"
@@ -461,6 +464,10 @@ void validate_pbrt_scene(const PbrtScene& scene)
     {
         auto&& shape = scene.shapes[i];
         auto owner   = luisa::format("Shape #{} ({})", i, shape_type_name(shape.type));
+        if (!std::isfinite(shape.alpha))
+        {
+            fail(shape.source, luisa::format("PBRT {} alpha must be finite.", owner));
+        }
         switch (shape.type)
         {
         case ShapeDesc::Type::TriangleMesh:
@@ -470,13 +477,19 @@ void validate_pbrt_scene(const PbrtScene& scene)
                 ParameterKey{"normal", "N"},
                 ParameterKey{"point2", "uv"},
                 ParameterKey{"integer", "indices"},
+                ParameterKey{"float", "alpha"},
+                ParameterKey{"texture", "alpha"},
             };
             validate_parameters(shape.parameters, owner, allowed);
             break;
         }
         case ShapeDesc::Type::PlyMesh:
         {
-            static constexpr std::array allowed{ParameterKey{"string", "filename"}};
+            static constexpr std::array allowed{
+                ParameterKey{"string", "filename"},
+                ParameterKey{"float", "alpha"},
+                ParameterKey{"texture", "alpha"},
+            };
             validate_parameters(shape.parameters, owner, allowed);
             break;
         }
@@ -485,6 +498,8 @@ void validate_pbrt_scene(const PbrtScene& scene)
             static constexpr std::array allowed{
                 ParameterKey{"float", "radius"},
                 ParameterKey{"integer", "subdivision"},
+                ParameterKey{"float", "alpha"},
+                ParameterKey{"texture", "alpha"},
             };
             validate_parameters(shape.parameters, owner, allowed);
             break;
@@ -958,6 +973,42 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         return *default_surface;
     };
 
+    std::map<uint32_t, TextureRef> alpha_constant_cache;
+    std::map<std::pair<SurfaceRef, TextureRef>, SurfaceRef> opacity_surface_cache;
+    auto resolve_alpha_texture = [&](const ShapeDesc& shape) -> luisa::optional<TextureRef>
+    {
+        if (shape.alpha_texture)
+        {
+            auto iter = texture_declarations.find(*shape.alpha_texture);
+            if (iter == texture_declarations.end())
+            {
+                fail(shape.source, luisa::format(
+                                       "PBRT shape alpha references undefined texture '{}'.",
+                                       *shape.alpha_texture));
+            }
+            if (iter->second->value_type != TextureDesc::ValueType::Float)
+            {
+                fail(shape.source, luisa::format(
+                                       "PBRT shape alpha texture '{}' must be a float texture.",
+                                       *shape.alpha_texture));
+            }
+            return builder.reference_texture(*shape.alpha_texture, shape.source);
+        }
+        if (shape.alpha >= 1.0f)
+        {
+            return luisa::nullopt;
+        }
+        auto bits = std::bit_cast<uint32_t>(shape.alpha);
+        if (auto iter = alpha_constant_cache.find(bits); iter != alpha_constant_cache.end())
+        {
+            return iter->second;
+        }
+        auto texture = builder.add_anonymous_texture<ConstantTextureSpec>(
+            shape.source, make_float4(shape.alpha));
+        alpha_constant_cache.emplace(bits, texture);
+        return texture;
+    };
+
     luisa::vector<ShapeRef> inline_mesh_refs;
     inline_mesh_refs.reserve(scene.meshes.size());
     for (auto& mesh : scene.meshes)
@@ -1025,6 +1076,21 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
             }
             return get_default_surface(shape.source);
         }();
+        if (auto alpha_texture = resolve_alpha_texture(shape))
+        {
+            auto key = std::pair{surface, *alpha_texture};
+            if (auto iter = opacity_surface_cache.find(key); iter != opacity_surface_cache.end())
+            {
+                surface = iter->second;
+            }
+            else
+            {
+                auto opacity_surface = builder.add_anonymous_surface<OpacitySurfaceSpec>(
+                    shape.source, surface, *alpha_texture);
+                opacity_surface_cache.emplace(key, opacity_surface);
+                surface = opacity_surface;
+            }
+        }
         luisa::optional<LightRef> light;
         if (shape.area_light)
         {

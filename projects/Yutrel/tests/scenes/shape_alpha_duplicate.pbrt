@@ -1,0 +1,9 @@
+Integrator "path"
+Sampler "independent"
+PixelFilter "triangle"
+Film "rgb"
+Camera "perspective"
+WorldBegin
+Shape "sphere"
+    "float alpha" [ 0.5 ]
+    "float alpha" [ 0.25 ]

@@ -50,6 +50,8 @@ private:
     luisa::vector<uint2> m_medium_interfaces;
     Buffer<uint2> m_medium_interface_buffer;
     luisa::vector<Light::Handle> m_instanced_lights;
+    luisa::vector<uint> m_non_opaque_surface_tags;
+    bool m_any_non_opaque{false};
 
 public:
     explicit Geometry(Renderer& renderer) noexcept
@@ -66,11 +68,13 @@ public:
     [[nodiscard]] luisa::shared_ptr<Interaction> interaction(const Var<Ray> ray, const Var<TriangleHit> hit) const noexcept;
     [[nodiscard]] luisa::shared_ptr<Interaction> intersect(const Var<Ray>& ray) const noexcept;
     [[nodiscard]] Bool intersect_any(const Var<Ray>& ray_in) const noexcept;
+    [[nodiscard]] Float evaluate_opacity(const Interaction& interaction, Expr<float> time) const noexcept;
     [[nodiscard]] UInt2 medium_interface(Expr<uint> instance_id) const noexcept;
     [[nodiscard]] UInt next_medium(const Interaction& it, Expr<float3> wi) const noexcept;
     [[nodiscard]] ShadingAttribute shading_point(const Shape::Handle& instance, const Var<Triangle>& triangle, const Var<float2>& bary, const Var<float4x4>& shape_to_world) const noexcept;
 
 private:
     void process_instance(CommandBuffer& command_buffer, const ShapeInstance& instance) noexcept;
+    [[nodiscard]] Bool alpha_skip(const Var<Ray>& ray, const Var<TriangleHit>& hit) const noexcept;
 };
 } // namespace Yutrel

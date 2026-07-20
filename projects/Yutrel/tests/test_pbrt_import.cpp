@@ -15,6 +15,7 @@
 #include "surfaces/coated_diffuse.h"
 #include "surfaces/diffuse.h"
 #include "surfaces/null.h"
+#include "surfaces/opacity.h"
 #include "textures/checker_board.h"
 #include "textures/constant.h"
 #include "textures/image.h"
@@ -461,7 +462,7 @@ static auto test_pbrt_import_registration = []
             Case{Target::Texture, "bool", "invert", 16u},
             Case{Target::Material, "texture", "displacement", 17u},
             Case{Target::AreaLight, "float", "scale", 18u},
-            Case{Target::Shape, "float", "alpha", 19u},
+            Case{Target::Shape, "float", "displacement", 19u},
             Case{Target::InfiniteLight, "rgb", "L", 20u},
         };
         for (auto test_case : cases)
@@ -733,6 +734,90 @@ static auto test_pbrt_import_registration = []
         parsed.shapes[1u].material.inline_index = parsed.shapes[0u].material.inline_index;
         auto spec                               = PbrtImporter::import(std::move(parsed));
         expect(spec.instances()[0u].surface == spec.instances()[1u].surface);
+    };
+
+    "import_shape_alpha_as_cached_opacity_surfaces"_test = []
+    {
+        auto parsed = PbrtParser::parse("tests/scenes/shape_alpha.pbrt");
+        auto spec   = PbrtImporter::import(std::move(parsed));
+        auto instances = spec.instances();
+        expect(instances.size() == 6u);
+        if (instances.size() != 6u)
+        {
+            return;
+        }
+
+        expect(instances[0u].surface == instances[1u].surface);
+        expect(instances[0u].light.has_value());
+        expect(instances[2u].surface == instances[4u].surface);
+        expect(instances[2u].surface != instances[3u].surface);
+
+        auto mask_wrapper = dynamic_cast<const OpacitySurfaceSpec*>(
+            &spec.surfaces().spec(instances[0u].surface));
+        auto half_wrapper = dynamic_cast<const OpacitySurfaceSpec*>(
+            &spec.surfaces().spec(instances[2u].surface));
+        auto null_wrapper = dynamic_cast<const OpacitySurfaceSpec*>(
+            &spec.surfaces().spec(instances[5u].surface));
+        expect(mask_wrapper != nullptr);
+        expect(half_wrapper != nullptr);
+        expect(null_wrapper != nullptr);
+        if (mask_wrapper != nullptr && half_wrapper != nullptr)
+        {
+            expect(mask_wrapper->base() == half_wrapper->base());
+            expect(mask_wrapper->alpha() != half_wrapper->alpha());
+        }
+        if (null_wrapper != nullptr)
+        {
+            expect(dynamic_cast<const NullSurfaceSpec*>(
+                       &spec.surfaces().spec(null_wrapper->base())) != nullptr);
+        }
+    };
+
+    "reject_invalid_shape_alpha_texture_references"_test = []
+    {
+        auto nonfinite = PbrtParser::parse("tests/scenes/shape_alpha.pbrt");
+        nonfinite.shapes[0u].alpha_texture.reset();
+        nonfinite.shapes[0u].alpha = std::numeric_limits<float>::quiet_NaN();
+        auto nonfinite_rejected = false;
+        try
+        {
+            (void)PbrtImporter::import(std::move(nonfinite));
+        }
+        catch (const std::runtime_error& error)
+        {
+            nonfinite_rejected = std::string{error.what()}.find("alpha must be finite") != std::string::npos;
+        }
+        expect(nonfinite_rejected);
+
+        auto undefined = PbrtParser::parse("tests/scenes/shape_alpha.pbrt");
+        undefined.shapes[0u].alpha_texture.emplace("missing-alpha");
+        auto undefined_rejected = false;
+        try
+        {
+            (void)PbrtImporter::import(std::move(undefined));
+        }
+        catch (const std::runtime_error& error)
+        {
+            auto message = std::string{error.what()};
+            undefined_rejected = message.find("missing-alpha") != std::string::npos &&
+                                 message.find("undefined texture") != std::string::npos;
+        }
+        expect(undefined_rejected);
+
+        auto spectrum = PbrtParser::parse("tests/scenes/shape_alpha.pbrt");
+        spectrum.shapes[0u].alpha_texture.emplace("spectrum-mask");
+        auto spectrum_rejected = false;
+        try
+        {
+            (void)PbrtImporter::import(std::move(spectrum));
+        }
+        catch (const std::runtime_error& error)
+        {
+            auto message = std::string{error.what()};
+            spectrum_rejected = message.find("spectrum-mask") != std::string::npos &&
+                                message.find("float texture") != std::string::npos;
+        }
+        expect(spectrum_rejected);
     };
 
     "reject_unsupported_coated_displacement"_test = []

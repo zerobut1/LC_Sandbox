@@ -102,6 +102,7 @@ public:
 
 public:
     [[nodiscard]] virtual bool is_null() const noexcept { return false; }
+    [[nodiscard]] virtual bool maybe_non_opaque() const noexcept { return false; }
     [[nodiscard]] virtual uint properties() const noexcept = 0;
     [[nodiscard]] bool is_reflective() const noexcept { return (properties() & property_reflective) != 0u; }
     [[nodiscard]] bool is_transmissive() const noexcept { return (properties() & property_transmissive) != 0u; }
@@ -137,6 +138,9 @@ public:
         return static_cast<const T*>(m_surface);
     }
     [[nodiscard]] auto& renderer() const noexcept { return m_renderer; }
+    [[nodiscard]] virtual bool maybe_non_opaque() const noexcept { return false; }
+    [[nodiscard]] virtual luisa::optional<Float> evaluate_opacity(
+        const Interaction&, Expr<float>) const noexcept { return luisa::nullopt; }
     void closure(PolymorphicCall<Closure>& call, const Interaction& it, Expr<float3> wo,
                  SampledWavelengths& swl, Expr<float> time, Expr<float> eta_i) const noexcept;
 

@@ -115,6 +115,40 @@ ULong pbrt_hash64(Expr<uint4> p) noexcept
     return murmur_hash64_words(p, 4u);
 }
 
+Float pbrt_hash_float(Expr<float3> p) noexcept
+{
+    return cast<uint>(pbrt_hash64(as<uint3>(p))) * 0x1p-32f;
+}
+
+Float pbrt_hash_float(Expr<float3> origin, Expr<float3> direction) noexcept
+{
+    static Callable impl = [](Float3 origin, Float3 direction) noexcept
+    {
+        constexpr auto m = 0xc6a4a7935bd1e995ull;
+        constexpr auto r = 47ull;
+        auto o            = as<uint3>(origin);
+        auto d            = as<uint3>(direction);
+        auto h            = def(24ull * m);
+        auto mix          = [&](UInt lo, UInt hi) noexcept
+        {
+            auto k = cast<ulong>(lo) | (cast<ulong>(hi) << 32ull);
+            k *= m;
+            k ^= k >> r;
+            k *= m;
+            h ^= k;
+            h *= m;
+        };
+        mix(o.x, o.y);
+        mix(o.z, d.x);
+        mix(d.y, d.z);
+        h ^= h >> r;
+        h *= m;
+        h ^= h >> r;
+        return cast<uint>(h) * 0x1p-32f;
+    };
+    return impl(origin, direction);
+}
+
 UInt PBRTRNG::_uniform_uint() noexcept
 {
     constexpr auto multiplier = 0x5851f42d4c957f2dull;

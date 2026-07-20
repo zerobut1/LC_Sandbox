@@ -1,0 +1,46 @@
+Integrator "path"
+Sampler "independent"
+    "integer pixelsamples" [ 1 ]
+PixelFilter "triangle"
+Film "rgb"
+    "string filename" [ "shape-alpha.exr" ]
+    "integer xresolution" [ 4 ]
+    "integer yresolution" [ 4 ]
+Camera "perspective"
+
+WorldBegin
+
+Texture "mask" "float" "checkerboard"
+    "float tex1" [ 0 ]
+    "float tex2" [ 1 ]
+Texture "spectrum-mask" "spectrum" "checkerboard"
+    "rgb tex1" [ 0.25 0.25 0.25 ]
+    "rgb tex2" [ 0.75 0.75 0.75 ]
+MakeNamedMaterial "Shared"
+    "string type" [ "diffuse" ]
+    "rgb reflectance" [ 0.5 0.5 0.5 ]
+
+AttributeBegin
+    NamedMaterial "Shared"
+    AreaLightSource "diffuse"
+        "rgb L" [ 4 4 4 ]
+    Shape "trianglemesh"
+        "point3 P" [ -1 -1 1  1 -1 1  0 1 1 ]
+        "integer indices" [ 0 1 2 ]
+        "texture alpha" [ "mask" ]
+AttributeEnd
+
+NamedMaterial "Shared"
+Shape "plymesh"
+    "string filename" [ "mesh_00001.ply" ]
+    "texture alpha" [ "mask" ]
+Shape "sphere"
+    "float alpha" [ 0.5 ]
+Shape "sphere"
+    "float alpha" [ 0.25 ]
+Shape "sphere"
+    "float alpha" [ 0.5 ]
+
+Material "interface"
+Shape "sphere"
+    "float alpha" [ 0 ]

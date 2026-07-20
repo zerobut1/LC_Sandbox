@@ -253,6 +253,38 @@ static auto test_pbrt_parse_registration = []
         expect(scene.shapes[1u].sphere_subdivision == ShapeDesc::sphere_default_subdivision);
     };
 
+    "parse_shape_alpha_for_all_shape_types"_test = []
+    {
+        auto scene = PbrtParser::parse("tests/scenes/shape_alpha.pbrt");
+        expect(scene.shapes.size() == 6u);
+        if (scene.shapes.size() != 6u)
+        {
+            return;
+        }
+        expect(scene.shapes[0u].type == ShapeDesc::Type::TriangleMesh);
+        expect(scene.shapes[0u].alpha_texture == luisa::optional<luisa::string>{"mask"});
+        expect(scene.shapes[1u].type == ShapeDesc::Type::PlyMesh);
+        expect(scene.shapes[1u].alpha_texture == luisa::optional<luisa::string>{"mask"});
+        expect(scene.shapes[2u].type == ShapeDesc::Type::Sphere);
+        expect(is_near(scene.shapes[2u].alpha, 0.5f));
+        expect(is_near(scene.shapes[3u].alpha, 0.25f));
+        expect(is_near(scene.shapes[4u].alpha, 0.5f));
+        expect(is_near(scene.shapes[5u].alpha, 0.0f));
+    };
+
+    "reject_invalid_shape_alpha_declarations"_test = []
+    {
+        expect(parse_error_contains(
+            "tests/scenes/shape_alpha_conflict.pbrt",
+            {"shape_alpha_conflict.pbrt", "alpha", "more than once"}));
+        expect(parse_error_contains(
+            "tests/scenes/shape_alpha_duplicate.pbrt",
+            {"shape_alpha_duplicate.pbrt", "alpha", "more than once"}));
+        expect(parse_error_contains(
+            "tests/scenes/shape_alpha_nonfinite.pbrt",
+            {"shape_alpha_nonfinite.pbrt", "alpha", "finite"}));
+    };
+
     "parse_trianglemesh_without_normals"_test = []
     {
         auto scene = PbrtParser::parse("tests/scenes/trianglemesh_without_normals.pbrt");

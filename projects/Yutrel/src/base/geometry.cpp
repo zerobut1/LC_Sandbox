@@ -1,7 +1,10 @@
 #include "geometry.h"
 
+#include <algorithm>
+
 #include "base/interaction.h"
 #include "base/renderer.h"
+#include "utils/rng.h"
 #include "utils/sampling.h"
 
 namespace Yutrel
@@ -113,10 +116,26 @@ void Geometry::process_instance(CommandBuffer& command_buffer, const ShapeInstan
         // surfaces
         auto surface_tag = 0u;
         auto properties  = mesh.vertex_properties;
-        if (surface && !surface->is_null())
+        auto maybe_non_opaque = false;
+        if (surface && (!surface->is_null() || surface->maybe_non_opaque()))
         {
             surface_tag = m_renderer.register_surface(command_buffer, surface);
-            properties |= Shape::property_flag_has_surface;
+            if (!surface->is_null())
+            {
+                properties |= Shape::property_flag_has_surface;
+            }
+            maybe_non_opaque = m_renderer.surfaces().impl(surface_tag)->maybe_non_opaque();
+            if (maybe_non_opaque)
+            {
+                properties |= Shape::property_flag_maybe_non_opaque;
+                m_any_non_opaque = true;
+                if (std::find(m_non_opaque_surface_tags.begin(),
+                              m_non_opaque_surface_tags.end(),
+                              surface_tag) == m_non_opaque_surface_tags.end())
+                {
+                    m_non_opaque_surface_tags.emplace_back(surface_tag);
+                }
+            }
         }
 
         auto inside_medium_tag  = instance.inside_medium ? m_renderer.register_medium(command_buffer, instance.inside_medium) : Medium::vacuum_tag;
@@ -126,7 +145,7 @@ void Geometry::process_instance(CommandBuffer& command_buffer, const ShapeInstan
             properties |= Shape::property_flag_has_medium;
         }
 
-        m_accel.emplace_back(*mesh.resource, instance.transform);
+        m_accel.emplace_back(*mesh.resource, instance.transform, 0xffu, !maybe_non_opaque);
 
         // lights
         auto light_tag = 0u;
@@ -177,9 +196,25 @@ Var<Triangle> Geometry::triangle(const Shape::Handle& instance, Expr<uint> index
 
 Var<TriangleHit> Geometry::trace_closest(const Var<Ray>& ray_in) const noexcept
 {
-    auto hit = m_accel->intersect(ray_in, {});
+    if (!m_any_non_opaque)
+    {
+        return m_accel->intersect(ray_in, {});
+    }
 
-    return hit;
+    Callable trace = [this](Var<Ray> ray) noexcept
+    {
+        auto hit = m_accel->traverse(ray, {})
+                       .on_surface_candidate([&](SurfaceCandidate& candidate) noexcept
+                       {
+                           $if(!alpha_skip(candidate.ray(), candidate.hit()))
+                           {
+                               candidate.commit();
+                           };
+                       })
+                       .trace();
+        return Var<TriangleHit>{hit.inst, hit.prim, hit.bary, hit.committed_ray_t};
+    };
+    return trace(ray_in);
 }
 
 luisa::shared_ptr<Interaction> Geometry::intersect(const Var<Ray>& ray) const noexcept
@@ -189,7 +224,51 @@ luisa::shared_ptr<Interaction> Geometry::intersect(const Var<Ray>& ray) const no
 
 Bool Geometry::intersect_any(const Var<Ray>& ray_in) const noexcept
 {
-    return m_accel->intersect_any(ray_in, {});
+    if (!m_any_non_opaque)
+    {
+        return m_accel->intersect_any(ray_in, {});
+    }
+    Callable trace = [this](Var<Ray> ray) noexcept
+    {
+        auto hit = m_accel->traverse_any(ray, {})
+                       .on_surface_candidate([&](SurfaceCandidate& candidate) noexcept
+                       {
+                           $if(!alpha_skip(candidate.ray(), candidate.hit()))
+                           {
+                               candidate.commit();
+                           };
+                       })
+                       .trace();
+        return !hit->miss();
+    };
+    return trace(ray_in);
+}
+
+Float Geometry::evaluate_opacity(const Interaction& interaction, Expr<float> time) const noexcept
+{
+    if (!m_any_non_opaque)
+    {
+        return 1.0f;
+    }
+    auto opacity = def(1.0f);
+    $if(interaction.shape.maybe_non_opaque())
+    {
+        m_renderer.surfaces().dispatch_group(
+            interaction.shape.surface_tag(), m_non_opaque_surface_tags,
+            [&](const Surface::Instance* surface) noexcept
+            {
+                opacity = surface->evaluate_opacity(interaction, time).value_or(1.0f);
+            });
+    };
+    return opacity;
+}
+
+Bool Geometry::alpha_skip(const Var<Ray>& ray, const Var<TriangleHit>& hit) const noexcept
+{
+    auto it      = interaction(ray, hit);
+    auto alpha   = evaluate_opacity(*it, 0.0f);
+    auto sample  = pbrt_hash_float(ray->origin(), ray->direction());
+    return (alpha <= 0.0f) | ((alpha < 1.0f) & (sample > alpha));
 }
 
 UInt2 Geometry::medium_interface(Expr<uint> instance_id) const noexcept

@@ -16,6 +16,8 @@ using namespace luisa::compute;
 [[nodiscard]] ULong pbrt_hash64(Expr<uint2> p) noexcept;
 [[nodiscard]] ULong pbrt_hash64(Expr<uint3> p) noexcept;
 [[nodiscard]] ULong pbrt_hash64(Expr<uint4> p) noexcept;
+[[nodiscard]] Float pbrt_hash_float(Expr<float3> p) noexcept;
+[[nodiscard]] Float pbrt_hash_float(Expr<float3> origin, Expr<float3> direction) noexcept;
 
 class PBRTRNG
 {

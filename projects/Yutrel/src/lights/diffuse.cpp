@@ -1,8 +1,10 @@
 #include "diffuse.h"
 
 #include "base/interaction.h"
+#include "base/geometry.h"
 #include "base/renderer.h"
 #include "scene/scene_builder.h"
+#include "utils/rng.h"
 #include "utils/spectra.h"
 
 namespace Yutrel
@@ -41,7 +43,10 @@ Light::Evaluation DiffuseLight::Closure::evaluate(const Interaction& it_light, c
         auto pdf          = distance_squared(it_light.p_g, p_from) * pdf_area * (1.0f / cos_wo);
         auto two_sided    = light->base<DiffuseLight>()->two_sided();
         auto invalid      = abs(cos_wo) < 1e-6f | (!two_sided & !it_light.front_face);
-        eval              = {.L   = ite(invalid, 0.0f, L),
+        auto alpha        = renderer.geometry()->evaluate_opacity(it_light, time());
+        auto alpha_masked = (alpha <= 0.0f) |
+                            ((alpha < 1.0f) & (pbrt_hash_float(it_light.p_g) > alpha));
+        eval              = {.L   = ite(invalid | alpha_masked, 0.0f, L),
                              .pdf = ite(invalid, 0.0f, pdf),
                              .p   = it_light.p_g,
                              .ng  = it_light.shading.n()};

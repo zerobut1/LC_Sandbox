@@ -1643,6 +1643,30 @@ private:
             .medium_interface = m_current_medium_interface,
             .pbrt_transform   = m_current_transform,
         };
+        const RawParameter* alpha_parameter = nullptr;
+        for (auto&& param : params)
+        {
+            if (param.name != "alpha")
+            {
+                continue;
+            }
+            if (param.type != "float" && param.type != "texture")
+            {
+                fail(param.source, "shape parameter 'alpha' must have type 'float' or 'texture'");
+            }
+            if (alpha_parameter != nullptr)
+            {
+                fail(param.source, "shape alpha cannot be specified more than once");
+            }
+            alpha_parameter = &param;
+        }
+        shape.alpha         = one_float(params, "alpha", command, 1.0f);
+        shape.alpha_texture = optional_texture(params, "alpha");
+        if (!std::isfinite(shape.alpha))
+        {
+            fail(alpha_parameter == nullptr ? command.loc : alpha_parameter->source,
+                 "shape alpha must be finite");
+        }
         if (type == "sphere")
         {
             shape.type             = ShapeDesc::Type::Sphere;
@@ -1650,6 +1674,10 @@ private:
             auto subdivision_count = 0u;
             for (auto&& param : params)
             {
+                if (param.name == "alpha")
+                {
+                    continue;
+                }
                 if (param.name == "zmin" || param.name == "zmax" || param.name == "phimax")
                 {
                     fail(param.source, luisa::format("PBRT sphere clipping parameter '{}' is not supported", param.name));

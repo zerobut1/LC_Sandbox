@@ -263,6 +263,8 @@ struct ShapeDesc
     luisa::optional<std::filesystem::path> filename;
     float radius{1.0f};
     uint sphere_subdivision{sphere_default_subdivision};
+    float alpha{1.0f};
+    luisa::optional<luisa::string> alpha_texture;
     luisa::vector<RawParameter> parameters;
     MaterialBinding material;
     luisa::optional<AreaLightDesc> area_light;

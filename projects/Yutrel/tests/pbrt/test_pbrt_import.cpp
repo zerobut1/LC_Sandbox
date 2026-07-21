@@ -7,6 +7,7 @@
 #include "environments/distant.h"
 #include "environments/grouped.h"
 #include "environments/uniform.h"
+#include "filters/gaussian.h"
 #include "integrators/vol_path.h"
 #include "media/homogeneous.h"
 #include "pbrt/pbrt_importer.h"
@@ -370,6 +371,7 @@ static auto test_pbrt_import_registration = []
         expect(defaults.sampler.seed == 20120712u);
         expect(defaults.filter.type == FilterDesc::Type::Gaussian);
         expect(is_near(defaults.filter.radius.x, 1.5f));
+        expect(is_near(defaults.filter.sigma, 0.5f));
         expect(defaults.film.resolution.x == 1280u);
         expect(defaults.film.resolution.y == 720u);
         expect(defaults.film.filename == std::filesystem::path{"pbrt.exr"});
@@ -414,16 +416,71 @@ static auto test_pbrt_import_registration = []
         gaussian.integrator.type       = IntegratorDesc::Type::Path;
         gaussian.sampler.type          = SamplerDesc::Type::Independent;
         gaussian.sampler.pixel_samples = 4u;
-        rejected                       = false;
+        auto gaussian_spec             = PbrtImporter::import(std::move(gaussian));
+        auto&& gaussian_filter          = static_cast<const GaussianFilterSpec&>(
+            gaussian_spec.filters().spec(gaussian_spec.render().filter));
+        expect(!gaussian_filter.validate().has_value());
+    };
+
+    "reject_invalid_gaussian_filter"_test = []
+    {
+        for (auto sigma : {
+                 0.0f,
+                 -0.5f,
+                 std::numeric_limits<float>::infinity(),
+                 std::numeric_limits<float>::quiet_NaN(),
+             })
+        {
+            auto scene                  = PbrtParser::parse("tests/scenes/pbrt_defaults.pbrt");
+            scene.integrator.type       = IntegratorDesc::Type::Path;
+            scene.sampler.type          = SamplerDesc::Type::Independent;
+            scene.sampler.pixel_samples = 4u;
+            scene.filter.sigma          = sigma;
+            auto rejected               = false;
+            try
+            {
+                (void)PbrtImporter::import(std::move(scene));
+            }
+            catch (const std::runtime_error& error)
+            {
+                rejected = std::string{error.what()}.find("sigma") != std::string::npos;
+            }
+            expect(rejected);
+        }
+
+        auto wrong_type                  = PbrtParser::parse("tests/scenes/pbrt_defaults.pbrt");
+        wrong_type.integrator.type       = IntegratorDesc::Type::Path;
+        wrong_type.sampler.type          = SamplerDesc::Type::Independent;
+        wrong_type.sampler.pixel_samples = 4u;
+        wrong_type.filter.parameters.emplace_back(test_parameter("integer", "sigma", 42u));
+        auto wrong_type_rejected = false;
         try
         {
-            (void)PbrtImporter::import(std::move(gaussian));
+            (void)PbrtImporter::import(std::move(wrong_type));
         }
         catch (const std::runtime_error& error)
         {
-            rejected = std::string{error.what()}.find("gaussian") != std::string::npos;
+            auto message        = std::string{error.what()};
+            wrong_type_rejected = message.find("sigma") != std::string::npos &&
+                                  message.find("expected 'float'") != std::string::npos;
         }
-        expect(rejected);
+        expect(wrong_type_rejected);
+
+        auto unequal                  = PbrtParser::parse("tests/scenes/pbrt_defaults.pbrt");
+        unequal.integrator.type       = IntegratorDesc::Type::Path;
+        unequal.sampler.type          = SamplerDesc::Type::Independent;
+        unequal.sampler.pixel_samples = 4u;
+        unequal.filter.radius         = luisa::make_float2(1.0f, 1.5f);
+        auto unequal_rejected         = false;
+        try
+        {
+            (void)PbrtImporter::import(std::move(unequal));
+        }
+        catch (const std::runtime_error& error)
+        {
+            unequal_rejected = std::string{error.what()}.find("equal x/y radii") != std::string::npos;
+        }
+        expect(unequal_rejected);
     };
 
     "reject_halton_sampler"_test = []

@@ -101,6 +101,7 @@ struct FilterDesc
     };
     Type type{Type::Gaussian};
     float2 radius{1.5f, 1.5f};
+    float sigma{0.5f};
     luisa::vector<RawParameter> parameters;
 };
 

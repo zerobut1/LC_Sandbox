@@ -965,6 +965,10 @@ private:
         auto default_radius      = m_desc.filter.type == FilterDesc::Type::Triangle ? 2.0f : 1.5f;
         m_desc.filter.radius     = make_float2(one_float(params, "xradius", command, default_radius),
                                                one_float(params, "yradius", command, default_radius));
+        if (m_desc.filter.type == FilterDesc::Type::Gaussian)
+        {
+            m_desc.filter.sigma = one_float(params, "sigma", command, 0.5f);
+        }
         m_desc.filter.parameters = std::move(params);
     }
 

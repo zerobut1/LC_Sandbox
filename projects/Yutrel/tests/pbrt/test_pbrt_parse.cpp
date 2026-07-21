@@ -97,6 +97,21 @@ static auto test_pbrt_parse_registration = []
             {"sobol_sampler_bad_randomization.pbrt", "randomization", "fastowen"}));
     };
 
+    "parse_gaussian_filter"_test = []
+    {
+        auto defaults = PbrtParser::parse("tests/scenes/pbrt_defaults.pbrt");
+        expect(defaults.filter.type == FilterDesc::Type::Gaussian);
+        expect(is_near(defaults.filter.radius.x, 1.5f));
+        expect(is_near(defaults.filter.radius.y, 1.5f));
+        expect(is_near(defaults.filter.sigma, 0.5f));
+
+        auto explicit_filter = PbrtParser::parse("tests/scenes/gaussian_filter.pbrt");
+        expect(explicit_filter.filter.type == FilterDesc::Type::Gaussian);
+        expect(is_near(explicit_filter.filter.radius.x, 1.25f));
+        expect(is_near(explicit_filter.filter.radius.y, 1.25f));
+        expect(is_near(explicit_filter.filter.sigma, 0.25f));
+    };
+
     "parse_imagemap_filters"_test = []
     {
         auto scene = PbrtParser::parse("tests/scenes/imagemap_filters.pbrt");

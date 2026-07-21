@@ -1,0 +1,6 @@
+PixelFilter "gaussian"
+    "float xradius" [1.25]
+    "float yradius" [1.25]
+    "float sigma" [0.25]
+
+WorldBegin

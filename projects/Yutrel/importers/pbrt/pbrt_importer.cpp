@@ -24,6 +24,7 @@
 #include "environments/null.h"
 #include "environments/pbrt_equal_area.h"
 #include "environments/uniform.h"
+#include "filters/gaussian.h"
 #include "filters/triangle.h"
 #include "integrators/path.h"
 #include "integrators/vol_path.h"
@@ -336,15 +337,23 @@ void validate_pbrt_scene(const PbrtScene& scene)
         validate_parameters(scene.sampler.parameters, "Sampler 'sobol'", sobol_allowed);
     }
 
-    if (scene.filter.type == FilterDesc::Type::Gaussian)
-    {
-        fail(scene.filter.source, "PBRT PixelFilter 'gaussian' is not implemented faithfully by Yutrel.");
-    }
-    static constexpr std::array filter_allowed{
+    static constexpr std::array triangle_filter_allowed{
         ParameterKey{"float", "xradius"},
         ParameterKey{"float", "yradius"},
     };
-    validate_parameters(scene.filter.parameters, "PixelFilter 'triangle'", filter_allowed);
+    static constexpr std::array gaussian_filter_allowed{
+        ParameterKey{"float", "xradius"},
+        ParameterKey{"float", "yradius"},
+        ParameterKey{"float", "sigma"},
+    };
+    if (scene.filter.type == FilterDesc::Type::Gaussian)
+    {
+        validate_parameters(scene.filter.parameters, "PixelFilter 'gaussian'", gaussian_filter_allowed);
+    }
+    else
+    {
+        validate_parameters(scene.filter.parameters, "PixelFilter 'triangle'", triangle_filter_allowed);
+    }
 
     static constexpr std::array film_allowed{
         ParameterKey{"integer", "xresolution"},
@@ -1302,7 +1311,7 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         case FilterDesc::Type::Triangle:
             return builder.add_filter<TriangleFilterSpec>(SpecMeta{.name = "pbrt_filter", .source = scene.filter.source}, scene.filter.radius.x);
         case FilterDesc::Type::Gaussian:
-            break;
+            return builder.add_filter<GaussianFilterSpec>(SpecMeta{.name = "pbrt_filter", .source = scene.filter.source}, scene.filter.radius.x, scene.filter.sigma);
         }
         fail("Unsupported PBRT pixel filter.");
     }();
@@ -1336,16 +1345,18 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
     auto result = builder.finish();
 
     auto randomization = scene.sampler.type == SamplerDesc::Type::Sobol ? "fastowen" : "n/a";
+    auto filter_summary = scene.filter.type == FilterDesc::Type::Gaussian
+                              ? luisa::format("gaussian, radius=({}, {}), sigma={}", scene.filter.radius.x, scene.filter.radius.y, scene.filter.sigma)
+                              : luisa::format("triangle, radius=({}, {})", scene.filter.radius.x, scene.filter.radius.y);
     LUISA_INFO(
-        "PBRT render config: integrator={}, max_depth={}, rr=pbrt-v4, light_sampler=yutrel-uniform; sampler={}, spp={}, seed={}, randomization={}; filter=triangle, radius=({}, {}).",
+        "PBRT render config: integrator={}, max_depth={}, rr=pbrt-v4, light_sampler=yutrel-uniform; sampler={}, spp={}, seed={}, randomization={}; filter={}.",
         scene.integrator.type == IntegratorDesc::Type::Path ? "path" : "volpath",
         scene.integrator.max_depth,
         sampler_name(scene.sampler.type),
         scene.sampler.pixel_samples,
         scene.sampler.seed,
         randomization,
-        scene.filter.radius.x,
-        scene.filter.radius.y);
+        filter_summary);
     LUISA_INFO(
         "PBRT film: type=rgb, resolution={}x{}, ISO={}, imaging_ratio={}, output='{}'.",
         scene.film.resolution.x,

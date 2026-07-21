@@ -1,0 +1,21 @@
+target("test_Yutrel_cli_options")
+    set_kind("binary")
+    set_default(false)
+    set_group("tests/Yutrel/app")
+    set_rundir("$(projectdir)/projects/Yutrel")
+
+    add_files("test_cli_options.cpp", "../../app/cli_options.cpp")
+    add_includedirs("../../app", "$(projectdir)/ext/LuisaCompute/src/tests")
+    add_deps("lc-core")
+target_end()
+
+target("test_Yutrel_scene_loader")
+    set_kind("binary")
+    set_default(false)
+    set_group("tests/Yutrel/app")
+    set_rundir("$(projectdir)/projects/Yutrel")
+
+    add_files("test_scene_loader.cpp", "../../app/scene_loader.cpp")
+    add_includedirs("../../app", "$(projectdir)/ext/LuisaCompute/src/tests")
+    add_deps("YutrelPbrt")
+target_end()

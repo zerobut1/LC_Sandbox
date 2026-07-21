@@ -62,7 +62,7 @@ namespace
 luisa::string command_line_usage(luisa::string_view bin)
 {
     return luisa::format(
-        "Usage: {} <backend> <scene.pbrt> [--interactive|-i] [--headless] "
+        "Usage: {} <backend> <scene> [--interactive|-i] [--headless] "
         "[--spp N] [--seed N] [--resolution WIDTHxHEIGHT] [--output PATH.exr]. "
         "<backend>: cuda, dx, vk, metal",
         bin);
@@ -142,10 +142,6 @@ CommandLineOptions parse_command_line(int argc, char* argv[])
         }
 
         auto candidate = std::filesystem::path{arg};
-        if (!has_extension(candidate, ".pbrt"))
-        {
-            fail(luisa::format("Unsupported scene file '{}'. Expected a .pbrt file.", candidate.string()));
-        }
         if (has_scene_path)
         {
             fail(luisa::format("Multiple scene files specified: '{}' and '{}'.",
@@ -161,14 +157,6 @@ CommandLineOptions parse_command_line(int argc, char* argv[])
         fail("--interactive and --headless cannot be used together.");
     }
     return options;
-}
-
-void apply_cli_overrides(PbrtScene& scene, const CliOverrides& overrides)
-{
-    if (overrides.spp) { scene.sampler.pixel_samples = *overrides.spp; }
-    if (overrides.seed) { scene.sampler.seed = *overrides.seed; }
-    if (overrides.resolution) { scene.film.resolution = *overrides.resolution; }
-    if (overrides.output) { scene.film.filename = *overrides.output; }
 }
 
 } // namespace Yutrel

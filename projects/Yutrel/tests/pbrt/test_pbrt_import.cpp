@@ -1,6 +1,7 @@
 #include "ut/ut.hpp"
 
 #include "base/film.h"
+#include "base/scene.h"
 #include "base/shape.h"
 #include "cameras/pinhole.h"
 #include "environments/distant.h"
@@ -81,6 +82,24 @@ namespace
 
 static auto test_pbrt_import_registration = []
 {
+    "import_path_applies_overrides"_test = []
+    {
+        auto output = std::filesystem::absolute("override.exr");
+        auto spec   = PbrtImporter::import(
+            "tests/scenes/import_geometry.pbrt",
+            PbrtImportOptions{
+                .spp        = 16u,
+                .seed       = 42u,
+                .resolution = make_uint2(320u, 200u),
+                .output     = output,
+            });
+        auto scene = Scene::create(spec);
+        expect(scene->sampler()->spp() == 16u);
+        expect(scene->sampler()->seed() == 42u);
+        expect(luisa::all(scene->film()->resolution() == make_uint2(320u, 200u)));
+        expect(scene->film()->filename() == output);
+    };
+
     "validate_rgb_film_spec"_test = []
     {
         expect(!RGBFilmSpec{make_uint2(16u), false, "render.exr"}.validate().has_value());

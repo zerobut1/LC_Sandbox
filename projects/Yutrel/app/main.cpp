@@ -1,7 +1,6 @@
-#include "base/application.h"
+#include "application.h"
 #include "cli_options.h"
-#include "pbrt/pbrt_importer.h"
-#include "pbrt/pbrt_parser.h"
+#include "scene_loader.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -13,9 +12,7 @@ int main(int argc, char* argv[])
 try
 {
     auto cli        = parse_command_line(argc, argv);
-    auto pbrt_scene = PbrtParser::parse(cli.scene_path);
-    apply_cli_overrides(pbrt_scene, cli.overrides);
-    auto scene = PbrtImporter::import(std::move(pbrt_scene));
+    auto scene      = load_scene(cli.scene_path, cli.overrides);
     ApplicationOptions options{
         .bin         = argv[0],
         .backend     = cli.backend,

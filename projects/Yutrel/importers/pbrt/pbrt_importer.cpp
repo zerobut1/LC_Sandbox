@@ -1,5 +1,7 @@
 #include "pbrt_importer.h"
 
+#include "pbrt_parser.h"
+
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -744,6 +746,18 @@ void validate_pbrt_scene(const PbrtScene& scene)
 }
 
 } // namespace
+
+SceneSpec PbrtImporter::import(
+    const std::filesystem::path& path,
+    PbrtImportOptions options)
+{
+    auto scene = PbrtParser::parse(path);
+    if (options.spp) { scene.sampler.pixel_samples = *options.spp; }
+    if (options.seed) { scene.sampler.seed = *options.seed; }
+    if (options.resolution) { scene.film.resolution = *options.resolution; }
+    if (options.output) { scene.film.filename = std::move(*options.output); }
+    return import(std::move(scene));
+}
 
 SceneSpec PbrtImporter::import(PbrtScene scene)
 {

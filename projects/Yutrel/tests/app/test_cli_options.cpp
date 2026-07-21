@@ -1,5 +1,4 @@
-// Test for Yutrel command-line options.
-// This test covers parsing, validation, and PBRT scene overrides.
+// Test for Yutrel command-line option parsing and validation.
 
 #include "ut/ut.hpp"
 
@@ -59,21 +58,11 @@ static auto test_cli_options_registration = []
         expect(options.overrides.output && options.overrides.output->is_absolute());
     };
 
-    "apply_scene_overrides"_test = []
+    "accept_scene_format_for_dispatch"_test = []
     {
-        PbrtScene scene;
-        expect(scene.sampler.seed == 20120712u);
-        CliOverrides overrides{
-            .spp        = 16u,
-            .seed       = 42u,
-            .resolution = luisa::make_uint2(320u, 200u),
-            .output     = std::filesystem::path{"override.exr"},
-        };
-        apply_cli_overrides(scene, overrides);
-        expect(scene.sampler.pixel_samples == 16u);
-        expect(scene.sampler.seed == 42u);
-        expect(luisa::all(scene.film.resolution == luisa::make_uint2(320u, 200u)));
-        expect(scene.film.filename == std::filesystem::path{"override.exr"});
+        auto options = parse({"Yutrel", "dx", "scene.gltf", "--headless"});
+        expect(options.scene_path == std::filesystem::path{"scene.gltf"});
+        expect(options.headless);
     };
 
     "reject_invalid_options"_test = []

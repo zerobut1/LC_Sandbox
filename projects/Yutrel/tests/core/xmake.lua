@@ -1,0 +1,25 @@
+local function yutrel_core_test(name, common)
+    target("test_Yutrel_" .. name)
+        set_kind("binary")
+        set_default(false)
+        set_group("tests/Yutrel/core")
+        set_rundir("$(projectdir)/projects/Yutrel")
+
+        add_files("test_" .. name .. ".cpp")
+        add_includedirs("$(projectdir)/ext/LuisaCompute/src/tests")
+        if common then
+            add_includedirs("$(projectdir)/ext/LuisaCompute/src/tests/common")
+        end
+        add_deps("YutrelCore")
+    target_end()
+end
+
+yutrel_core_test("robustness", true)
+yutrel_core_test("coated_diffuse")
+yutrel_core_test("color_space")
+yutrel_core_test("filter")
+yutrel_core_test("camera")
+yutrel_core_test("interaction")
+yutrel_core_test("sobol")
+yutrel_core_test("spectrum")
+yutrel_core_test("medium")

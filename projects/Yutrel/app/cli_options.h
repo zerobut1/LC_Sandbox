@@ -5,8 +5,6 @@
 #include <luisa/core/basic_types.h>
 #include <luisa/core/stl.h>
 
-#include "pbrt/pbrt_scene.h"
-
 namespace Yutrel
 {
 using namespace luisa;
@@ -30,6 +28,5 @@ struct CommandLineOptions
 
 [[nodiscard]] luisa::string command_line_usage(luisa::string_view bin);
 [[nodiscard]] CommandLineOptions parse_command_line(int argc, char* argv[]);
-void apply_cli_overrides(PbrtScene& scene, const CliOverrides& overrides);
 
 } // namespace Yutrel

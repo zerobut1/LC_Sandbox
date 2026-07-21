@@ -212,9 +212,7 @@ Var<TriangleHit> Geometry::trace_closest(const Var<Ray>& ray_in) const noexcept
                            };
                        })
                        .trace();
-        // CommittedHit uses hit_type for misses; TriangleHit uses an invalid instance ID.
-        auto inst = ite(hit->miss(), ~0u, hit.inst);
-        return Var<TriangleHit>{inst, hit.prim, hit.bary, hit.committed_ray_t};
+        return Var<TriangleHit>{hit.inst, hit.prim, hit.bary, hit.committed_ray_t};
     };
     return trace(ray_in);
 }

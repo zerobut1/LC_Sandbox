@@ -1,5 +1,6 @@
 #include "pbrt_parser.h"
 
+#include <bit>
 #include <charconv>
 #include <cmath>
 #include <cstdint>
@@ -923,6 +924,13 @@ private:
             auto parameter = find_param(params, "integer", "pixelsamples");
             fail(parameter == nullptr ? command.loc : parameter->source,
                  "'integer pixelsamples' must be greater than zero");
+        }
+        if (m_desc.sampler.type == SamplerDesc::Type::ZSobol &&
+            !std::has_single_bit(m_desc.sampler.pixel_samples))
+        {
+            auto parameter = find_param(params, "integer", "pixelsamples");
+            fail(parameter == nullptr ? command.loc : parameter->source,
+                 "ZSobol 'integer pixelsamples' must be a power of two");
         }
         if (m_desc.sampler.type == SamplerDesc::Type::Independent ||
             m_desc.sampler.type == SamplerDesc::Type::Sobol ||

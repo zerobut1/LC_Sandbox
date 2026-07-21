@@ -1,0 +1,6 @@
+Sampler "zsobol"
+    "integer pixelsamples" [ 32 ]
+    "integer seed" [ 42 ]
+    "string randomization" [ "fastowen" ]
+
+WorldBegin

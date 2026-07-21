@@ -32,6 +32,7 @@
 #include "media/homogeneous.h"
 #include "samplers/independent.h"
 #include "samplers/sobol.h"
+#include "samplers/zsobol.h"
 #include "scene/scene_spec_builder.h"
 #include "shapes/inline_mesh.h"
 #include "shapes/mesh.h"
@@ -314,10 +315,20 @@ void validate_pbrt_scene(const PbrtScene& scene)
     static constexpr std::array integrator_allowed{ParameterKey{"integer", "maxdepth"}};
     validate_parameters(scene.integrator.parameters, scene.integrator.type == IntegratorDesc::Type::Path ? "Integrator 'path'" : "Integrator 'volpath'", integrator_allowed);
 
-    if (scene.sampler.type == SamplerDesc::Type::Halton ||
-        scene.sampler.type == SamplerDesc::Type::ZSobol)
+    if (scene.sampler.type == SamplerDesc::Type::Halton)
     {
         fail(scene.sampler.source, luisa::format("PBRT Sampler '{}' is not implemented by Yutrel.", sampler_name(scene.sampler.type)));
+    }
+    if (scene.sampler.type == SamplerDesc::Type::ZSobol)
+    {
+        if (scene.sampler.pixel_samples == 0u)
+        {
+            fail(scene.sampler.source, "ZSobol pixel sample count must be greater than zero.");
+        }
+        if (!std::has_single_bit(scene.sampler.pixel_samples))
+        {
+            fail(scene.sampler.source, "ZSobol pixel sample count must be a power of two.");
+        }
     }
     static constexpr std::array independent_allowed{
         ParameterKey{"integer", "pixelsamples"},
@@ -332,9 +343,13 @@ void validate_pbrt_scene(const PbrtScene& scene)
     {
         validate_parameters(scene.sampler.parameters, "Sampler 'independent'", independent_allowed);
     }
-    else
+    else if (scene.sampler.type == SamplerDesc::Type::Sobol)
     {
         validate_parameters(scene.sampler.parameters, "Sampler 'sobol'", sobol_allowed);
+    }
+    else
+    {
+        validate_parameters(scene.sampler.parameters, "Sampler 'zsobol'", sobol_allowed);
     }
 
     static constexpr std::array triangle_filter_allowed{
@@ -1324,8 +1339,9 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
             return builder.add_sampler<IndependentSamplerSpec>(SpecMeta{.name = "pbrt_sampler", .source = scene.sampler.source}, scene.sampler.pixel_samples, scene.sampler.seed);
         case SamplerDesc::Type::Sobol:
             return builder.add_sampler<SobolSamplerSpec>(SpecMeta{.name = "pbrt_sampler", .source = scene.sampler.source}, scene.sampler.pixel_samples, scene.sampler.seed);
-        case SamplerDesc::Type::Halton:
         case SamplerDesc::Type::ZSobol:
+            return builder.add_sampler<ZSobolSamplerSpec>(SpecMeta{.name = "pbrt_sampler", .source = scene.sampler.source}, scene.sampler.pixel_samples, scene.sampler.seed);
+        case SamplerDesc::Type::Halton:
             break;
         }
         fail("Unsupported PBRT sampler type.");
@@ -1344,7 +1360,10 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
     });
     auto result = builder.finish();
 
-    auto randomization = scene.sampler.type == SamplerDesc::Type::Sobol ? "fastowen" : "n/a";
+    auto randomization = scene.sampler.type == SamplerDesc::Type::Sobol ||
+                                 scene.sampler.type == SamplerDesc::Type::ZSobol
+                             ? "fastowen"
+                             : "n/a";
     auto filter_summary = scene.filter.type == FilterDesc::Type::Gaussian
                               ? luisa::format("gaussian, radius=({}, {}), sigma={}", scene.filter.radius.x, scene.filter.radius.y, scene.filter.sigma)
                               : luisa::format("triangle, radius=({}, {})", scene.filter.radius.x, scene.filter.radius.y);

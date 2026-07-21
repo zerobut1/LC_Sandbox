@@ -87,6 +87,19 @@ static auto test_pbrt_parse_registration = []
         expect(defaults.sampler.seed == 20120712u);
     };
 
+    "parse_zsobol_sampler"_test = []
+    {
+        auto scene = PbrtParser::parse("tests/scenes/zsobol_sampler.pbrt");
+        expect(scene.sampler.type == SamplerDesc::Type::ZSobol);
+        expect(scene.sampler.pixel_samples == 32u);
+        expect(scene.sampler.seed == 42u);
+
+        auto defaults = PbrtParser::parse("tests/scenes/zsobol_sampler_default.pbrt");
+        expect(defaults.sampler.type == SamplerDesc::Type::ZSobol);
+        expect(defaults.sampler.pixel_samples == 16u);
+        expect(defaults.sampler.seed == 20120712u);
+    };
+
     "reject_invalid_sobol_sampler"_test = []
     {
         expect(parse_error_contains(
@@ -95,6 +108,19 @@ static auto test_pbrt_parse_registration = []
         expect(parse_error_contains(
             "tests/scenes/sobol_sampler_bad_randomization.pbrt",
             {"sobol_sampler_bad_randomization.pbrt", "randomization", "fastowen"}));
+    };
+
+    "reject_invalid_zsobol_sampler"_test = []
+    {
+        expect(parse_error_contains(
+            "tests/scenes/zsobol_sampler_zero_spp.pbrt",
+            {"zsobol_sampler_zero_spp.pbrt", "pixelsamples", "greater than zero"}));
+        expect(parse_error_contains(
+            "tests/scenes/zsobol_sampler_non_power_two.pbrt",
+            {"zsobol_sampler_non_power_two.pbrt", "pixelsamples", "power of two"}));
+        expect(parse_error_contains(
+            "tests/scenes/zsobol_sampler_bad_randomization.pbrt",
+            {"zsobol_sampler_bad_randomization.pbrt", "randomization", "fastowen"}));
     };
 
     "parse_gaussian_filter"_test = []

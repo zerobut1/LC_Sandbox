@@ -14,6 +14,7 @@
 #include "pbrt/pbrt_parser.h"
 #include "samplers/independent.h"
 #include "samplers/sobol.h"
+#include "samplers/zsobol.h"
 #include "shapes/mesh.h"
 #include "shapes/sphere.h"
 #include "surfaces/coated_diffuse.h"
@@ -306,6 +307,38 @@ static auto test_pbrt_import_registration = []
         expect(!sampler.validate().has_value());
     };
 
+    "import_zsobol_sampler"_test = []
+    {
+        auto parsed                  = PbrtParser::parse("tests/scenes/import_geometry.pbrt");
+        parsed.sampler.type          = SamplerDesc::Type::ZSobol;
+        parsed.sampler.pixel_samples = 32u;
+        parsed.sampler.seed          = 42u;
+        auto spec                    = PbrtImporter::import(std::move(parsed));
+        auto&& sampler               = static_cast<const ZSobolSamplerSpec&>(
+            spec.samplers().spec(spec.render().sampler));
+        expect(sampler.spp() == 32u);
+        expect(sampler.seed() == 42u);
+        expect(!sampler.validate().has_value());
+        expect(ZSobolSamplerSpec{3u, 42u}.validate().has_value());
+        expect(ZSobolSamplerSpec{0u, 42u}.validate().has_value());
+    };
+
+    "reject_invalid_zsobol_override"_test = []
+    {
+        auto rejected = false;
+        try
+        {
+            (void)PbrtImporter::import(
+                "tests/scenes/zsobol_sampler_default.pbrt",
+                PbrtImportOptions{.spp = 3u});
+        }
+        catch (const std::runtime_error& error)
+        {
+            rejected = std::string{error.what()}.find("power of two") != std::string::npos;
+        }
+        expect(rejected);
+    };
+
     "import_independent_sampler_seed"_test = []
     {
         auto parsed    = PbrtParser::parse("tests/scenes/import_geometry.pbrt");
@@ -361,7 +394,7 @@ static auto test_pbrt_import_registration = []
         expect(rejected);
     };
 
-    "pbrt_v4_volpath_is_supported_while_other_defaults_are_rejected"_test = []
+    "pbrt_v4_defaults_are_supported"_test = []
     {
         auto defaults = PbrtParser::parse("tests/scenes/pbrt_defaults.pbrt");
         expect(defaults.integrator.type == IntegratorDesc::Type::VolPath);
@@ -378,39 +411,21 @@ static auto test_pbrt_import_registration = []
         expect(is_near(defaults.camera.fov, 90.0f));
         expect(is_near(defaults.materials.front().reflectance.x, 0.5f));
 
-        auto supported                  = defaults;
-        supported.sampler.type          = SamplerDesc::Type::Independent;
-        supported.sampler.pixel_samples = 4u;
-        supported.filter.type           = FilterDesc::Type::Triangle;
-        supported.filter.radius         = luisa::make_float2(1.0f);
-        auto volpath_spec               = PbrtImporter::import(std::move(supported));
+        auto volpath_spec               = PbrtImporter::import(defaults);
         auto&& volpath                  = static_cast<const VolPathIntegratorSpec&>(
             volpath_spec.integrators().spec(volpath_spec.render().integrator));
         expect(!volpath.validate().has_value());
-
-        auto rejected = false;
-        try
-        {
-            (void)PbrtImporter::import(std::move(defaults));
-        }
-        catch (const std::runtime_error& error)
-        {
-            rejected = std::string{error.what()}.find("zsobol") != std::string::npos;
-        }
-        expect(rejected);
+        auto&& default_sampler          = static_cast<const ZSobolSamplerSpec&>(
+            volpath_spec.samplers().spec(volpath_spec.render().sampler));
+        expect(default_sampler.spp() == 16u);
+        expect(default_sampler.seed() == 20120712u);
 
         auto zsobol            = PbrtParser::parse("tests/scenes/pbrt_defaults.pbrt");
         zsobol.integrator.type = IntegratorDesc::Type::Path;
-        rejected               = false;
-        try
-        {
-            (void)PbrtImporter::import(std::move(zsobol));
-        }
-        catch (const std::runtime_error& error)
-        {
-            rejected = std::string{error.what()}.find("zsobol") != std::string::npos;
-        }
-        expect(rejected);
+        auto path_spec         = PbrtImporter::import(std::move(zsobol));
+        auto&& path_sampler    = static_cast<const ZSobolSamplerSpec&>(
+            path_spec.samplers().spec(path_spec.render().sampler));
+        expect(!path_sampler.validate().has_value());
 
         auto gaussian                  = PbrtParser::parse("tests/scenes/pbrt_defaults.pbrt");
         gaussian.integrator.type       = IntegratorDesc::Type::Path;

@@ -204,6 +204,35 @@ static auto test_pbrt_import_registration = []
         }
     };
 
+    "import_camera_converts_pbrt_short_axis_fov_to_vertical"_test = []
+    {
+        auto parsed             = PbrtParser::parse("tests/scenes/import_geometry.pbrt");
+        parsed.camera.fov       = 30.0f;
+        parsed.film.resolution  = make_uint2(1280u, 1800u);
+        auto portrait_spec      = PbrtImporter::import(parsed);
+        auto portrait_camera    = dynamic_cast<const PinholeCameraSpec*>(
+            &portrait_spec.cameras().spec(portrait_spec.render().camera));
+        expect(portrait_camera != nullptr);
+        if (portrait_camera != nullptr)
+        {
+            auto expected = 2.0f * std::atan(
+                std::tan(0.5f * 30.0f * 0.01745329251994329577f) *
+                (1800.0f / 1280.0f)) *
+                            57.295779513082320876f;
+            expect(is_near(portrait_camera->fov(), expected));
+        }
+
+        parsed.film.resolution = make_uint2(1800u, 1280u);
+        auto landscape_spec    = PbrtImporter::import(std::move(parsed));
+        auto landscape_camera  = dynamic_cast<const PinholeCameraSpec*>(
+            &landscape_spec.cameras().spec(landscape_spec.render().camera));
+        expect(landscape_camera != nullptr);
+        if (landscape_camera != nullptr)
+        {
+            expect(is_near(landscape_camera->fov(), 30.0f));
+        }
+    };
+
     "reject_invalid_camera_transform_with_source"_test = []
     {
         auto singular = identity_matrix4;

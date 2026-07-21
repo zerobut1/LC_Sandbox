@@ -51,6 +51,21 @@ static_assert(ShapeDesc::sphere_max_subdivision == Sphere::max_subdivision);
 namespace
 {
 
+[[nodiscard]] float pbrt_vertical_fov(float fov, uint2 resolution) noexcept
+{
+    if (resolution.x >= resolution.y)
+    {
+        return fov;
+    }
+    constexpr auto degrees_to_radians = 0.01745329251994329577f;
+    constexpr auto radians_to_degrees = 57.295779513082320876f;
+    auto aspect_scale = static_cast<float>(resolution.y) /
+                        static_cast<float>(resolution.x);
+    return 2.0f * std::atan(
+                      std::tan(0.5f * fov * degrees_to_radians) * aspect_scale) *
+           radians_to_degrees;
+}
+
 [[noreturn]] void fail(luisa::string message)
 {
     throw std::runtime_error{message.c_str()};
@@ -1187,12 +1202,13 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
     {
         fail("PBRT Film exposure ratio is not finite.");
     }
+    auto vertical_fov = pbrt_vertical_fov(scene.camera.fov, scene.film.resolution);
     auto camera = builder.add_camera<PinholeCameraSpec>(
         SpecMeta{.name = "pbrt_camera", .source = scene.camera.source},
         camera_transform,
         shutter_span,
         0u,
-        scene.camera.fov);
+        vertical_fov);
     auto film = builder.add_film<RGBFilmSpec>(
         SpecMeta{.name = "pbrt_film", .source = scene.film.source},
         scene.film.resolution,
@@ -1262,8 +1278,9 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         imaging_ratio,
         filename.string());
     LUISA_INFO(
-        "PBRT camera: type=perspective, fov={}, shutter=[{}, {}], camera_to_world_columns=[({}, {}, {}, {}), ({}, {}, {}, {}), ({}, {}, {}, {}), ({}, {}, {}, {})], linear_determinant={}.",
+        "PBRT camera: type=perspective, fov={}, vertical_fov={}, shutter=[{}, {}], camera_to_world_columns=[({}, {}, {}, {}), ({}, {}, {}, {}), ({}, {}, {}, {}), ({}, {}, {}, {})], linear_determinant={}.",
         scene.camera.fov,
+        vertical_fov,
         scene.camera.shutter_open,
         scene.camera.shutter_close,
         camera_transform[0].x,

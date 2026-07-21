@@ -82,6 +82,7 @@ public:
     }
     [[nodiscard]] auto camera_to_world() const noexcept { return _camera_to_world; }
     [[nodiscard]] auto shutter_span() const noexcept { return _shutter_span; }
+    [[nodiscard]] auto fov() const noexcept { return _fov; }
     [[nodiscard]] const Camera* build(SceneBuilder& builder) const noexcept override;
 };
 

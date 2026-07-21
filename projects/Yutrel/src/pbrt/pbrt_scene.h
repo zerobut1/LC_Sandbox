@@ -130,10 +130,17 @@ struct TextureDesc
         Point,
         Bilinear,
     };
+    enum class Encoding
+    {
+        Automatic,
+        Linear,
+        SRGB,
+    };
     luisa::string name;
     ValueType value_type{ValueType::Float};
     Type type{Type::Constant};
     Filter filter{Filter::Bilinear};
+    Encoding encoding{Encoding::Automatic};
     std::filesystem::path filename;
     float2 uv_scale{1.0f, 1.0f};
     float image_scale{1.0f};

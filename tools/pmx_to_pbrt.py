@@ -50,7 +50,7 @@ class PmxReader:
         end = self.offset + size
         if size < 0 or end > len(self.data):
             raise ValueError(f"Unexpected end of PMX at byte {self.offset}")
-        result = self.data[self.offset:end].tobytes()
+        result = self.data[self.offset : end].tobytes()
         self.offset = end
         return result
 
@@ -236,9 +236,7 @@ def winding_needs_flip(model: PmxModel) -> bool:
             e1[2] * e2[0] - e1[0] * e2[2],
             e1[0] * e2[1] - e1[1] * e2[0],
         )
-        normal = tuple(
-            v0.normal[i] + v1.normal[i] + v2.normal[i] for i in range(3)
-        )
+        normal = tuple(v0.normal[i] + v1.normal[i] + v2.normal[i] for i in range(3))
         cross_length = math.sqrt(sum(value * value for value in cross))
         normal_length = math.sqrt(sum(value * value for value in normal))
         if cross_length > 1e-12 and normal_length > 1e-12:
@@ -301,14 +299,10 @@ def write_binary_ply(
         for global_index in used_vertices:
             vertex = model.vertices[global_index]
             output.write(
-                struct.pack(
-                    "<8f", *vertex.position, *vertex.normal, *vertex.uv
-                )
+                struct.pack("<8f", *vertex.position, *vertex.normal, *vertex.uv)
             )
         for index in range(0, len(local_indices), 3):
-            output.write(
-                struct.pack("<B3i", 3, *local_indices[index : index + 3])
-            )
+            output.write(struct.pack("<B3i", 3, *local_indices[index : index + 3]))
     return len(used_vertices), len(local_indices) // 3
 
 
@@ -318,6 +312,14 @@ def pbrt_path(path: Path) -> str:
 
 def relative_pbrt_path(path: Path, base: Path) -> str:
     return pbrt_path(Path(os.path.relpath(path, base)))
+
+
+def emit(
+    lines: list[str], command: str, params: tuple[str, ...] = (), *, indent: int = 0
+) -> None:
+    prefix = "    " * indent
+    lines.append(prefix + command)
+    lines.extend(f"{prefix}    {param}" for param in params)
 
 
 def create_alpha_mask(texture: Path, target: Path) -> bool:
@@ -341,8 +343,12 @@ def create_alpha_mask(texture: Path, target: Path) -> bool:
 def model_bounds(
     model: PmxModel,
 ) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
-    minimum = tuple(min(vertex.position[i] for vertex in model.vertices) for i in range(3))
-    maximum = tuple(max(vertex.position[i] for vertex in model.vertices) for i in range(3))
+    minimum = tuple(
+        min(vertex.position[i] for vertex in model.vertices) for i in range(3)
+    )
+    maximum = tuple(
+        max(vertex.position[i] for vertex in model.vertices) for i in range(3)
+    )
     return minimum, maximum
 
 
@@ -375,37 +381,61 @@ def write_scene(
     lines = [
         "# Generated from PMX by tools/pmx_to_pbrt.py",
         f"# Model: {model.name}",
-        "Integrator \"path\" \"integer maxdepth\" [8]",
-        f"Sampler \"halton\" \"integer pixelsamples\" [{samples}]",
-        "PixelFilter \"gaussian\" \"float xradius\" [1.5] \"float yradius\" [1.5]",
-        "Film \"rgb\"",
-        f"    \"string filename\" [\"{pmx_path.stem}.exr\"]",
-        f"    \"integer xresolution\" [{x_resolution}]",
-        f"    \"integer yresolution\" [{y_resolution}]",
-        "    \"string sensor\" [\"canon_eos_100d\"]",
-        "    \"float iso\" [100]",
-        "LookAt " + " ".join(f"{value:.8g}" for value in (*eye, *target, 0, 1, 0)),
-        "Camera \"perspective\" \"float fov\" [30]",
-        "",
-        "WorldBegin",
-        "",
-        "LightSource \"infinite\" \"rgb L\" [0.8 0.9 1.0] \"float illuminance\" [0.05]",
-        (
-            "LightSource \"distant\" \"rgb L\" [1.0 0.88 0.74] "
-            f"\"point3 from\" [{center[0] - height:.8g} {maximum[1] + height:.8g} "
-            f"{center[2] + camera_sign * height:.8g}] \"point3 to\" "
-            f"[{target[0]:.8g} {target[1]:.8g} {target[2]:.8g}] "
-            "\"float illuminance\" [5]"
-        ),
-        (
-            "LightSource \"distant\" \"rgb L\" [0.62 0.76 1.0] "
-            f"\"point3 from\" [{center[0] + height:.8g} {target[1]:.8g} "
-            f"{center[2] + camera_sign * 0.5 * height:.8g}] \"point3 to\" "
-            f"[{target[0]:.8g} {target[1]:.8g} {target[2]:.8g}] "
-            "\"float illuminance\" [1]"
-        ),
-        "",
     ]
+    emit(lines, 'Integrator "path"', ('"integer maxdepth" [ 8 ]',))
+    emit(lines, 'Sampler "sobol"', (f'"integer pixelsamples" [ {samples} ]',))
+    emit(
+        lines,
+        'PixelFilter "triangle"',
+        ('"float xradius" [ 1.5 ]', '"float yradius" [ 1.5 ]'),
+    )
+    emit(
+        lines,
+        'Film "rgb"',
+        (
+            f'"string filename" [ "{pmx_path.stem}.exr" ]',
+            f'"integer xresolution" [ {x_resolution} ]',
+            f'"integer yresolution" [ {y_resolution} ]',
+        ),
+    )
+    emit(lines, "LookAt " + " ".join(f"{value:.8g}" for value in eye))
+    emit(lines, " ".join(f"{value:.8g}" for value in target), indent=1)
+    emit(lines, "0 1 0", indent=1)
+    emit(lines, 'Camera "perspective"', ('"float fov" [ 30 ]',))
+    lines.extend(["", "WorldBegin", ""])
+
+    emit(
+        lines,
+        'LightSource "infinite"',
+        ('"rgb L" [ 0.8 0.9 1.0 ]', '"float illuminance" [ 0.05 ]'),
+    )
+    emit(
+        lines,
+        'LightSource "distant"',
+        (
+            '"rgb L" [ 1.0 0.88 0.74 ]',
+            (
+                f'"point3 from" [ {center[0] - height:.8g} {maximum[1] + height:.8g} '
+                f"{center[2] + camera_sign * height:.8g} ]"
+            ),
+            f'"point3 to" [ {target[0]:.8g} {target[1]:.8g} {target[2]:.8g} ]',
+            '"float illuminance" [ 5 ]',
+        ),
+    )
+    emit(
+        lines,
+        'LightSource "distant"',
+        (
+            '"rgb L" [ 0.62 0.76 1.0 ]',
+            (
+                f'"point3 from" [ {center[0] + height:.8g} {target[1]:.8g} '
+                f"{center[2] + camera_sign * 0.5 * height:.8g} ]"
+            ),
+            f'"point3 to" [ {target[0]:.8g} {target[1]:.8g} {target[2]:.8g} ]',
+            '"float illuminance" [ 1 ]',
+        ),
+    )
+    lines.append("")
 
     texture_names: dict[int, str] = {}
     for record in records:
@@ -414,75 +444,84 @@ def write_scene(
         if texture_path and texture_index not in texture_names:
             texture_name = f"pmx_texture_{texture_index:03d}"
             texture_names[texture_index] = texture_name
-            lines.extend(
-                [
-                    f"Texture \"{texture_name}\" \"spectrum\" \"imagemap\"",
-                    f"    \"string filename\" [\"{texture_path}\"]",
-                    "    \"string filter\" [\"ewa\"]",
-                    "",
-                ]
+            emit(
+                lines,
+                f'Texture "{texture_name}" "spectrum" "imagemap"',
+                (
+                    f'"string filename" [ "{texture_path}" ]',
+                    '"string filter" [ "bilinear" ]',
+                    '"string encoding" [ "sRGB" ]',
+                ),
             )
+            lines.append("")
 
     for record in records:
         index = record["index"]
         diffuse = record["diffuse"]
         material_name = f"pmx_material_{index:03d}"
-        lines.extend(
-            [
-                f"# PMX material {index}: {record['name']}",
-                f"MakeNamedMaterial \"{material_name}\"",
-                "    \"string type\" [\"diffuse\"]",
-            ]
-        )
+        lines.append(f"# PMX material {index}: {record['name']}")
+        params = ['"string type" [ "diffuse" ]']
         texture_name = texture_names.get(record["texture_index"])
         if texture_name:
-            lines.append(f"    \"texture reflectance\" [\"{texture_name}\"]")
+            params.append(f'"texture reflectance" [ "{texture_name}" ]')
         else:
             rgb = " ".join(f"{max(0.0, min(1.0, value)):.6g}" for value in diffuse[:3])
-            lines.append(f"    \"rgb reflectance\" [{rgb}]")
+            params.append(f'"rgb reflectance" [ {rgb} ]')
+        emit(lines, f'MakeNamedMaterial "{material_name}"', tuple(params))
         lines.append("")
 
     for record in records:
         index = record["index"]
-        lines.extend(
-            [
-                "AttributeBegin",
-                f"    NamedMaterial \"pmx_material_{index:03d}\"",
-                "    Shape \"plymesh\"",
-                f"        \"string filename\" [\"{record['ply_path']}\"]",
-            ]
-        )
+        lines.append("AttributeBegin")
         alpha_path = record.get("alpha_path")
         if alpha_path:
             alpha_name = f"pmx_alpha_{index:03d}"
-            # A texture declaration must be outside AttributeBegin's Shape parameters.
-            lines[-3:-3] = [
-                f"    Texture \"{alpha_name}\" \"float\" \"imagemap\"",
-                f"        \"string filename\" [\"{alpha_path}\"]",
-                f"        \"float scale\" [{diffuse_alpha(record):.8g}]",
-            ]
-            lines.append(f"        \"texture alpha\" [\"{alpha_name}\"]")
+            # PBRT GPU enables sRGB decoding for PNG float textures as well.
+            emit(
+                lines,
+                f'Texture "{alpha_name}" "float" "imagemap"',
+                (
+                    f'"string filename" [ "{alpha_path}" ]',
+                    '"string filter" [ "bilinear" ]',
+                    '"string encoding" [ "sRGB" ]',
+                    f'"float scale" [ {diffuse_alpha(record):.8g} ]',
+                ),
+                indent=1,
+            )
+        emit(lines, f'NamedMaterial "pmx_material_{index:03d}"', indent=1)
+        shape_params = [f'"string filename" [ "{record["ply_path"]}" ]']
+        if alpha_path:
+            shape_params.append(f'"texture alpha" [ "{alpha_name}" ]')
         elif diffuse_alpha(record) < 0.999:
-            lines.append(f"        \"float alpha\" [{diffuse_alpha(record):.8g}]")
+            shape_params.append(f'"float alpha" [ {diffuse_alpha(record):.8g} ]')
+        emit(lines, 'Shape "plymesh"', tuple(shape_params), indent=1)
         lines.extend(["AttributeEnd", ""])
 
     x0, x1 = center[0] - ground_size, center[0] + ground_size
     z0, z1 = center[2] - ground_size, center[2] + ground_size
-    lines.extend(
-        [
-            "AttributeBegin",
-            "    Material \"diffuse\" \"rgb reflectance\" [0.16 0.18 0.22]",
-            "    Shape \"trianglemesh\"",
-            f"        \"point3 P\" [{x0:.8g} {ground_y:.8g} {z0:.8g}  "
-            f"{x1:.8g} {ground_y:.8g} {z0:.8g}  {x1:.8g} {ground_y:.8g} {z1:.8g}  "
-            f"{x0:.8g} {ground_y:.8g} {z1:.8g}]",
-            "        \"integer indices\" [0 2 1  0 3 2]",
-            "AttributeEnd",
-            "",
-        ]
+    lines.append("AttributeBegin")
+    emit(
+        lines,
+        'Material "diffuse"',
+        ('"rgb reflectance" [ 0.16 0.18 0.22 ]',),
+        indent=1,
     )
+    emit(
+        lines,
+        'Shape "trianglemesh"',
+        (
+            (
+                f'"point3 P" [ {x0:.8g} {ground_y:.8g} {z0:.8g}  '
+                f"{x1:.8g} {ground_y:.8g} {z0:.8g}  {x1:.8g} {ground_y:.8g} {z1:.8g}  "
+                f"{x0:.8g} {ground_y:.8g} {z1:.8g} ]"
+            ),
+            '"integer indices" [ 0 2 1  0 3 2 ]',
+        ),
+        indent=1,
+    )
+    lines.append("AttributeEnd")
 
-    scene_path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
+    scene_path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
 def diffuse_alpha(record: dict) -> float:
@@ -521,7 +560,9 @@ def convert(args: argparse.Namespace) -> None:
         texture_reference: str | None = None
         alpha_reference: str | None = None
         if 0 <= material.texture_index < len(model.textures):
-            texture_path = pmx_path.parent / Path(model.textures[material.texture_index])
+            texture_path = pmx_path.parent / Path(
+                model.textures[material.texture_index]
+            )
             if texture_path.is_file():
                 texture_reference = relative_pbrt_path(texture_path, output_dir)
                 alpha_file = alpha_dir / f"texture_{material.texture_index:03d}.png"
@@ -576,7 +617,9 @@ def convert(args: argparse.Namespace) -> None:
         camera_side=args.camera_side,
     )
 
-    print(f"PMX: {model.name} ({len(model.vertices)} vertices, {len(model.indices) // 3} triangles)")
+    print(
+        f"PMX: {model.name} ({len(model.vertices)} vertices, {len(model.indices) // 3} triangles)"
+    )
     print(f"PLY meshes: {len(records)} -> {mesh_dir}")
     print(f"Manifest: {manifest_path}")
     print(f"PBRT scene: {scene_path}")
@@ -587,8 +630,12 @@ def parse_arguments() -> argparse.Namespace:
         description="Split a static PMX model by material and create a PBRT-v4 scene."
     )
     parser.add_argument("pmx", type=Path, help="input .pmx file")
-    parser.add_argument("-o", "--output", type=Path, help="output directory (default: PMX/pbrt)")
-    parser.add_argument("--samples", type=int, default=64, help="PBRT samples per pixel")
+    parser.add_argument(
+        "-o", "--output", type=Path, help="output directory (default: PMX/pbrt)"
+    )
+    parser.add_argument(
+        "--samples", type=int, default=64, help="PBRT samples per pixel"
+    )
     parser.add_argument("--x-resolution", type=int, default=640)
     parser.add_argument("--y-resolution", type=int, default=900)
     parser.add_argument(

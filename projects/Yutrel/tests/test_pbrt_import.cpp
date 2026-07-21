@@ -908,6 +908,29 @@ static auto test_pbrt_import_registration = []
         }
     };
 
+    "import_imagemap_encodings"_test = []
+    {
+        auto parsed  = PbrtParser::parse("tests/scenes/imagemap_encodings.pbrt");
+        auto spec    = PbrtImporter::import(std::move(parsed));
+        auto matched = 0u;
+        spec.textures().visit_entries([&](TextureRef, const SpecMeta& meta, const TextureSpec* texture)
+        {
+            if (meta.name == "default-png" || meta.name == "explicit-srgb")
+            {
+                auto image = static_cast<const ImageTextureSpec*>(texture);
+                expect(image->encoding() == Texture::Encoding::SRGB);
+                matched++;
+            }
+            else if (meta.name == "default-linear" || meta.name == "explicit-linear")
+            {
+                auto image = static_cast<const ImageTextureSpec*>(texture);
+                expect(image->encoding() == Texture::Encoding::LINEAR);
+                matched++;
+            }
+        });
+        expect(matched == 4u);
+    };
+
     "import_trianglemesh_without_normals"_test = []
     {
         auto parsed = PbrtParser::parse("tests/scenes/trianglemesh_without_normals.pbrt");

@@ -369,6 +369,7 @@ void validate_pbrt_scene(const PbrtScene& scene)
             static constexpr std::array allowed{
                 ParameterKey{"string", "filename"},
                 ParameterKey{"string", "filter"},
+                ParameterKey{"string", "encoding"},
                 ParameterKey{"float", "uscale"},
                 ParameterKey{"float", "vscale"},
                 ParameterKey{"float", "scale"},
@@ -701,6 +702,34 @@ void validate_pbrt_scene(const PbrtScene& scene)
     return ext == ".png";
 }
 
+[[nodiscard]] Texture::Encoding resolve_image_encoding(TextureDesc::Encoding encoding, const std::filesystem::path& path) noexcept
+{
+    switch (encoding)
+    {
+    case TextureDesc::Encoding::Automatic:
+        return is_png_path(path) ? Texture::Encoding::SRGB : Texture::Encoding::LINEAR;
+    case TextureDesc::Encoding::Linear:
+        return Texture::Encoding::LINEAR;
+    case TextureDesc::Encoding::SRGB:
+        return Texture::Encoding::SRGB;
+    }
+    return Texture::Encoding::LINEAR;
+}
+
+[[nodiscard]] luisa::string_view image_encoding_name(Texture::Encoding encoding) noexcept
+{
+    switch (encoding)
+    {
+    case Texture::Encoding::LINEAR:
+        return "linear";
+    case Texture::Encoding::SRGB:
+        return "sRGB";
+    case Texture::Encoding::GAMMA:
+        return "gamma";
+    }
+    return "unknown";
+}
+
 [[nodiscard]] std::filesystem::path resolve_relative_to_scene(const std::filesystem::path& scene_path, const std::filesystem::path& path)
 {
     if (path.empty())
@@ -814,10 +843,7 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         if (texture.type == TextureDesc::Type::ImageMap)
         {
             auto path     = resolve_relative_to_scene(texture.source.file, texture.filename);
-            auto encoding = texture.value_type == TextureDesc::ValueType::Float
-                                ? Texture::Encoding::LINEAR
-                            : is_png_path(path) ? Texture::Encoding::SRGB
-                                                : Texture::Encoding::LINEAR;
+            auto encoding = resolve_image_encoding(texture.encoding, path);
             auto sampler  = texture.filter == TextureDesc::Filter::Point
                                 ? TextureSampler::point_repeat()
                                 : TextureSampler::linear_point_repeat();
@@ -1417,18 +1443,23 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         switch (texture.type)
         {
         case TextureDesc::Type::ImageMap:
+        {
+            auto path     = resolve_relative_to_scene(texture.source.file, texture.filename);
+            auto encoding = resolve_image_encoding(texture.encoding, path);
             LUISA_VERBOSE(
-                "PBRT texture #{} '{}' type=imagemap, value_type={}, file='{}', filter={}, uv_scale=({}, {}), scale={}, source={}.",
+                "PBRT texture #{} '{}' type=imagemap, value_type={}, file='{}', filter={}, encoding={}, uv_scale=({}, {}), scale={}, source={}.",
                 i,
                 texture.name,
                 texture.value_type == TextureDesc::ValueType::Float ? "float" : "spectrum",
-                resolve_relative_to_scene(texture.source.file, texture.filename).string(),
+                path.string(),
                 texture.filter == TextureDesc::Filter::Point ? "point" : "bilinear",
+                image_encoding_name(encoding),
                 texture.uv_scale.x,
                 texture.uv_scale.y,
                 texture.image_scale,
                 format_source_location(texture.source));
             break;
+        }
         case TextureDesc::Type::Constant:
             LUISA_VERBOSE(
                 "PBRT texture #{} '{}' type=constant, value={}, source={}.",

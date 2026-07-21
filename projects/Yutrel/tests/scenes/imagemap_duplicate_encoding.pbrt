@@ -1,0 +1,6 @@
+WorldBegin
+
+Texture "invalid" "float" "imagemap"
+    "string filename" [ "mask.png" ]
+    "string encoding" [ "linear" ]
+    "string encoding" [ "sRGB" ]

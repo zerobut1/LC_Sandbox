@@ -106,6 +106,29 @@ static auto test_pbrt_parse_registration = []
         expect(scene.textures[2u].filter == TextureDesc::Filter::Bilinear);
     };
 
+    "parse_imagemap_encodings"_test = []
+    {
+        auto scene = PbrtParser::parse("tests/scenes/imagemap_encodings.pbrt");
+        expect(scene.textures.size() == 4u);
+        expect(scene.textures[0u].encoding == TextureDesc::Encoding::Automatic);
+        expect(scene.textures[1u].encoding == TextureDesc::Encoding::Automatic);
+        expect(scene.textures[2u].encoding == TextureDesc::Encoding::Linear);
+        expect(scene.textures[3u].encoding == TextureDesc::Encoding::SRGB);
+    };
+
+    "reject_invalid_imagemap_encodings"_test = []
+    {
+        expect(parse_error_contains(
+            "tests/scenes/imagemap_invalid_encoding.pbrt",
+            {"imagemap_invalid_encoding.pbrt", "unsupported imagemap encoding", "gamma 2.2", "linear", "sRGB"}));
+        expect(parse_error_contains(
+            "tests/scenes/imagemap_invalid_encoding_type.pbrt",
+            {"imagemap_invalid_encoding_type.pbrt", "unsupported parameter", "integer encoding"}));
+        expect(parse_error_contains(
+            "tests/scenes/imagemap_duplicate_encoding.pbrt",
+            {"imagemap_duplicate_encoding.pbrt", "duplicate texture parameter", "string encoding"}));
+    };
+
     "parse_imagemap_scale"_test = []
     {
         auto scene = PbrtParser::parse("tests/scenes/imagemap_scale.pbrt");

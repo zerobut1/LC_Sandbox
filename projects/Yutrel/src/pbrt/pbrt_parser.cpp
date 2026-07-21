@@ -1302,6 +1302,23 @@ private:
                 fail(filter_param == nullptr ? command.loc : filter_param->source,
                      luisa::format("unsupported imagemap filter '{}'; supported filters are 'point' and 'bilinear'", filter));
             }
+            if (auto encoding_param = find_param(desc.parameters, "string", "encoding"); encoding_param != nullptr)
+            {
+                auto encoding = one_string(desc.parameters, "encoding", command, {});
+                if (encoding == "linear")
+                {
+                    desc.encoding = TextureDesc::Encoding::Linear;
+                }
+                else if (encoding == "sRGB")
+                {
+                    desc.encoding = TextureDesc::Encoding::SRGB;
+                }
+                else
+                {
+                    fail(encoding_param->source,
+                         luisa::format("unsupported imagemap encoding '{}'; supported encodings are 'linear' and 'sRGB'", encoding));
+                }
+            }
             desc.uv_scale = make_float2(
                 one_float(desc.parameters, "uscale", command, 1.0f),
                 one_float(desc.parameters, "vscale", command, 1.0f));
@@ -1399,7 +1416,7 @@ private:
             auto supported = false;
             if (desc.type == TextureDesc::Type::ImageMap)
             {
-                supported = (p.type == "string" && (p.name == "filename" || p.name == "filter")) ||
+                supported = (p.type == "string" && (p.name == "filename" || p.name == "filter" || p.name == "encoding")) ||
                             (p.type == "float" && (p.name == "uscale" || p.name == "vscale" || p.name == "scale"));
             }
             else if (desc.type == TextureDesc::Type::Constant)

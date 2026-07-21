@@ -1,0 +1,18 @@
+PixelFilter "triangle"
+Sampler "independent"
+
+WorldBegin
+
+Texture "default-png" "spectrum" "imagemap"
+    "string filename" [ "imagemap_encoding.png" ]
+Texture "default-linear" "float" "imagemap"
+    "string filename" [ "imagemap_encodings.pbrt" ]
+Texture "explicit-linear" "float" "imagemap"
+    "string filename" [ "imagemap_encoding.png" ]
+    "string encoding" [ "linear" ]
+Texture "explicit-srgb" "spectrum" "imagemap"
+    "string filename" [ "imagemap_encodings.pbrt" ]
+    "string encoding" [ "sRGB" ]
+
+Material "diffuse"
+Shape "sphere"

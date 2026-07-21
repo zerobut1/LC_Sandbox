@@ -401,13 +401,13 @@ static auto test_pbrt_parse_registration = []
     "parse_distant_light"_test = []
     {
         auto scene = PbrtParser::parse("tests/scenes/distant_basic.pbrt");
-        expect(scene.distant_light.has_value());
-        expect(!scene.infinite_light.has_value());
-        if (!scene.distant_light)
+        expect(scene.distant_lights.size() == 1u);
+        expect(scene.infinite_lights.empty());
+        if (scene.distant_lights.empty())
         {
             return;
         }
-        auto&& light = *scene.distant_light;
+        auto&& light = scene.distant_lights.front();
         expect(is_near(light.L.x, 8.0f));
         expect(is_near(light.L.y, 8.0f));
         expect(is_near(light.L.z, 8.0f));
@@ -424,9 +424,8 @@ static auto test_pbrt_parse_registration = []
                  "tests/scenes/distant_invalid_direction.pbrt",
                  "tests/scenes/distant_invalid_scale.pbrt",
                  "tests/scenes/distant_invalid_radiance.pbrt",
-                 "tests/scenes/distant_duplicate.pbrt",
+                 "tests/scenes/distant_nonfinite_illuminance.pbrt",
                  "tests/scenes/distant_duplicate_parameter.pbrt",
-                 "tests/scenes/distant_with_infinite.pbrt",
              })
         {
             expect(parse_error_contains(path, {path, "LightSource"}));
@@ -436,13 +435,13 @@ static auto test_pbrt_parse_registration = []
     "parse_uniform_infinite_light"_test = []
     {
         auto scene = PbrtParser::parse("tests/scenes/infinite_uniform.pbrt");
-        expect(scene.infinite_light.has_value());
-        expect(!scene.distant_light.has_value());
-        if (!scene.infinite_light)
+        expect(scene.infinite_lights.size() == 1u);
+        expect(scene.distant_lights.empty());
+        if (scene.infinite_lights.empty())
         {
             return;
         }
-        auto&& light = *scene.infinite_light;
+        auto&& light = scene.infinite_lights.front();
         expect(light.L.has_value());
         expect(light.filename.empty());
         expect(light.illuminance.has_value());
@@ -459,13 +458,30 @@ static auto test_pbrt_parse_registration = []
         }
 
         auto defaults = PbrtParser::parse("tests/scenes/infinite_missing_filename.pbrt");
-        expect(defaults.infinite_light.has_value());
-        if (defaults.infinite_light)
+        expect(defaults.infinite_lights.size() == 1u);
+        if (!defaults.infinite_lights.empty())
         {
-            expect(!defaults.infinite_light->L.has_value());
-            expect(defaults.infinite_light->filename.empty());
-            expect(!defaults.infinite_light->illuminance.has_value());
-            expect(is_near(defaults.infinite_light->scale, 1.0f));
+            auto&& default_light = defaults.infinite_lights.front();
+            expect(!default_light.L.has_value());
+            expect(default_light.filename.empty());
+            expect(!default_light.illuminance.has_value());
+            expect(is_near(default_light.scale, 1.0f));
+        }
+    };
+
+    "parse_multiple_environment_lights"_test = []
+    {
+        auto scene = PbrtParser::parse("tests/scenes/multiple_environment_lights.pbrt");
+        expect(scene.infinite_lights.size() == 1u);
+        expect(scene.distant_lights.size() == 2u);
+        if (scene.distant_lights.size() == 2u)
+        {
+            expect(scene.distant_lights[0u].illuminance.has_value());
+            if (scene.distant_lights[0u].illuminance)
+            {
+                expect(is_near(*scene.distant_lights[0u].illuminance, 3.0f));
+            }
+            expect(is_near(scene.distant_lights[1u].from.y, 1.0f));
         }
     };
 
@@ -477,7 +493,6 @@ static auto test_pbrt_parse_registration = []
                  "tests/scenes/infinite_nonfinite_illuminance.pbrt",
                  "tests/scenes/infinite_image_illuminance.pbrt",
                  "tests/scenes/infinite_l_and_filename.pbrt",
-                 "tests/scenes/infinite_duplicate.pbrt",
                  "tests/scenes/infinite_duplicate_parameter.pbrt",
                  "tests/scenes/infinite_unknown_type.pbrt",
                  "tests/scenes/infinite_unsupported_parameter.pbrt",

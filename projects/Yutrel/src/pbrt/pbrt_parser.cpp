@@ -1496,10 +1496,6 @@ private:
         {
             fail(command, luisa::format("unsupported LightSource '{}'", type));
         }
-        if (m_desc.infinite_light || m_desc.distant_light)
-        {
-            fail(command, "only one infinite or distant LightSource is supported");
-        }
         auto params = parse_parameters();
         if (type == "distant")
         {
@@ -1507,7 +1503,7 @@ private:
             {
                 auto&& param   = params[i];
                 auto supported = (param.type == "rgb" && param.name == "L") ||
-                                 (param.type == "float" && param.name == "scale") ||
+                                 (param.type == "float" && (param.name == "scale" || param.name == "illuminance")) ||
                                  (param.type == "point3" && (param.name == "from" || param.name == "to"));
                 if (!supported)
                 {
@@ -1523,6 +1519,11 @@ private:
             }
             auto L      = one_float3(params, "rgb", "L", make_float3(1.0f));
             auto scale  = one_float(params, "scale", command, 1.0f);
+            luisa::optional<float> illuminance;
+            if (find_param(params, "float", "illuminance") != nullptr)
+            {
+                illuminance.emplace(one_float(params, "illuminance", command, -1.0f));
+            }
             auto from   = one_float3(params, "point3", "from", make_float3(0.0f));
             auto to     = one_float3(params, "point3", "to", make_float3(0.0f, 0.0f, 1.0f));
             auto finite = [](float3 v) noexcept
@@ -1541,16 +1542,23 @@ private:
                 fail(p == nullptr ? command.loc : p->source,
                      "distant LightSource scale must be finite and non-negative");
             }
+            if (illuminance && !std::isfinite(*illuminance))
+            {
+                auto p = find_param(params, "float", "illuminance");
+                fail(p == nullptr ? command.loc : p->source,
+                     "distant LightSource illuminance must be finite");
+            }
             auto direction      = from - to;
             auto length_squared = dot_host(direction, direction);
             if (!finite(from) || !finite(to) || !std::isfinite(length_squared) || length_squared < 1e-16f)
             {
                 fail(command, "distant LightSource 'from' and 'to' must define a finite non-zero direction");
             }
-            m_desc.distant_light.emplace(DistantLightDesc{
+            m_desc.distant_lights.emplace_back(DistantLightDesc{
                 .source         = command.loc,
                 .L              = L,
                 .scale          = scale,
+                .illuminance    = illuminance,
                 .from           = from,
                 .to             = to,
                 .pbrt_transform = m_current_transform,
@@ -1622,7 +1630,7 @@ private:
             fail(p == nullptr ? command.loc : p->source,
                  "illuminance for image infinite LightSource is not supported");
         }
-        m_desc.infinite_light.emplace(InfiniteLightDesc{
+        m_desc.infinite_lights.emplace_back(InfiniteLightDesc{
             .source         = command.loc,
             .L              = L,
             .filename       = std::filesystem::path{std::move(filename)},

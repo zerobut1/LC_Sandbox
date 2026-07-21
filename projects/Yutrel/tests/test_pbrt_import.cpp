@@ -4,6 +4,7 @@
 #include "base/shape.h"
 #include "cameras/pinhole.h"
 #include "environments/distant.h"
+#include "environments/grouped.h"
 #include "environments/uniform.h"
 #include "integrators/vol_path.h"
 #include "media/homogeneous.h"
@@ -536,7 +537,7 @@ static auto test_pbrt_import_registration = []
                 scene.shapes.front().parameters.emplace_back(std::move(parameter));
                 break;
             case Target::InfiniteLight:
-                scene.infinite_light->parameters.emplace_back(std::move(parameter));
+                scene.infinite_lights.front().parameters.emplace_back(std::move(parameter));
                 break;
             }
             auto rejected = false;
@@ -1182,6 +1183,48 @@ static auto test_pbrt_import_registration = []
             environment->emission(),
             1.0f,
             make_float3(2.0f, 0.0f, 0.0f)}
+                   .validate()
+                   .has_value());
+    };
+
+    "import_multiple_environment_lights"_test = []
+    {
+        auto parsed = PbrtParser::parse("tests/scenes/multiple_environment_lights.pbrt");
+        auto spec   = PbrtImporter::import(std::move(parsed));
+        auto grouped = dynamic_cast<const GroupedEnvironmentSpec*>(
+            &spec.environments().spec(spec.render().environment));
+        expect(grouped != nullptr);
+        if (grouped == nullptr)
+        {
+            return;
+        }
+        expect(grouped->environments().size() == 3u);
+        expect(!grouped->validate().has_value());
+        if (grouped->environments().size() != 3u)
+        {
+            return;
+        }
+
+        auto uniform = dynamic_cast<const UniformEnvironmentSpec*>(
+            &spec.environments().spec(grouped->environments()[0u]));
+        auto distant_a = dynamic_cast<const DistantEnvironmentSpec*>(
+            &spec.environments().spec(grouped->environments()[1u]));
+        auto distant_b = dynamic_cast<const DistantEnvironmentSpec*>(
+            &spec.environments().spec(grouped->environments()[2u]));
+        expect(uniform != nullptr);
+        expect(distant_a != nullptr);
+        expect(distant_b != nullptr);
+        if (distant_a != nullptr)
+        {
+            expect(is_near(distant_a->scale(), 3.0f));
+            expect(is_near(distant_a->direction().x, 1.0f));
+        }
+        if (distant_b != nullptr)
+        {
+            expect(is_near(distant_b->scale(), 1.0f));
+            expect(is_near(distant_b->direction().y, 1.0f));
+        }
+        expect(GroupedEnvironmentSpec{luisa::vector<EnvironmentRef>{}}
                    .validate()
                    .has_value());
     };

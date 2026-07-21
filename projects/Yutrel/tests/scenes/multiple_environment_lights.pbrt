@@ -1,0 +1,16 @@
+Integrator "path"
+Sampler "independent" "integer pixelsamples" [1]
+PixelFilter "triangle"
+WorldBegin
+LightSource "infinite" "rgb L" [1 1 1]
+LightSource "distant"
+    "rgb L" [2 2 2]
+    "float illuminance" [3]
+    "point3 from" [1 0 0]
+    "point3 to" [0 0 0]
+LightSource "distant"
+    "rgb L" [4 4 4]
+    "point3 from" [0 1 0]
+    "point3 to" [0 0 0]
+Material "diffuse" "rgb reflectance" [0.5 0.5 0.5]
+Shape "sphere"

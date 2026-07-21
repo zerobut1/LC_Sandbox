@@ -18,6 +18,7 @@
 #include "base/integrator.h"
 #include "cameras/pinhole.h"
 #include "environments/distant.h"
+#include "environments/grouped.h"
 #include "environments/null.h"
 #include "environments/pbrt_equal_area.h"
 #include "environments/uniform.h"
@@ -466,12 +467,12 @@ void validate_pbrt_scene(const PbrtScene& scene)
     static constexpr std::array distant_light_allowed{
         ParameterKey{"rgb", "L"},
         ParameterKey{"float", "scale"},
+        ParameterKey{"float", "illuminance"},
         ParameterKey{"point3", "from"},
         ParameterKey{"point3", "to"},
     };
-    if (scene.infinite_light)
+    for (auto&& light : scene.infinite_lights)
     {
-        auto&& light = *scene.infinite_light;
         validate_parameters(light.parameters, "LightSource 'infinite'", infinite_light_allowed);
         auto finite = [](float3 v) noexcept
         {
@@ -498,9 +499,25 @@ void validate_pbrt_scene(const PbrtScene& scene)
             fail(light.source, "PBRT image infinite LightSource does not support illuminance.");
         }
     }
-    if (scene.distant_light)
+    for (auto&& light : scene.distant_lights)
     {
-        validate_parameters(scene.distant_light->parameters, "LightSource 'distant'", distant_light_allowed);
+        validate_parameters(light.parameters, "LightSource 'distant'", distant_light_allowed);
+        auto finite = [](float3 v) noexcept
+        {
+            return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+        };
+        if (!finite(light.L) || light.L.x < 0.0f || light.L.y < 0.0f || light.L.z < 0.0f)
+        {
+            fail(light.source, "PBRT distant LightSource radiance must be finite and non-negative.");
+        }
+        if (!std::isfinite(light.scale) || light.scale < 0.0f)
+        {
+            fail(light.source, "PBRT distant LightSource scale must be finite and non-negative.");
+        }
+        if (light.illuminance && !std::isfinite(*light.illuminance))
+        {
+            fail(light.source, "PBRT distant LightSource illuminance must be finite.");
+        }
     }
 
     for (auto i = 0u; i < scene.shapes.size(); i++)
@@ -707,9 +724,47 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
 
     auto environment = [&]() -> EnvironmentRef
     {
-        if (scene.distant_light)
+        luisa::vector<EnvironmentRef> environments;
+        environments.reserve(scene.infinite_lights.size() + scene.distant_lights.size());
+
+        for (auto&& desc : scene.infinite_lights)
         {
-            auto&& desc         = *scene.distant_light;
+            if (desc.filename.empty())
+            {
+                auto L = desc.L.value_or(make_float3(1.0f));
+                auto texture = builder.add_anonymous_texture<ConstantTextureSpec>(
+                    desc.source,
+                    make_float4(L, 1.0f));
+                // Yutrel's illuminant decoding and spectrum-to-RGB conversion already
+                // normalize D65. PBRT performs the corresponding normalization in the
+                // light because its PixelSensor integrates the spectrum without the
+                // CIE Y divisor; applying it here would make the result too dark.
+                auto scale = desc.scale;
+                if (desc.illuminance && *desc.illuminance > 0.0f)
+                {
+                    scale *= *desc.illuminance * inv_pi;
+                }
+                environments.emplace_back(builder.add_anonymous_environment<UniformEnvironmentSpec>(
+                    desc.source,
+                    texture,
+                    scale));
+                continue;
+            }
+            auto path    = resolve_relative_to_scene(desc.source.file, desc.filename);
+            auto texture = builder.add_anonymous_texture<ImageTextureSpec>(
+                desc.source,
+                std::move(path),
+                TextureSampler::point_edge(),
+                Texture::Encoding::LINEAR);
+            environments.emplace_back(builder.add_anonymous_environment<PBRTEqualAreaEnvironmentSpec>(
+                desc.source,
+                texture,
+                desc.scale,
+                environment_transform(desc.pbrt_transform)));
+        }
+
+        for (auto&& desc : scene.distant_lights)
+        {
             auto direction      = transform_vector(desc.pbrt_transform, desc.from - desc.to);
             auto length_squared = dot(direction, direction);
             if (!std::isfinite(length_squared) || length_squared < 1e-16f)
@@ -720,49 +775,30 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
             auto texture = builder.add_anonymous_texture<ConstantTextureSpec>(
                 desc.source,
                 make_float4(desc.L, 1.0f));
-            return builder.add_environment<DistantEnvironmentSpec>(
-                SpecMeta{.name = "pbrt_distant_environment", .source = desc.source},
+            auto scale = desc.scale;
+            if (desc.illuminance && *desc.illuminance > 0.0f)
+            {
+                scale *= *desc.illuminance;
+            }
+            environments.emplace_back(builder.add_anonymous_environment<DistantEnvironmentSpec>(
+                desc.source,
                 texture,
-                desc.scale,
-                direction);
+                scale,
+                direction));
         }
-        if (!scene.infinite_light)
+
+        if (environments.empty())
         {
             return builder.add_environment<NullEnvironmentSpec>(
                 SpecMeta{.name = "pbrt_null_environment", .source = SourceLocation{scene.source_path}});
         }
-        auto&& desc  = *scene.infinite_light;
-        if (desc.filename.empty())
+        if (environments.size() == 1u)
         {
-            auto L = desc.L.value_or(make_float3(1.0f));
-            auto texture = builder.add_anonymous_texture<ConstantTextureSpec>(
-                desc.source,
-                make_float4(L, 1.0f));
-            // Yutrel's illuminant decoding and spectrum-to-RGB conversion already
-            // normalize D65. PBRT performs the corresponding normalization in the
-            // light because its PixelSensor integrates the spectrum without the
-            // CIE Y divisor; applying it here would make the result too dark.
-            auto scale = desc.scale;
-            if (desc.illuminance && *desc.illuminance > 0.0f)
-            {
-                scale *= *desc.illuminance * inv_pi;
-            }
-            return builder.add_environment<UniformEnvironmentSpec>(
-                SpecMeta{.name = "pbrt_uniform_environment", .source = desc.source},
-                texture,
-                scale);
+            return environments.front();
         }
-        auto path    = resolve_relative_to_scene(desc.source.file, desc.filename);
-        auto texture = builder.add_anonymous_texture<ImageTextureSpec>(
-            desc.source,
-            std::move(path),
-            TextureSampler::point_edge(),
-            Texture::Encoding::LINEAR);
-        return builder.add_environment<PBRTEqualAreaEnvironmentSpec>(
-            SpecMeta{.name = "pbrt_equal_area_environment", .source = desc.source},
-            texture,
-            desc.scale,
-            environment_transform(desc.pbrt_transform));
+        return builder.add_environment<GroupedEnvironmentSpec>(
+            SpecMeta{.name = "pbrt_grouped_environment", .source = SourceLocation{scene.source_path}},
+            std::move(environments));
     }();
 
     luisa::unordered_map<luisa::string, const TextureDesc*> texture_declarations;
@@ -1300,9 +1336,20 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
         camera_transform[3].z,
         camera_transform[3].w,
         camera_linear_determinant(camera_transform));
-    if (scene.infinite_light)
+    if (scene.infinite_lights.empty() && scene.distant_lights.empty())
     {
-        auto&& light = *scene.infinite_light;
+        LUISA_INFO("PBRT environment: none.");
+    }
+    else
+    {
+        LUISA_INFO(
+            "PBRT environments: infinite={}, distant={}, total={}.",
+            scene.infinite_lights.size(),
+            scene.distant_lights.size(),
+            scene.infinite_lights.size() + scene.distant_lights.size());
+    }
+    for (auto&& light : scene.infinite_lights)
+    {
         if (light.filename.empty())
         {
             auto L = light.L.value_or(make_float3(1.0f));
@@ -1323,28 +1370,25 @@ SceneSpec PbrtImporter::import(PbrtScene scene)
             format_matrix(light.pbrt_transform),
             format_source_location(light.source));
     }
-    else if (scene.distant_light)
+    for (auto&& light : scene.distant_lights)
     {
         LUISA_INFO(
-            "PBRT environment: type=distant, L=({}, {}, {}), scale={}, from=({}, {}, {}), to=({}, {}, {}).",
-            scene.distant_light->L.x,
-            scene.distant_light->L.y,
-            scene.distant_light->L.z,
-            scene.distant_light->scale,
-            scene.distant_light->from.x,
-            scene.distant_light->from.y,
-            scene.distant_light->from.z,
-            scene.distant_light->to.x,
-            scene.distant_light->to.y,
-            scene.distant_light->to.z);
+            "PBRT environment: type=distant, L=({}, {}, {}), scale={}, illuminance={}, from=({}, {}, {}), to=({}, {}, {}).",
+            light.L.x,
+            light.L.y,
+            light.L.z,
+            light.scale,
+            light.illuminance.value_or(-1.0f),
+            light.from.x,
+            light.from.y,
+            light.from.z,
+            light.to.x,
+            light.to.y,
+            light.to.z);
         LUISA_VERBOSE(
             "PBRT distant transform={}, source={}.",
-            format_matrix(scene.distant_light->pbrt_transform),
-            format_source_location(scene.distant_light->source));
-    }
-    else
-    {
-        LUISA_INFO("PBRT environment: none.");
+            format_matrix(light.pbrt_transform),
+            format_source_location(light.source));
     }
     auto area_light_count = static_cast<size_t>(std::count_if(
         scene.shapes.begin(),

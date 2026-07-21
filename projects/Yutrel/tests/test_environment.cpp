@@ -13,6 +13,7 @@
 #include "base/renderer.h"
 #include "base/scene.h"
 #include "environments/distant.h"
+#include "environments/grouped.h"
 #include "environments/uniform.h"
 #include "pbrt/pbrt_importer.h"
 #include "pbrt/pbrt_parser.h"
@@ -490,6 +491,79 @@ public:
            nearly_equal(radiance.x, radiance.w, 1e-6f);
 }
 
+[[nodiscard]] luisa::unique_ptr<Scene> load_grouped_scene()
+{
+    auto parsed = PbrtParser::parse("tests/scenes/multiple_environment_lights.pbrt");
+    auto spec   = PbrtImporter::import(std::move(parsed));
+    auto scene  = Scene::create(spec);
+    auto grouped = dynamic_cast<const GroupedEnvironment*>(scene->environment());
+    return grouped == nullptr || grouped->environments().size() != 3u
+               ? nullptr
+               : std::move(scene);
+}
+
+[[nodiscard]] bool test_grouped_environment(
+    Device& device, Stream& stream, const Scene& scene)
+{
+    auto renderer = Renderer::create(device, stream, scene);
+    if (renderer->environment() == nullptr || !renderer->lights().empty())
+    {
+        return false;
+    }
+
+    auto output = device.create_buffer<float4>(5u);
+    Kernel1D kernel = [&renderer](BufferFloat4 result) noexcept
+    {
+        auto swl = renderer->spectrum()->sample(0.5f);
+        auto continuous = renderer->environment()->sample(
+            swl, 0.0f, make_float2(0.1f, 0.2f), false);
+        auto distant_a = renderer->environment()->sample(
+            swl, 0.0f, make_float2(0.5f, 0.2f), false);
+        auto distant_b = renderer->environment()->sample(
+            swl, 0.0f, make_float2(0.9f, 0.2f), false);
+        auto evaluation = renderer->environment()->evaluate(
+            make_float3(0.0f, 0.0f, 1.0f), swl, 0.0f, false);
+        result.write(0u, make_float4(
+                             ite(continuous.delta, 1.0f, 0.0f),
+                             continuous.eval.pdf,
+                             continuous.eval.L[0u],
+                             length(continuous.wi)));
+        result.write(1u, make_float4(distant_a.wi, distant_a.eval.pdf));
+        result.write(2u, make_float4(distant_b.wi, distant_b.eval.pdf));
+        result.write(3u, make_float4(
+                             ite(distant_a.delta, 1.0f, 0.0f),
+                             ite(distant_b.delta, 1.0f, 0.0f),
+                             evaluation.pdf,
+                             evaluation.L[0u]));
+        result.write(4u, make_float4(
+                             continuous.eval.L[0u],
+                             distant_a.eval.L[0u],
+                             distant_b.eval.L[0u],
+                             0.0f));
+    };
+    auto shader = device.compile(kernel);
+    std::array<float4, 5u> result{};
+    stream << shader(output).dispatch(1u)
+           << output.copy_to(result.data())
+           << synchronize();
+
+    auto expected_continuous_pdf = 0.25f / (3.0f * std::acos(-1.0f));
+    auto expected_delta_pdf      = 1.0f / 3.0f;
+    return nearly_equal(result[0u].x, 0.0f) &&
+           nearly_equal(result[0u].y, expected_continuous_pdf, 1e-6f) &&
+           nearly_equal(result[0u].w, 1.0f, 1e-5f) &&
+           dot(result[1u].xyz(), make_float3(1.0f, 0.0f, 0.0f)) > 0.999f &&
+           dot(result[2u].xyz(), make_float3(0.0f, 1.0f, 0.0f)) > 0.999f &&
+           nearly_equal(result[1u].w, expected_delta_pdf, 1e-6f) &&
+           nearly_equal(result[2u].w, expected_delta_pdf, 1e-6f) &&
+           nearly_equal(result[3u].x, 1.0f) &&
+           nearly_equal(result[3u].y, 1.0f) &&
+           nearly_equal(result[3u].z, expected_continuous_pdf, 1e-6f) &&
+           nearly_equal(result[0u].z, result[3u].w, 1e-6f) &&
+           nearly_equal(result[4u].x, result[3u].w, 1e-6f) &&
+           result[4u].y > result[4u].z;
+}
+
 } // namespace
 
 int main(int argc, char* argv[])
@@ -531,6 +605,15 @@ int main(int argc, char* argv[])
     if (!test_uniform_environment(device, stream, *uniform_scene))
     {
         return 10;
+    }
+    auto grouped_scene = load_grouped_scene();
+    if (grouped_scene == nullptr)
+    {
+        return 11;
+    }
+    if (!test_grouped_environment(device, stream, *grouped_scene))
+    {
+        return 12;
     }
     return 0;
 }

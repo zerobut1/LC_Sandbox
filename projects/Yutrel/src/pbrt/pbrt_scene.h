@@ -233,6 +233,7 @@ struct DistantLightDesc
     SourceLocation source;
     float3 L{1.0f};
     float scale{1.0f};
+    luisa::optional<float> illuminance;
     float3 from{0.0f};
     float3 to{0.0f, 0.0f, 1.0f};
     Matrix4 pbrt_transform{identity_matrix4};
@@ -288,8 +289,8 @@ struct PbrtScene
     luisa::unordered_map<luisa::string, MediumDesc> named_media;
     luisa::vector<MeshDesc> meshes;
     luisa::vector<ShapeDesc> shapes;
-    luisa::optional<InfiniteLightDesc> infinite_light;
-    luisa::optional<DistantLightDesc> distant_light;
+    luisa::vector<InfiniteLightDesc> infinite_lights;
+    luisa::vector<DistantLightDesc> distant_lights;
 };
 
 } // namespace Yutrel

@@ -201,35 +201,6 @@ Var<TriangleHit> Geometry::trace_closest(const Var<Ray>& ray_in) const noexcept
         return m_accel->intersect(ray_in, {});
     }
 
-    // DirectX RayQuery currently returns invalid committed hits when the
-    // surface-candidate handler rejects alpha-masked triangles. Marching the
-    // closest-hit query preserves the same filtering semantics on DX.
-    if (m_renderer.device().backend_name() == "dx")
-    {
-        auto ray = ray_in;
-        auto hit = m_accel->intersect(ray, {});
-        constexpr auto max_iterations = 100u;
-        constexpr auto epsilon        = 1e-5f;
-        $for(i [[maybe_unused]], max_iterations)
-        {
-            $if(hit->miss()) { $break; };
-            $if(!alpha_skip(ray, hit)) { $break; };
-#ifndef NDEBUG
-            $if(i == max_iterations - 1u)
-            {
-                compute::device_log(luisa::format(
-                    "ERROR: max iterations ({}) exceeded in alpha trace closest",
-                    max_iterations));
-            };
-#endif
-            ray = make_ray(
-                ray->origin(), ray->direction(),
-                hit.committed_ray_t + epsilon, ray->t_max());
-            hit = m_accel->intersect(ray, {});
-        };
-        return hit;
-    }
-
     Callable trace = [this](Var<Ray> ray) noexcept
     {
         auto hit = m_accel->traverse(ray, {})
@@ -241,7 +212,9 @@ Var<TriangleHit> Geometry::trace_closest(const Var<Ray>& ray_in) const noexcept
                            };
                        })
                        .trace();
-        return Var<TriangleHit>{hit.inst, hit.prim, hit.bary, hit.committed_ray_t};
+        // CommittedHit uses hit_type for misses; TriangleHit uses an invalid instance ID.
+        auto inst = ite(hit->miss(), ~0u, hit.inst);
+        return Var<TriangleHit>{inst, hit.prim, hit.bary, hit.committed_ray_t};
     };
     return trace(ray_in);
 }
